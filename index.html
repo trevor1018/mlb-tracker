@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>⚾ MLB 投注追蹤</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d1117">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚾</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body, #root { height: 100%; }
+  body { background: #0d1117; font-family: 'Noto Sans TC', -apple-system, sans-serif; }
+  input, select, button, textarea { font-family: inherit; }
+  input[type="number"]::-webkit-inner-spin-button { opacity: 1; }
+  select { -webkit-appearance: auto; appearance: auto; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.9/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ─── Storage (localStorage) ───
+function load(key, fb) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; }
+}
+function save(key, data) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
+}
+
+// ─── Helpers ───
+const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const todayStr = () => {
+  const d = new Date();
+  const tw = new Date(d.getTime() + (480 - d.getTimezoneOffset()) * 60000);
+  return tw.toISOString().slice(0, 10);
+};
+
+const MLB_TEAMS = [
+  "洋基","紅襪","藍鳥","光芒","金鶯",
+  "白襪","乖乖","皇家","老虎","雙城",
+  "太空人","運動家","水手","天使","遊騎兵",
+  "大都會","勇士","費城人","馬林魚","國民",
+  "小熊","紅雀","海盜","釀酒人","紅人",
+  "道奇","教士","巨人","響尾蛇","洛磯",
+];
+
+function determineResult(leg, homeScore, awayScore) {
+  const h = Number(homeScore), a = Number(awayScore);
+  if (isNaN(h) || isNaN(a)) return "pending";
+  const total = h + a;
+  if (leg.market === "normal") {
+    if (h === a) return "push";
+    return (leg.selection === "home" && h > a) || (leg.selection === "away" && a > h) ? "win" : "lose";
+  }
+  if (leg.market === "handi") {
+    const spread = Number(leg.line);
+    const adjusted = h + spread;
+    if (adjusted === a) return "push";
+    return (leg.selection === "home" && adjusted > a) || (leg.selection === "away" && a > adjusted) ? "win" : "lose";
+  }
+  if (leg.market === "total") {
+    const line = Number(leg.line);
+    if (total === line) return "push";
+    return (leg.selection === "over" && total > line) || (leg.selection === "under" && total < line) ? "win" : "lose";
+  }
+  return "pending";
+}
+
+function calcBetPayout(bet) {
+  const legs = bet.legs;
+  const allSettled = legs.every(l => l.result !== "pending");
+  const anyLose = legs.some(l => l.result === "lose");
+  if (!allSettled) return { status: "pending", profit: 0, payout: 0 };
+  if (anyLose) return { status: "lose", profit: -bet.amount, payout: 0 };
+  const eff = legs.reduce((a, l) => a * (l.result === "push" ? 1 : l.odds), 1);
+  const payout = Math.round(bet.amount * eff);
+  return { status: "win", profit: payout - bet.amount, payout };
+}
+
+// ─── Theme ───
+const C = {
+  bg: "#0d1117", surface: "#161b22", card: "#1c2333", border: "#2d3748",
+  accent: "#f59e0b", accentDim: "rgba(245,158,11,0.12)",
+  green: "#10b981", greenDim: "rgba(16,185,129,0.1)",
+  red: "#ef4444", redDim: "rgba(239,68,68,0.1)",
+  blue: "#3b82f6", blueDim: "rgba(59,130,246,0.1)",
+  text: "#e2e8f0", dim: "#8b99ad", muted: "#4a5568",
+};
+
+// ─── Shared UI ───
+function Field({ label, children, style: s }) {
+  return (
+    <div style={{ marginBottom: 12, ...s }}>
+      <div style={{ fontSize: 12, color: C.dim, marginBottom: 5, fontWeight: 500 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function Input({ value, onChange, placeholder, type = "text", mono, style: s, ...rest }) {
+  return (
+    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+        background: C.bg, color: C.text, fontSize: 14, boxSizing: "border-box",
+        fontFamily: mono ? "'JetBrains Mono', monospace" : "inherit", outline: "none", ...s }}
+      {...rest}
+    />
+  );
+}
+
+function Select({ value, onChange, options, placeholder }) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+        background: C.bg, color: value ? C.text : C.muted, fontSize: 14, boxSizing: "border-box", outline: "none" }}>
+      <option value="">{placeholder || "請選擇"}</option>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
+function Pill({ selected, onClick, children }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: "6px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer", fontWeight: 600,
+      border: selected ? `2px solid ${C.accent}` : `1px solid ${C.border}`,
+      background: selected ? C.accentDim : C.bg, color: selected ? C.accent : C.dim,
+      transition: "all 0.15s", outline: "none",
+    }}>{children}</button>
+  );
+}
+
+// ─── Leg Editor ───
+function LegEditor({ leg, index, onChange, onRemove, showRemove }) {
+  const update = (f, v) => onChange({ ...leg, [f]: v });
+  const teamOpts = MLB_TEAMS.map(t => ({ value: t, label: t }));
+
+  return (
+    <div style={{ background: C.card, borderRadius: 10, padding: 14, marginBottom: 10, border: `1px solid ${C.border}`, position: "relative" }}>
+      {showRemove && (
+        <button onClick={onRemove} style={{ position: "absolute", top: 8, right: 10, background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
+      )}
+      <div style={{ fontSize: 12, color: C.accent, fontWeight: 700, marginBottom: 10 }}>第 {index + 1} 關</div>
+
+      <Field label="比賽日期">
+        <Input type="date" value={leg.date} onChange={v => update("date", v)} />
+      </Field>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <Field label="客隊">
+          <Select value={leg.away} onChange={v => update("away", v)} options={teamOpts} placeholder="選擇客隊" />
+        </Field>
+        <Field label="主隊">
+          <Select value={leg.home} onChange={v => update("home", v)} options={teamOpts} placeholder="選擇主隊" />
+        </Field>
+      </div>
+
+      <Field label="玩法">
+        <div style={{ display: "flex", gap: 8 }}>
+          {[["normal","不讓分"],["handi","讓分"],["total","大小分"]].map(([k,l]) => (
+            <Pill key={k} selected={leg.market === k} onClick={() => update("market", k)}>{l}</Pill>
+          ))}
+        </div>
+      </Field>
+
+      {(leg.market === "handi" || leg.market === "total") && (
+        <Field label={leg.market === "handi" ? "讓分值（主隊視角，例：-1.5 表主讓 1.5）" : "總分線（例：8.5）"}>
+          <Input value={leg.line} onChange={v => update("line", v)} placeholder={leg.market === "handi" ? "-1.5" : "8.5"} mono />
+        </Field>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <Field label="下注方向">
+          {leg.market === "total" ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <Pill selected={leg.selection === "over"} onClick={() => update("selection", "over")}>大</Pill>
+              <Pill selected={leg.selection === "under"} onClick={() => update("selection", "under")}>小</Pill>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 8 }}>
+              <Pill selected={leg.selection === "away"} onClick={() => update("selection", "away")}>{leg.away || "客"}</Pill>
+              <Pill selected={leg.selection === "home"} onClick={() => update("selection", "home")}>{leg.home || "主"}</Pill>
+            </div>
+          )}
+        </Field>
+        <Field label="賠率">
+          <Input value={leg.odds} onChange={v => update("odds", v)} placeholder="1.75" mono />
+        </Field>
+      </div>
+
+      <div style={{ borderTop: `1px dashed ${C.border}`, marginTop: 8, paddingTop: 10 }}>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>比賽結果（賽後填寫）</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <Field label={`${leg.away || "客隊"} 得分`} style={{ marginBottom: 0 }}>
+            <Input value={leg.awayScore} onChange={v => update("awayScore", v)} placeholder="—" type="number" mono style={{ textAlign: "center" }} />
+          </Field>
+          <Field label={`${leg.home || "主隊"} 得分`} style={{ marginBottom: 0 }}>
+            <Input value={leg.homeScore} onChange={v => update("homeScore", v)} placeholder="—" type="number" mono style={{ textAlign: "center" }} />
+          </Field>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Add Bet ───
+function AddBetView({ addBet }) {
+  const emptyLeg = () => ({ id: genId(), date: todayStr(), away: "", home: "", market: "normal", selection: "", line: "", odds: "", homeScore: "", awayScore: "" });
+  const [betType, setBetType] = useState("single");
+  const [legs, setLegs] = useState([emptyLeg()]);
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+
+  const updateLeg = (i, l) => setLegs(p => p.map((x, j) => j === i ? l : x));
+  const removeLeg = (i) => setLegs(p => p.filter((_, j) => j !== i));
+  const addLeg = () => { if (legs.length < 5) setLegs(p => [...p, emptyLeg()]); };
+
+  const isValid = () => {
+    if (!amount || Number(amount) <= 0) return false;
+    return legs.every(l => l.away && l.home && l.market && l.selection && l.odds && Number(l.odds) > 0);
+  };
+
+  const totalOdds = legs.reduce((a, l) => a * (Number(l.odds) || 1), 1);
+
+  const submit = () => {
+    if (!isValid()) return;
+    const mkLeg = (l) => {
+      const result = (l.homeScore !== "" && l.awayScore !== "") ? determineResult(l, l.homeScore, l.awayScore) : "pending";
+      return { ...l, odds: Number(l.odds), result };
+    };
+    if (betType === "single") {
+      legs.forEach(l => {
+        addBet({ id: genId(), type: "single", legs: [mkLeg(l)], amount: Number(amount), totalOdds: Number(l.odds), note, createdAt: new Date().toISOString() });
+      });
+    } else {
+      addBet({ id: genId(), type: "parlay", legs: legs.map(mkLeg), amount: Number(amount), totalOdds: Math.round(totalOdds * 100) / 100, note, createdAt: new Date().toISOString() });
+    }
+    setLegs([emptyLeg()]);
+    setAmount("");
+    setNote("");
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>新增投注紀錄</div>
+      <Field label="投注類型">
+        <div style={{ display: "flex", gap: 8 }}>
+          <Pill selected={betType === "single"} onClick={() => { setBetType("single"); if (legs.length > 1) setLegs([legs[0]]); }}>單場</Pill>
+          <Pill selected={betType === "parlay"} onClick={() => { setBetType("parlay"); if (legs.length < 2) setLegs([...legs, emptyLeg()]); }}>串關</Pill>
+        </div>
+      </Field>
+
+      {legs.map((leg, i) => (
+        <LegEditor key={leg.id} leg={leg} index={i} onChange={l => updateLeg(i, l)} onRemove={() => removeLeg(i)} showRemove={betType === "parlay" && legs.length > 2} />
+      ))}
+
+      {betType === "parlay" && legs.length < 5 && (
+        <button onClick={addLeg} style={{
+          width: "100%", padding: 10, borderRadius: 8, border: `1px dashed ${C.border}`,
+          background: "transparent", color: C.dim, cursor: "pointer", fontSize: 13, marginBottom: 12,
+        }}>＋ 新增一關（目前 {legs.length} 關，最多 5 關）</button>
+      )}
+
+      {betType === "parlay" && legs.length >= 2 && legs.every(l => Number(l.odds) > 0) && (
+        <div style={{ background: C.accentDim, borderRadius: 8, padding: "10px 16px", marginBottom: 12, display: "flex", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 13, color: C.accent }}>串 {legs.length} 關總賠率</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: C.accent, fontSize: 17 }}>{totalOdds.toFixed(2)}</span>
+        </div>
+      )}
+
+      <Field label="投注金額（NT$）">
+        <Input value={amount} onChange={setAmount} placeholder="100" type="number" mono />
+      </Field>
+      {amount && Number(amount) > 0 && (
+        <div style={{ fontSize: 13, color: C.green, marginBottom: 12, marginTop: -6 }}>
+          預估獎金：NT$ {Math.round(Number(amount) * totalOdds).toLocaleString()}
+          {betType === "single" && legs.length > 1 && <span style={{ color: C.dim }}> （每注）</span>}
+        </div>
+      )}
+
+      <Field label="備註（選填：先發投手、觀察筆記等）">
+        <Input value={note} onChange={setNote} placeholder="Cole vs Ohtani，看好洋基打線" />
+      </Field>
+
+      <button onClick={submit} disabled={!isValid()} style={{
+        width: "100%", padding: 14, borderRadius: 10, border: "none", fontSize: 15, fontWeight: 700,
+        background: isValid() ? C.accent : C.muted, color: isValid() ? "#000" : C.dim, cursor: isValid() ? "pointer" : "default",
+        outline: "none",
+      }}>
+        {betType === "parlay" ? `確認送出（串 ${legs.length} 關）` : legs.length > 1 ? `確認送出（${legs.length} 注各 $${amount || 0}）` : "確認送出"}
+      </button>
+    </div>
+  );
+}
+
+// ─── History ───
+function HistoryView({ bets, updateBet, deleteBet }) {
+  const [filter, setFilter] = useState("all");
+  const ML = { normal: "不讓分", handi: "讓分", total: "大小分" };
+  const filtered = bets.filter(b => filter === "all" || calcBetPayout(b).status === filter);
+
+  if (bets.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "60px 20px", color: C.dim }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+        <div style={{ fontSize: 15 }}>尚無投注紀錄</div>
+        <div style={{ fontSize: 13, marginTop: 4 }}>到「新增」頁面開始記錄</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>投注紀錄</div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {[["all","全部"],["pending","未結算"],["win","贏"],["lose","輸"]].map(([k,l]) => (
+          <Pill key={k} selected={filter === k} onClick={() => setFilter(k)}>{l}</Pill>
+        ))}
+      </div>
+      {filtered.map(bet => <BetCard key={bet.id} bet={bet} updateBet={updateBet} deleteBet={deleteBet} ML={ML} />)}
+      <div style={{ textAlign: "center", fontSize: 12, color: C.muted, padding: 12 }}>共 {filtered.length} 筆</div>
+    </div>
+  );
+}
+
+function BetCard({ bet, updateBet, deleteBet, ML }) {
+  const [editing, setEditing] = useState(false);
+  const r = calcBetPayout(bet);
+  const statusColor = r.status === "win" ? C.green : r.status === "lose" ? C.red : C.muted;
+
+  const updateScore = (li, field, val) => {
+    updateBet(bet.id, b => {
+      const newLegs = b.legs.map((l, i) => {
+        if (i !== li) return l;
+        const u = { ...l, [field]: val };
+        if (u.homeScore !== "" && u.awayScore !== "") u.result = determineResult(u, u.homeScore, u.awayScore);
+        else u.result = "pending";
+        return u;
+      });
+      return { ...b, legs: newLegs };
+    });
+  };
+
+  return (
+    <div style={{
+      background: C.card, borderRadius: 10, padding: "14px 16px", marginBottom: 8,
+      borderLeft: `3px solid ${statusColor}`,
+      border: `1px solid ${r.status === "win" ? "rgba(16,185,129,0.2)" : r.status === "lose" ? "rgba(239,68,68,0.2)" : C.border}`,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+            background: bet.type === "parlay" ? C.accentDim : C.blueDim,
+            color: bet.type === "parlay" ? C.accent : C.blue,
+          }}>
+            {bet.type === "parlay" ? `串${bet.legs.length}關` : "單場"}
+          </span>
+          <span style={{ fontSize: 11, color: C.dim }}>{bet.legs[0]?.date}</span>
+        </div>
+        {r.status !== "pending" ? (
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 15, color: statusColor }}>
+            {r.profit > 0 ? "+" : ""}{r.profit.toLocaleString()}
+          </span>
+        ) : (
+          <span style={{ fontSize: 11, color: C.muted, background: "rgba(75,85,99,0.2)", padding: "2px 8px", borderRadius: 4 }}>未結算</span>
+        )}
+      </div>
+
+      {bet.legs.map((leg, i) => (
+        <div key={i} style={{ fontSize: 13, padding: "6px 0", borderTop: i > 0 ? `1px solid ${C.border}` : "none" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", display: "inline-block",
+                background: leg.result === "win" ? C.green : leg.result === "lose" ? C.red : leg.result === "push" ? C.accent : C.muted }} />
+              <span>{leg.away} @ {leg.home}</span>
+            </div>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", color: C.dim, fontSize: 12 }}>{Number(leg.odds).toFixed(2)}</span>
+          </div>
+          <div style={{ fontSize: 12, color: C.dim, marginTop: 2, marginLeft: 13 }}>
+            {ML[leg.market]}{leg.line ? ` ${leg.line}` : ""} →{" "}
+            <span style={{ color: C.accent }}>
+              {leg.selection === "home" ? leg.home : leg.selection === "away" ? leg.away : leg.selection === "over" ? "大" : "小"}
+            </span>
+            {(leg.homeScore !== "" && leg.awayScore !== "") && (
+              <span style={{ marginLeft: 8, color: C.text }}>比數 {leg.awayScore}:{leg.homeScore}</span>
+            )}
+          </div>
+          {editing && (
+            <div style={{ display: "flex", gap: 8, marginTop: 6, marginLeft: 13, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: C.dim, minWidth: 30 }}>{leg.away}</span>
+              <input type="number" value={leg.awayScore ?? ""} onChange={e => updateScore(i, "awayScore", e.target.value)}
+                style={{ width: 44, padding: 4, borderRadius: 4, border: `1px solid ${C.border}`, background: C.bg, color: C.text, textAlign: "center", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+              <span style={{ color: C.muted }}>:</span>
+              <input type="number" value={leg.homeScore ?? ""} onChange={e => updateScore(i, "homeScore", e.target.value)}
+                style={{ width: 44, padding: 4, borderRadius: 4, border: `1px solid ${C.border}`, background: C.bg, color: C.text, textAlign: "center", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+              <span style={{ fontSize: 11, color: C.dim }}>{leg.home}</span>
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+        <span style={{ fontSize: 12, color: C.dim }}>NT${bet.amount.toLocaleString()} × {bet.totalOdds.toFixed(2)}</span>
+        <div style={{ display: "flex", gap: 12 }}>
+          <button onClick={() => setEditing(!editing)} style={{ background: "none", border: "none", color: editing ? C.accent : C.dim, cursor: "pointer", fontSize: 12 }}>
+            {editing ? "✓ 完成" : "📝 填比數"}
+          </button>
+          <button onClick={() => { if (confirm("確定刪除？")) deleteBet(bet.id); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12 }}>刪除</button>
+        </div>
+      </div>
+      {bet.note && <div style={{ fontSize: 11, color: C.dim, marginTop: 6, fontStyle: "italic" }}>💬 {bet.note}</div>}
+    </div>
+  );
+}
+
+// ─── Stats ───
+function StatsView({ bets }) {
+  const ML = { normal: "不讓分", handi: "讓分", total: "大小分" };
+  const settled = bets.filter(b => calcBetPayout(b).status !== "pending");
+  const wins = settled.filter(b => calcBetPayout(b).status === "win").length;
+  const totalW = settled.reduce((a, b) => a + b.amount, 0);
+  const totalP = settled.reduce((a, b) => a + calcBetPayout(b).profit, 0);
+  const wr = settled.length > 0 ? ((wins / settled.length) * 100).toFixed(1) : "—";
+  const roi = totalW > 0 ? ((totalP / totalW) * 100).toFixed(1) : "—";
+
+  const byMarket = {};
+  settled.forEach(b => {
+    if (b.type === "parlay") return;
+    const l = b.legs[0]; const k = l.market;
+    if (!byMarket[k]) byMarket[k] = { t: 0, w: 0, p: 0 };
+    byMarket[k].t++; const rr = calcBetPayout(b);
+    if (rr.status === "win") byMarket[k].w++;
+    byMarket[k].p += rr.profit;
+  });
+
+  if (bets.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "60px 20px", color: C.dim }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>📈</div>
+        <div>開始記錄投注後，統計會顯示在這裡</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>投注統計</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+        {[
+          { l: "已結算", v: settled.length, u: "注" },
+          { l: "勝率", v: wr, u: "%", c: Number(wr) >= 50 ? C.green : Number(wr) > 0 ? C.red : C.text },
+          { l: "總投注", v: `$${totalW.toLocaleString()}` },
+          { l: "累積盈虧", v: `${totalP >= 0 ? "+" : ""}$${totalP.toLocaleString()}`, c: totalP >= 0 ? C.green : C.red },
+          { l: "勝 / 負", v: `${wins} / ${settled.length - wins}` },
+          { l: "ROI", v: roi, u: "%", c: Number(roi) >= 0 ? C.green : C.red },
+        ].map((s, i) => (
+          <div key={i} style={{ background: C.card, borderRadius: 10, padding: 14, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 11, color: C.dim, marginBottom: 4 }}>{s.l}</div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 19, fontWeight: 700, color: s.c || C.text }}>
+              {s.v}<span style={{ fontSize: 11, fontWeight: 400, color: C.dim }}> {s.u || ""}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {Object.keys(byMarket).length > 0 && (
+        <div style={{ background: C.card, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}`, marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>各玩法統計（單場）</div>
+          {Object.entries(byMarket).map(([k, m]) => (
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 13 }}>{ML[k]}</span>
+              <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
+                <span style={{ color: C.dim }}>{m.w}/{m.t} ({(m.w/m.t*100).toFixed(0)}%)</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: m.p >= 0 ? C.green : C.red }}>
+                  {m.p >= 0 ? "+" : ""}{m.p.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {settled.length > 1 && (
+        <div style={{ background: C.card, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>盈虧走勢</div>
+          <MiniChart settled={settled} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MiniChart({ settled }) {
+  const data = settled.slice().reverse();
+  let cum = 0;
+  const pts = data.map(b => { cum += calcBetPayout(b).profit; return cum; });
+  const mx = Math.max(...pts, 0), mn = Math.min(...pts, 0), rg = mx - mn || 1;
+  const W = 100, H = 100;
+  const coords = pts.map((p, i) => ({
+    x: pts.length === 1 ? 50 : (i / (pts.length - 1)) * W,
+    y: H - ((p - mn) / rg) * H,
+  }));
+  const path = coords.map((c, i) => `${i === 0 ? "M" : "L"}${c.x},${c.y}`).join(" ");
+  const last = pts[pts.length - 1];
+  const zy = H - ((0 - mn) / rg) * H;
+
+  return (
+    <svg viewBox={`-4 -8 ${W + 8} ${H + 16}`} style={{ width: "100%", height: 130 }}>
+      {mn < 0 && mx > 0 && <line x1="0" y1={zy} x2={W} y2={zy} stroke={C.muted} strokeDasharray="2,2" strokeWidth="0.4" />}
+      <path d={path} fill="none" stroke={last >= 0 ? C.green : C.red} strokeWidth="1.5" strokeLinejoin="round" />
+      {coords.map((c, i) => <circle key={i} cx={c.x} cy={c.y} r="1.5" fill={pts[i] >= 0 ? C.green : C.red} />)}
+      <text x={coords[coords.length-1].x} y={coords[coords.length-1].y - 5} fill={last >= 0 ? C.green : C.red} fontSize="5" textAnchor="end" fontWeight="bold">
+        {last >= 0 ? "+" : ""}{last.toLocaleString()}
+      </text>
+    </svg>
+  );
+}
+
+// ─── Data Sync View ───
+function DataView({ bets, setBets }) {
+  const [importText, setImportText] = useState("");
+  const [msg, setMsg] = useState("");
+  const fileRef = useRef(null);
+
+  const exportData = () => {
+    const json = JSON.stringify(bets, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mlb-bets-${todayStr()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMsg("✅ 已匯出 " + bets.length + " 筆紀錄");
+    setTimeout(() => setMsg(""), 3000);
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(JSON.stringify(bets)).then(() => {
+      setMsg("✅ 已複製到剪貼簿");
+      setTimeout(() => setMsg(""), 3000);
+    }).catch(() => {
+      setMsg("❌ 複製失敗，請用下載方式");
+      setTimeout(() => setMsg(""), 3000);
+    });
+  };
+
+  const importFromText = () => {
+    try {
+      const data = JSON.parse(importText);
+      if (!Array.isArray(data)) throw new Error();
+      if (data.length === 0) { setMsg("⚠️ JSON 內無資料"); return; }
+      // Merge: add new bets that don't exist by id
+      const existingIds = new Set(bets.map(b => b.id));
+      const newBets = data.filter(b => !existingIds.has(b.id));
+      if (newBets.length === 0) {
+        setMsg("ℹ️ 所有紀錄都已存在，無需匯入");
+      } else {
+        setBets(prev => [...prev, ...newBets].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+        setMsg(`✅ 已匯入 ${newBets.length} 筆新紀錄（略過 ${data.length - newBets.length} 筆重複）`);
+      }
+      setImportText("");
+    } catch {
+      setMsg("❌ JSON 格式錯誤，請確認內容正確");
+    }
+    setTimeout(() => setMsg(""), 4000);
+  };
+
+  const importFromFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImportText(ev.target.result);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const clearAll = () => {
+    if (confirm("確定清除所有紀錄？此操作無法復原！")) {
+      setBets([]);
+      setMsg("🗑️ 已清除所有紀錄");
+      setTimeout(() => setMsg(""), 3000);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>資料管理</div>
+
+      {msg && (
+        <div style={{ padding: "10px 14px", borderRadius: 8, background: C.card, border: `1px solid ${C.border}`, marginBottom: 14, fontSize: 13 }}>{msg}</div>
+      )}
+
+      {/* Export */}
+      <div style={{ background: C.card, borderRadius: 10, padding: "16px", border: `1px solid ${C.border}`, marginBottom: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>📤 匯出資料</div>
+        <div style={{ fontSize: 12, color: C.dim, marginBottom: 12 }}>目前有 {bets.length} 筆投注紀錄</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={exportData} style={{
+            flex: 1, padding: 12, borderRadius: 8, border: "none", fontSize: 14, fontWeight: 600,
+            background: C.accent, color: "#000", cursor: "pointer", outline: "none",
+          }}>下載 JSON 檔</button>
+          <button onClick={copyToClipboard} style={{
+            flex: 1, padding: 12, borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 14, fontWeight: 600,
+            background: C.bg, color: C.text, cursor: "pointer", outline: "none",
+          }}>複製到剪貼簿</button>
+        </div>
+      </div>
+
+      {/* Import */}
+      <div style={{ background: C.card, borderRadius: 10, padding: "16px", border: `1px solid ${C.border}`, marginBottom: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>📥 匯入資料</div>
+        <div style={{ fontSize: 12, color: C.dim, marginBottom: 12 }}>從其他裝置匯入紀錄（自動合併，不會覆蓋現有資料）</div>
+
+        <input ref={fileRef} type="file" accept=".json" onChange={importFromFile} style={{ display: "none" }} />
+        <button onClick={() => fileRef.current?.click()} style={{
+          width: "100%", padding: 12, borderRadius: 8, border: `1px dashed ${C.border}`, fontSize: 14,
+          background: "transparent", color: C.dim, cursor: "pointer", marginBottom: 10, outline: "none",
+        }}>📁 選擇 JSON 檔案</button>
+
+        <div style={{ fontSize: 12, color: C.muted, textAlign: "center", marginBottom: 10 }}>— 或貼上 JSON 內容 —</div>
+        <textarea value={importText} onChange={e => setImportText(e.target.value)} placeholder='貼上從其他裝置匯出的 JSON...'
+          style={{ width: "100%", minHeight: 80, padding: 10, borderRadius: 8, border: `1px solid ${C.border}`,
+            background: C.bg, color: C.text, fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
+            resize: "vertical", boxSizing: "border-box", outline: "none" }} />
+        <button onClick={importFromText} disabled={!importText.trim()} style={{
+          width: "100%", marginTop: 8, padding: 12, borderRadius: 8, border: "none", fontSize: 14, fontWeight: 600,
+          background: importText.trim() ? C.blue : C.muted, color: importText.trim() ? "#fff" : C.dim,
+          cursor: importText.trim() ? "pointer" : "default", outline: "none",
+        }}>匯入</button>
+      </div>
+
+      {/* Danger zone */}
+      <div style={{ background: C.card, borderRadius: 10, padding: "16px", border: `1px solid rgba(239,68,68,0.2)`, marginBottom: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, color: C.red }}>⚠️ 危險區域</div>
+        <div style={{ fontSize: 12, color: C.dim, marginBottom: 12 }}>清除後無法復原，請先匯出備份</div>
+        <button onClick={clearAll} style={{
+          width: "100%", padding: 12, borderRadius: 8, border: `1px solid ${C.red}`, fontSize: 14,
+          background: C.redDim, color: C.red, cursor: "pointer", fontWeight: 600, outline: "none",
+        }}>清除所有紀錄</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main App ───
+function App() {
+  const [tab, setTab] = useState("add");
+  const [bets, setBets] = useState(() => load("mlb-bets-v3", []));
+
+  useEffect(() => { save("mlb-bets-v3", bets); }, [bets]);
+
+  const addBet = (bet) => setBets(prev => [bet, ...prev]);
+  const updateBet = (id, updater) => setBets(prev => prev.map(b => b.id === id ? updater(b) : b));
+  const deleteBet = (id) => setBets(prev => prev.filter(b => b.id !== id));
+
+  const tabs = [
+    { id: "add", icon: "＋", label: "新增" },
+    { id: "history", icon: "📋", label: "紀錄" },
+    { id: "stats", icon: "📈", label: "統計" },
+    { id: "data", icon: "🔄", label: "資料" },
+  ];
+
+  return (
+    <div style={{ background: C.bg, minHeight: "100vh", color: C.text, paddingBottom: 80 }}>
+      {/* Header */}
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 20px", display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 22 }}>⚾</span>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>MLB 投注追蹤</div>
+          <div style={{ fontSize: 11, color: C.dim }}>台灣運彩 · 手動記錄</div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "12px 16px" }}>
+        {tab === "add" && <AddBetView addBet={addBet} />}
+        {tab === "history" && <HistoryView bets={bets} updateBet={updateBet} deleteBet={deleteBet} />}
+        {tab === "stats" && <StatsView bets={bets} />}
+        {tab === "data" && <DataView bets={bets} setBets={setBets} />}
+      </div>
+
+      {/* Bottom tabs */}
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: "flex", zIndex: 10 }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            flex: 1, padding: "10px 0 8px", background: "none", border: "none", cursor: "pointer",
+            color: tab === t.id ? C.accent : C.dim, display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+            borderTop: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent", outline: "none",
+          }}>
+            <span style={{ fontSize: 18 }}>{t.icon}</span>
+            <span style={{ fontSize: 11, fontWeight: tab === t.id ? 700 : 400 }}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
