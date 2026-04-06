@@ -486,15 +486,54 @@ function StatsView({bets,games}){
 // ═══════════════════════════════════════
 function App(){
   const[tab,setTab]=useState("add");
-  const[bets,setBets]=useState(()=>load("mlb-b4",[]));
+  const[bets,setBets]=useState(()=>{
+    const b=load("mlb-b4",[]),g=load("mlb-g4",[]);
+    // Initial sync: apply existing game scores to pending bets
+    let synced=b;
+    g.forEach(game=>{
+      synced=synced.map(bet=>{
+        let changed=false;
+        const nl=bet.legs.map(l=>{
+          if(l.date===game.date&&l.away===game.away&&l.home===game.home&&(l.homeScore===""||l.awayScore==="")){
+            const u={...l,homeScore:String(game.homeScore),awayScore:String(game.awayScore)};
+            u.result=determineResult(u,u.homeScore,u.awayScore);
+            changed=true;return u;
+          }
+          return l;
+        });
+        return changed?{...bet,legs:nl}:bet;
+      });
+    });
+    return synced;
+  });
   const[games,setGames]=useState(()=>load("mlb-g4",[]));
   useEffect(()=>{save("mlb-b4",bets)},[bets]);
   useEffect(()=>{save("mlb-g4",games)},[games]);
 
+  // Sync game scores into matching bet legs
+  const syncBetsWithGame=(game,prevBets)=>{
+    return prevBets.map(b=>{
+      let changed=false;
+      const nl=b.legs.map(l=>{
+        if(l.date===game.date&&l.away===game.away&&l.home===game.home){
+          const u={...l,homeScore:String(game.homeScore),awayScore:String(game.awayScore)};
+          u.result=determineResult(u,u.homeScore,u.awayScore);
+          changed=true;
+          return u;
+        }
+        return l;
+      });
+      return changed?{...b,legs:nl}:b;
+    });
+  };
+
   const addBet=b=>setBets(p=>[b,...p]);
   const upBet=(id,fn)=>setBets(p=>p.map(b=>b.id===id?fn(b):b));
   const delBet=id=>setBets(p=>p.filter(b=>b.id!==id));
-  const addGame=g=>setGames(p=>[g,...p].sort((a,b)=>b.date.localeCompare(a.date)));
+  const addGame=g=>{
+    setGames(p=>[g,...p].sort((a,b)=>b.date.localeCompare(a.date)));
+    setBets(p=>syncBetsWithGame(g,p));
+  };
   const delGame=id=>setGames(p=>p.filter(g=>g.id!==id));
 
   const tabs=[
