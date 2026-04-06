@@ -10,12 +10,15 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚾</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body, #root { height: 100%; }
-  body { background: #0d1117; font-family: 'Noto Sans TC', -apple-system, sans-serif; }
-  input, select, button, textarea { font-family: inherit; }
-  input[type="number"]::-webkit-inner-spin-button { opacity: 1; }
-  select { -webkit-appearance: auto; appearance: auto; }
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body,#root{height:100%}
+body{background:#0d1117;font-family:'Noto Sans TC',-apple-system,sans-serif}
+input,select,button,textarea{font-family:inherit}
+input[type=number]::-webkit-inner-spin-button{opacity:1}
+select{-webkit-appearance:auto;appearance:auto}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#2d3748;border-radius:4px}
 </style>
 </head>
 <body>
@@ -24,690 +27,438 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.9/babel.min.js"></script>
 <script type="text/babel">
-const { useState, useEffect, useRef } = React;
+const {useState,useEffect,useRef,useMemo}=React;
 
-// ─── Storage (localStorage) ───
-function load(key, fb) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; }
+// ─── Storage ───
+const load=(k,fb)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb}catch{return fb}};
+const save=(k,d)=>{try{localStorage.setItem(k,JSON.stringify(d))}catch{}};
+const genId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const todayStr=()=>{const d=new Date();return new Date(d.getTime()+(480-d.getTimezoneOffset())*60000).toISOString().slice(0,10)};
+
+const TEAMS=["洋基","紅襪","藍鳥","光芒","金鶯","白襪","守護者","皇家","老虎","雙城","太空人","運動家","水手","天使","遊騎兵","大都會","勇士","費城人","馬林魚","國民","小熊","紅雀","海盜","釀酒人","紅人","道奇","教士","巨人","響尾蛇","洛磯"];
+
+// ─── Bet logic ───
+function determineResult(leg,hs,as){
+  const h=Number(hs),a=Number(as);if(isNaN(h)||isNaN(a))return"pending";
+  const t=h+a;
+  if(leg.market==="normal"){if(h===a)return"push";return(leg.selection==="home"&&h>a)||(leg.selection==="away"&&a>h)?"win":"lose"}
+  if(leg.market==="handi"){const s=Number(leg.line),adj=h+s;if(adj===a)return"push";return(leg.selection==="home"&&adj>a)||(leg.selection==="away"&&a>adj)?"win":"lose"}
+  if(leg.market==="total"){const l=Number(leg.line);if(t===l)return"push";return(leg.selection==="over"&&t>l)||(leg.selection==="under"&&t<l)?"win":"lose"}
+  return"pending";
 }
-function save(key, data) {
-  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
-}
-
-// ─── Helpers ───
-const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const todayStr = () => {
-  const d = new Date();
-  const tw = new Date(d.getTime() + (480 - d.getTimezoneOffset()) * 60000);
-  return tw.toISOString().slice(0, 10);
-};
-
-const MLB_TEAMS = [
-  "洋基","紅襪","藍鳥","光芒","金鶯",
-  "白襪","乖乖","皇家","老虎","雙城",
-  "太空人","運動家","水手","天使","遊騎兵",
-  "大都會","勇士","費城人","馬林魚","國民",
-  "小熊","紅雀","海盜","釀酒人","紅人",
-  "道奇","教士","巨人","響尾蛇","洛磯",
-];
-
-function determineResult(leg, homeScore, awayScore) {
-  const h = Number(homeScore), a = Number(awayScore);
-  if (isNaN(h) || isNaN(a)) return "pending";
-  const total = h + a;
-  if (leg.market === "normal") {
-    if (h === a) return "push";
-    return (leg.selection === "home" && h > a) || (leg.selection === "away" && a > h) ? "win" : "lose";
-  }
-  if (leg.market === "handi") {
-    const spread = Number(leg.line);
-    const adjusted = h + spread;
-    if (adjusted === a) return "push";
-    return (leg.selection === "home" && adjusted > a) || (leg.selection === "away" && a > adjusted) ? "win" : "lose";
-  }
-  if (leg.market === "total") {
-    const line = Number(leg.line);
-    if (total === line) return "push";
-    return (leg.selection === "over" && total > line) || (leg.selection === "under" && total < line) ? "win" : "lose";
-  }
-  return "pending";
-}
-
-function calcBetPayout(bet) {
-  const legs = bet.legs;
-  const allSettled = legs.every(l => l.result !== "pending");
-  const anyLose = legs.some(l => l.result === "lose");
-  if (!allSettled) return { status: "pending", profit: 0, payout: 0 };
-  if (anyLose) return { status: "lose", profit: -bet.amount, payout: 0 };
-  const eff = legs.reduce((a, l) => a * (l.result === "push" ? 1 : l.odds), 1);
-  const payout = Math.round(bet.amount * eff);
-  return { status: "win", profit: payout - bet.amount, payout };
+function calcPayout(bet){
+  const legs=bet.legs,all=legs.every(l=>l.result!=="pending"),any=legs.some(l=>l.result==="lose");
+  if(!all)return{status:"pending",profit:0};if(any)return{status:"lose",profit:-bet.amount};
+  const e=legs.reduce((a,l)=>a*(l.result==="push"?1:l.odds),1);
+  return{status:"win",profit:Math.round(bet.amount*e)-bet.amount};
 }
 
 // ─── Theme ───
-const C = {
-  bg: "#0d1117", surface: "#161b22", card: "#1c2333", border: "#2d3748",
-  accent: "#f59e0b", accentDim: "rgba(245,158,11,0.12)",
-  green: "#10b981", greenDim: "rgba(16,185,129,0.1)",
-  red: "#ef4444", redDim: "rgba(239,68,68,0.1)",
-  blue: "#3b82f6", blueDim: "rgba(59,130,246,0.1)",
-  text: "#e2e8f0", dim: "#8b99ad", muted: "#4a5568",
-};
+const C={bg:"#0d1117",sf:"#161b22",card:"#1c2333",bd:"#2d3748",
+  acc:"#f59e0b",accD:"rgba(245,158,11,0.12)",
+  g:"#10b981",gD:"rgba(16,185,129,0.1)",r:"#ef4444",rD:"rgba(239,68,68,0.1)",
+  b:"#3b82f6",bD:"rgba(59,130,246,0.1)",
+  t:"#e2e8f0",d:"#8b99ad",m:"#4a5568"};
 
-// ─── Shared UI ───
-function Field({ label, children, style: s }) {
-  return (
-    <div style={{ marginBottom: 12, ...s }}>
-      <div style={{ fontSize: 12, color: C.dim, marginBottom: 5, fontWeight: 500 }}>{label}</div>
-      {children}
-    </div>
-  );
-}
+// ─── UI Atoms ───
+function Field({label,children,style:s}){return<div style={{marginBottom:12,...s}}><div style={{fontSize:12,color:C.d,marginBottom:5,fontWeight:500}}>{label}</div>{children}</div>}
+function Inp({value,onChange,placeholder,type="text",mono,style:s,...r}){return<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,fontSize:14,boxSizing:"border-box",fontFamily:mono?"'JetBrains Mono',monospace":"inherit",outline:"none",...s}} {...r}/>}
+function Sel({value,onChange,options,placeholder}){return<select value={value} onChange={e=>onChange(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:value?C.t:C.m,fontSize:14,boxSizing:"border-box",outline:"none"}}><option value="">{placeholder||"請選擇"}</option>{options.map(o=><option key={o} value={o}>{o}</option>)}</select>}
+function Pill({sel,onClick,children}){return<button onClick={onClick} style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,border:sel?`2px solid ${C.acc}`:`1px solid ${C.bd}`,background:sel?C.accD:C.bg,color:sel?C.acc:C.d,transition:"all .15s",outline:"none"}}>{children}</button>}
+function Stat({label,value,unit,color}){return<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`}}><div style={{fontSize:11,color:C.d,marginBottom:4}}>{label}</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:19,fontWeight:700,color:color||C.t}}>{value}<span style={{fontSize:11,fontWeight:400,color:C.d}}> {unit||""}</span></div></div>}
 
-function Input({ value, onChange, placeholder, type = "text", mono, style: s, ...rest }) {
-  return (
-    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-        background: C.bg, color: C.text, fontSize: 14, boxSizing: "border-box",
-        fontFamily: mono ? "'JetBrains Mono', monospace" : "inherit", outline: "none", ...s }}
-      {...rest}
-    />
-  );
-}
-
-function Select({ value, onChange, options, placeholder }) {
-  return (
-    <select value={value} onChange={e => onChange(e.target.value)}
-      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-        background: C.bg, color: value ? C.text : C.muted, fontSize: 14, boxSizing: "border-box", outline: "none" }}>
-      <option value="">{placeholder || "請選擇"}</option>
-      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-  );
-}
-
-function Pill({ selected, onClick, children }) {
-  return (
-    <button onClick={onClick} style={{
-      padding: "6px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer", fontWeight: 600,
-      border: selected ? `2px solid ${C.accent}` : `1px solid ${C.border}`,
-      background: selected ? C.accentDim : C.bg, color: selected ? C.accent : C.dim,
-      transition: "all 0.15s", outline: "none",
-    }}>{children}</button>
-  );
-}
-
-// ─── Leg Editor ───
-function LegEditor({ leg, index, onChange, onRemove, showRemove }) {
-  const update = (f, v) => onChange({ ...leg, [f]: v });
-  const teamOpts = MLB_TEAMS.map(t => ({ value: t, label: t }));
-
-  return (
-    <div style={{ background: C.card, borderRadius: 10, padding: 14, marginBottom: 10, border: `1px solid ${C.border}`, position: "relative" }}>
-      {showRemove && (
-        <button onClick={onRemove} style={{ position: "absolute", top: 8, right: 10, background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
-      )}
-      <div style={{ fontSize: 12, color: C.accent, fontWeight: 700, marginBottom: 10 }}>第 {index + 1} 關</div>
-
-      <Field label="比賽日期">
-        <Input type="date" value={leg.date} onChange={v => update("date", v)} />
-      </Field>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <Field label="客隊">
-          <Select value={leg.away} onChange={v => update("away", v)} options={teamOpts} placeholder="選擇客隊" />
-        </Field>
-        <Field label="主隊">
-          <Select value={leg.home} onChange={v => update("home", v)} options={teamOpts} placeholder="選擇主隊" />
-        </Field>
-      </div>
-
-      <Field label="玩法">
-        <div style={{ display: "flex", gap: 8 }}>
-          {[["normal","不讓分"],["handi","讓分"],["total","大小分"]].map(([k,l]) => (
-            <Pill key={k} selected={leg.market === k} onClick={() => update("market", k)}>{l}</Pill>
-          ))}
-        </div>
-      </Field>
-
-      {(leg.market === "handi" || leg.market === "total") && (
-        <Field label={leg.market === "handi" ? "讓分值（主隊視角，例：-1.5 表主讓 1.5）" : "總分線（例：8.5）"}>
-          <Input value={leg.line} onChange={v => update("line", v)} placeholder={leg.market === "handi" ? "-1.5" : "8.5"} mono />
-        </Field>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <Field label="下注方向">
-          {leg.market === "total" ? (
-            <div style={{ display: "flex", gap: 8 }}>
-              <Pill selected={leg.selection === "over"} onClick={() => update("selection", "over")}>大</Pill>
-              <Pill selected={leg.selection === "under"} onClick={() => update("selection", "under")}>小</Pill>
-            </div>
-          ) : (
-            <div style={{ display: "flex", gap: 8 }}>
-              <Pill selected={leg.selection === "away"} onClick={() => update("selection", "away")}>{leg.away || "客"}</Pill>
-              <Pill selected={leg.selection === "home"} onClick={() => update("selection", "home")}>{leg.home || "主"}</Pill>
-            </div>
-          )}
-        </Field>
-        <Field label="賠率">
-          <Input value={leg.odds} onChange={v => update("odds", v)} placeholder="1.75" mono />
-        </Field>
-      </div>
-
-      <div style={{ borderTop: `1px dashed ${C.border}`, marginTop: 8, paddingTop: 10 }}>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>比賽結果（賽後填寫）</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <Field label={`${leg.away || "客隊"} 得分`} style={{ marginBottom: 0 }}>
-            <Input value={leg.awayScore} onChange={v => update("awayScore", v)} placeholder="—" type="number" mono style={{ textAlign: "center" }} />
-          </Field>
-          <Field label={`${leg.home || "主隊"} 得分`} style={{ marginBottom: 0 }}>
-            <Input value={leg.homeScore} onChange={v => update("homeScore", v)} placeholder="—" type="number" mono style={{ textAlign: "center" }} />
-          </Field>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Add Bet ───
-function AddBetView({ addBet }) {
-  const emptyLeg = () => ({ id: genId(), date: todayStr(), away: "", home: "", market: "normal", selection: "", line: "", odds: "", homeScore: "", awayScore: "" });
-  const [betType, setBetType] = useState("single");
-  const [legs, setLegs] = useState([emptyLeg()]);
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
-
-  const updateLeg = (i, l) => setLegs(p => p.map((x, j) => j === i ? l : x));
-  const removeLeg = (i) => setLegs(p => p.filter((_, j) => j !== i));
-  const addLeg = () => { if (legs.length < 5) setLegs(p => [...p, emptyLeg()]); };
-
-  const isValid = () => {
-    if (!amount || Number(amount) <= 0) return false;
-    return legs.every(l => l.away && l.home && l.market && l.selection && l.odds && Number(l.odds) > 0);
+// ═══════════════════════════════════════
+// ADD BET VIEW
+// ═══════════════════════════════════════
+function AddBetView({addBet}){
+  const empty=()=>({id:genId(),date:todayStr(),away:"",home:"",market:"normal",selection:"",line:"",odds:"",homeScore:"",awayScore:""});
+  const[type,setType]=useState("single");
+  const[legs,setLegs]=useState([empty()]);
+  const[amt,setAmt]=useState("");
+  const[note,setNote]=useState("");
+  const upLeg=(i,l)=>setLegs(p=>p.map((x,j)=>j===i?l:x));
+  const rmLeg=i=>setLegs(p=>p.filter((_,j)=>j!==i));
+  const addLeg=()=>{if(legs.length<5)setLegs(p=>[...p,empty()])};
+  const valid=()=>amt&&Number(amt)>0&&legs.every(l=>l.away&&l.home&&l.selection&&l.odds&&Number(l.odds)>0);
+  const tOdds=legs.reduce((a,l)=>a*(Number(l.odds)||1),1);
+  const submit=()=>{
+    if(!valid())return;
+    const mk=l=>{const res=(l.homeScore!==""&&l.awayScore!=="")?determineResult(l,l.homeScore,l.awayScore):"pending";return{...l,odds:Number(l.odds),result:res}};
+    if(type==="single")legs.forEach(l=>addBet({id:genId(),type:"single",legs:[mk(l)],amount:Number(amt),totalOdds:Number(l.odds),note,createdAt:new Date().toISOString()}));
+    else addBet({id:genId(),type:"parlay",legs:legs.map(mk),amount:Number(amt),totalOdds:Math.round(tOdds*100)/100,note,createdAt:new Date().toISOString()});
+    setLegs([empty()]);setAmt("");setNote("");
   };
 
-  const totalOdds = legs.reduce((a, l) => a * (Number(l.odds) || 1), 1);
+  return<div>
+    <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>新增投注紀錄</div>
+    <Field label="投注類型"><div style={{display:"flex",gap:8}}>
+      <Pill sel={type==="single"} onClick={()=>{setType("single");if(legs.length>1)setLegs([legs[0]])}}>單場</Pill>
+      <Pill sel={type==="parlay"} onClick={()=>{setType("parlay");if(legs.length<2)setLegs([...legs,empty()])}}>串關</Pill>
+    </div></Field>
 
-  const submit = () => {
-    if (!isValid()) return;
-    const mkLeg = (l) => {
-      const result = (l.homeScore !== "" && l.awayScore !== "") ? determineResult(l, l.homeScore, l.awayScore) : "pending";
-      return { ...l, odds: Number(l.odds), result };
-    };
-    if (betType === "single") {
-      legs.forEach(l => {
-        addBet({ id: genId(), type: "single", legs: [mkLeg(l)], amount: Number(amount), totalOdds: Number(l.odds), note, createdAt: new Date().toISOString() });
-      });
-    } else {
-      addBet({ id: genId(), type: "parlay", legs: legs.map(mkLeg), amount: Number(amount), totalOdds: Math.round(totalOdds * 100) / 100, note, createdAt: new Date().toISOString() });
-    }
-    setLegs([emptyLeg()]);
-    setAmount("");
-    setNote("");
-  };
+    {legs.map((leg,i)=><LegEdit key={leg.id} leg={leg} idx={i} onChange={l=>upLeg(i,l)} onRemove={()=>rmLeg(i)} canRemove={type==="parlay"&&legs.length>2}/>)}
 
-  return (
-    <div>
-      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>新增投注紀錄</div>
-      <Field label="投注類型">
-        <div style={{ display: "flex", gap: 8 }}>
-          <Pill selected={betType === "single"} onClick={() => { setBetType("single"); if (legs.length > 1) setLegs([legs[0]]); }}>單場</Pill>
-          <Pill selected={betType === "parlay"} onClick={() => { setBetType("parlay"); if (legs.length < 2) setLegs([...legs, emptyLeg()]); }}>串關</Pill>
-        </div>
-      </Field>
+    {type==="parlay"&&legs.length<5&&<button onClick={addLeg} style={{width:"100%",padding:10,borderRadius:8,border:`1px dashed ${C.bd}`,background:"transparent",color:C.d,cursor:"pointer",fontSize:13,marginBottom:12}}>＋ 新增一關（{legs.length}/5）</button>}
+    {type==="parlay"&&legs.length>=2&&legs.every(l=>Number(l.odds)>0)&&<div style={{background:C.accD,borderRadius:8,padding:"10px 16px",marginBottom:12,display:"flex",justifyContent:"space-between"}}><span style={{fontSize:13,color:C.acc}}>串{legs.length}關總賠率</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:C.acc,fontSize:17}}>{tOdds.toFixed(2)}</span></div>}
 
-      {legs.map((leg, i) => (
-        <LegEditor key={leg.id} leg={leg} index={i} onChange={l => updateLeg(i, l)} onRemove={() => removeLeg(i)} showRemove={betType === "parlay" && legs.length > 2} />
-      ))}
-
-      {betType === "parlay" && legs.length < 5 && (
-        <button onClick={addLeg} style={{
-          width: "100%", padding: 10, borderRadius: 8, border: `1px dashed ${C.border}`,
-          background: "transparent", color: C.dim, cursor: "pointer", fontSize: 13, marginBottom: 12,
-        }}>＋ 新增一關（目前 {legs.length} 關，最多 5 關）</button>
-      )}
-
-      {betType === "parlay" && legs.length >= 2 && legs.every(l => Number(l.odds) > 0) && (
-        <div style={{ background: C.accentDim, borderRadius: 8, padding: "10px 16px", marginBottom: 12, display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 13, color: C.accent }}>串 {legs.length} 關總賠率</span>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: C.accent, fontSize: 17 }}>{totalOdds.toFixed(2)}</span>
-        </div>
-      )}
-
-      <Field label="投注金額（NT$）">
-        <Input value={amount} onChange={setAmount} placeholder="100" type="number" mono />
-      </Field>
-      {amount && Number(amount) > 0 && (
-        <div style={{ fontSize: 13, color: C.green, marginBottom: 12, marginTop: -6 }}>
-          預估獎金：NT$ {Math.round(Number(amount) * totalOdds).toLocaleString()}
-          {betType === "single" && legs.length > 1 && <span style={{ color: C.dim }}> （每注）</span>}
-        </div>
-      )}
-
-      <Field label="備註（選填：先發投手、觀察筆記等）">
-        <Input value={note} onChange={setNote} placeholder="Cole vs Ohtani，看好洋基打線" />
-      </Field>
-
-      <button onClick={submit} disabled={!isValid()} style={{
-        width: "100%", padding: 14, borderRadius: 10, border: "none", fontSize: 15, fontWeight: 700,
-        background: isValid() ? C.accent : C.muted, color: isValid() ? "#000" : C.dim, cursor: isValid() ? "pointer" : "default",
-        outline: "none",
-      }}>
-        {betType === "parlay" ? `確認送出（串 ${legs.length} 關）` : legs.length > 1 ? `確認送出（${legs.length} 注各 $${amount || 0}）` : "確認送出"}
-      </button>
-    </div>
-  );
+    <Field label="投注金額（NT$）"><Inp value={amt} onChange={setAmt} placeholder="100" type="number" mono/></Field>
+    {amt&&Number(amt)>0&&<div style={{fontSize:13,color:C.g,marginBottom:12,marginTop:-6}}>預估獎金：NT$ {Math.round(Number(amt)*tOdds).toLocaleString()}</div>}
+    <Field label="備註（選填）"><Inp value={note} onChange={setNote} placeholder="先發投手、觀察筆記..."/></Field>
+    <button onClick={submit} disabled={!valid()} style={{width:"100%",padding:14,borderRadius:10,border:"none",fontSize:15,fontWeight:700,background:valid()?C.acc:C.m,color:valid()?"#000":C.d,cursor:valid()?"pointer":"default",outline:"none"}}>
+      {type==="parlay"?`確認送出（串${legs.length}關）`:"確認送出"}
+    </button>
+  </div>;
 }
 
-// ─── History ───
-function HistoryView({ bets, updateBet, deleteBet }) {
-  const [filter, setFilter] = useState("all");
-  const ML = { normal: "不讓分", handi: "讓分", total: "大小分" };
-  const filtered = bets.filter(b => filter === "all" || calcBetPayout(b).status === filter);
-
-  if (bets.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: "60px 20px", color: C.dim }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-        <div style={{ fontSize: 15 }}>尚無投注紀錄</div>
-        <div style={{ fontSize: 13, marginTop: 4 }}>到「新增」頁面開始記錄</div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>投注紀錄</div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {[["all","全部"],["pending","未結算"],["win","贏"],["lose","輸"]].map(([k,l]) => (
-          <Pill key={k} selected={filter === k} onClick={() => setFilter(k)}>{l}</Pill>
-        ))}
-      </div>
-      {filtered.map(bet => <BetCard key={bet.id} bet={bet} updateBet={updateBet} deleteBet={deleteBet} ML={ML} />)}
-      <div style={{ textAlign: "center", fontSize: 12, color: C.muted, padding: 12 }}>共 {filtered.length} 筆</div>
+function LegEdit({leg,idx,onChange,onRemove,canRemove}){
+  const u=(f,v)=>onChange({...leg,[f]:v});
+  return<div style={{background:C.card,borderRadius:10,padding:14,marginBottom:10,border:`1px solid ${C.bd}`,position:"relative"}}>
+    {canRemove&&<button onClick={onRemove} style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:C.r,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>}
+    <div style={{fontSize:12,color:C.acc,fontWeight:700,marginBottom:10}}>第{idx+1}關</div>
+    <Field label="日期"><Inp type="date" value={leg.date} onChange={v=>u("date",v)}/></Field>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+      <Field label="客隊"><Sel value={leg.away} onChange={v=>u("away",v)} options={TEAMS} placeholder="客隊"/></Field>
+      <Field label="主隊"><Sel value={leg.home} onChange={v=>u("home",v)} options={TEAMS} placeholder="主隊"/></Field>
     </div>
-  );
+    <Field label="玩法"><div style={{display:"flex",gap:8}}>
+      {[["normal","不讓分"],["handi","讓分"],["total","大小分"]].map(([k,l])=><Pill key={k} sel={leg.market===k} onClick={()=>u("market",k)}>{l}</Pill>)}
+    </div></Field>
+    {(leg.market==="handi"||leg.market==="total")&&<Field label={leg.market==="handi"?"讓分值（例：-1.5）":"總分線（例：8.5）"}><Inp value={leg.line} onChange={v=>u("line",v)} placeholder={leg.market==="handi"?"-1.5":"8.5"} mono/></Field>}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+      <Field label="方向">{leg.market==="total"?<div style={{display:"flex",gap:8}}><Pill sel={leg.selection==="over"} onClick={()=>u("selection","over")}>大</Pill><Pill sel={leg.selection==="under"} onClick={()=>u("selection","under")}>小</Pill></div>:<div style={{display:"flex",gap:8}}><Pill sel={leg.selection==="away"} onClick={()=>u("selection","away")}>{leg.away||"客"}</Pill><Pill sel={leg.selection==="home"} onClick={()=>u("selection","home")}>{leg.home||"主"}</Pill></div>}</Field>
+      <Field label="賠率"><Inp value={leg.odds} onChange={v=>u("odds",v)} placeholder="1.75" mono/></Field>
+    </div>
+    <div style={{borderTop:`1px dashed ${C.bd}`,marginTop:8,paddingTop:10}}>
+      <div style={{fontSize:11,color:C.m,marginBottom:6}}>比賽結果（賽後填）</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <Field label={`${leg.away||"客"} 分`} style={{marginBottom:0}}><Inp value={leg.awayScore} onChange={v=>u("awayScore",v)} placeholder="—" type="number" mono style={{textAlign:"center"}}/></Field>
+        <Field label={`${leg.home||"主"} 分`} style={{marginBottom:0}}><Inp value={leg.homeScore} onChange={v=>u("homeScore",v)} placeholder="—" type="number" mono style={{textAlign:"center"}}/></Field>
+      </div>
+    </div>
+  </div>;
 }
 
-function BetCard({ bet, updateBet, deleteBet, ML }) {
-  const [editing, setEditing] = useState(false);
-  const r = calcBetPayout(bet);
-  const statusColor = r.status === "win" ? C.green : r.status === "lose" ? C.red : C.muted;
+// ═══════════════════════════════════════
+// BET HISTORY VIEW
+// ═══════════════════════════════════════
+function HistView({bets,updateBet,deleteBet}){
+  const[filter,setFilter]=useState("all");
+  const ML={normal:"不讓分",handi:"讓分",total:"大小分"};
+  const filtered=bets.filter(b=>filter==="all"||calcPayout(b).status===filter);
+  if(!bets.length)return<div style={{textAlign:"center",padding:"60px 20px",color:C.d}}><div style={{fontSize:40,marginBottom:12}}>📋</div><div>尚無投注紀錄</div></div>;
+  return<div>
+    <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>投注紀錄</div>
+    <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>{[["all","全部"],["pending","未結算"],["win","贏"],["lose","輸"]].map(([k,l])=><Pill key={k} sel={filter===k} onClick={()=>setFilter(k)}>{l}</Pill>)}</div>
+    {filtered.map(bet=>{const r=calcPayout(bet);return<BetCard key={bet.id} bet={bet} r={r} updateBet={updateBet} deleteBet={deleteBet} ML={ML}/>})}
+    <div style={{textAlign:"center",fontSize:12,color:C.m,padding:12}}>共 {filtered.length} 筆</div>
+  </div>;
+}
 
-  const updateScore = (li, field, val) => {
-    updateBet(bet.id, b => {
-      const newLegs = b.legs.map((l, i) => {
-        if (i !== li) return l;
-        const u = { ...l, [field]: val };
-        if (u.homeScore !== "" && u.awayScore !== "") u.result = determineResult(u, u.homeScore, u.awayScore);
-        else u.result = "pending";
-        return u;
-      });
-      return { ...b, legs: newLegs };
-    });
+function BetCard({bet,r,updateBet,deleteBet,ML}){
+  const[ed,setEd]=useState(false);
+  const sc=r.status==="win"?C.g:r.status==="lose"?C.r:C.m;
+  const upScore=(li,f,v)=>updateBet(bet.id,b=>{const nl=b.legs.map((l,i)=>{if(i!==li)return l;const u={...l,[f]:v};u.result=(u.homeScore!==""&&u.awayScore!=="")?determineResult(u,u.homeScore,u.awayScore):"pending";return u});return{...b,legs:nl}});
+  return<div style={{background:C.card,borderRadius:10,padding:"14px 16px",marginBottom:8,borderLeft:`3px solid ${sc}`,border:`1px solid ${r.status==="win"?"rgba(16,185,129,0.2)":r.status==="lose"?"rgba(239,68,68,0.2)":C.bd}`}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:4,background:bet.type==="parlay"?C.accD:C.bD,color:bet.type==="parlay"?C.acc:C.b}}>{bet.type==="parlay"?`串${bet.legs.length}關`:"單場"}</span>
+        <span style={{fontSize:11,color:C.d}}>{bet.legs[0]?.date}</span>
+      </div>
+      {r.status!=="pending"?<span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:15,color:sc}}>{r.profit>0?"+":""}{r.profit.toLocaleString()}</span>:<span style={{fontSize:11,color:C.m,background:"rgba(75,85,99,0.2)",padding:"2px 8px",borderRadius:4}}>未結算</span>}
+    </div>
+    {bet.legs.map((leg,i)=><div key={i} style={{fontSize:13,padding:"6px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
+      <div style={{display:"flex",justifyContent:"space-between"}}><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:7,height:7,borderRadius:"50%",display:"inline-block",background:leg.result==="win"?C.g:leg.result==="lose"?C.r:C.m}}/><span>{leg.away} @ {leg.home}</span></div><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.d,fontSize:12}}>{Number(leg.odds).toFixed(2)}</span></div>
+      <div style={{fontSize:12,color:C.d,marginTop:2,marginLeft:13}}>{ML[leg.market]}{leg.line?` ${leg.line}`:""} → <span style={{color:C.acc}}>{leg.selection==="home"?leg.home:leg.selection==="away"?leg.away:leg.selection==="over"?"大":"小"}</span>{(leg.homeScore!==""&&leg.awayScore!=="")&&<span style={{marginLeft:8,color:C.t}}>比數 {leg.awayScore}:{leg.homeScore}</span>}</div>
+      {ed&&<div style={{display:"flex",gap:8,marginTop:6,marginLeft:13,alignItems:"center"}}><span style={{fontSize:11,color:C.d}}>{leg.away}</span><input type="number" value={leg.awayScore??""} onChange={e=>upScore(i,"awayScore",e.target.value)} style={{width:44,padding:4,borderRadius:4,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,textAlign:"center",fontSize:13,fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/><span style={{color:C.m}}>:</span><input type="number" value={leg.homeScore??""} onChange={e=>upScore(i,"homeScore",e.target.value)} style={{width:44,padding:4,borderRadius:4,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,textAlign:"center",fontSize:13,fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/><span style={{fontSize:11,color:C.d}}>{leg.home}</span></div>}
+    </div>)}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,paddingTop:8,borderTop:`1px solid ${C.bd}`}}>
+      <span style={{fontSize:12,color:C.d}}>NT${bet.amount.toLocaleString()} × {bet.totalOdds.toFixed(2)}</span>
+      <div style={{display:"flex",gap:12}}><button onClick={()=>setEd(!ed)} style={{background:"none",border:"none",color:ed?C.acc:C.d,cursor:"pointer",fontSize:12}}>{ed?"✓ 完成":"📝 填比數"}</button><button onClick={()=>confirm("確定刪除？")&&deleteBet(bet.id)} style={{background:"none",border:"none",color:C.m,cursor:"pointer",fontSize:12}}>刪除</button></div>
+    </div>
+    {bet.note&&<div style={{fontSize:11,color:C.d,marginTop:6,fontStyle:"italic"}}>💬 {bet.note}</div>}
+  </div>;
+}
+
+// ═══════════════════════════════════════
+// GAME RESULTS VIEW
+// ═══════════════════════════════════════
+function ResultsView({games,addGame,deleteGame}){
+  const[mode,setMode]=useState("list");
+  const[f,setF]=useState({date:todayStr(),away:"",home:"",awayScore:"",homeScore:"",note:""});
+  const validG=()=>f.away&&f.home&&f.awayScore!==""&&f.homeScore!==""&&f.away!==f.home;
+  const submitG=()=>{
+    if(!validG())return;
+    addGame({id:genId(),date:f.date,away:f.away,home:f.home,awayScore:Number(f.awayScore),homeScore:Number(f.homeScore),note:f.note});
+    setF({date:f.date,away:"",home:"",awayScore:"",homeScore:"",note:""});
   };
 
-  return (
-    <div style={{
-      background: C.card, borderRadius: 10, padding: "14px 16px", marginBottom: 8,
-      borderLeft: `3px solid ${statusColor}`,
-      border: `1px solid ${r.status === "win" ? "rgba(16,185,129,0.2)" : r.status === "lose" ? "rgba(239,68,68,0.2)" : C.border}`,
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{
-            fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
-            background: bet.type === "parlay" ? C.accentDim : C.blueDim,
-            color: bet.type === "parlay" ? C.accent : C.blue,
-          }}>
-            {bet.type === "parlay" ? `串${bet.legs.length}關` : "單場"}
-          </span>
-          <span style={{ fontSize: 11, color: C.dim }}>{bet.legs[0]?.date}</span>
-        </div>
-        {r.status !== "pending" ? (
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 15, color: statusColor }}>
-            {r.profit > 0 ? "+" : ""}{r.profit.toLocaleString()}
-          </span>
-        ) : (
-          <span style={{ fontSize: 11, color: C.muted, background: "rgba(75,85,99,0.2)", padding: "2px 8px", borderRadius: 4 }}>未結算</span>
-        )}
-      </div>
+  return<div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <div style={{fontSize:16,fontWeight:700}}>賽果紀錄</div>
+      <div style={{display:"flex",gap:6}}><Pill sel={mode==="list"} onClick={()=>setMode("list")}>列表</Pill><Pill sel={mode==="add"} onClick={()=>setMode("add")}>新增</Pill></div>
+    </div>
 
-      {bet.legs.map((leg, i) => (
-        <div key={i} style={{ fontSize: 13, padding: "6px 0", borderTop: i > 0 ? `1px solid ${C.border}` : "none" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", display: "inline-block",
-                background: leg.result === "win" ? C.green : leg.result === "lose" ? C.red : leg.result === "push" ? C.accent : C.muted }} />
-              <span>{leg.away} @ {leg.home}</span>
-            </div>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", color: C.dim, fontSize: 12 }}>{Number(leg.odds).toFixed(2)}</span>
+    {mode==="add"&&<div style={{background:C.card,borderRadius:10,padding:16,border:`1px solid ${C.bd}`,marginBottom:16}}>
+      <Field label="日期"><Inp type="date" value={f.date} onChange={v=>setF({...f,date:v})}/></Field>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"end"}}>
+        <Field label="客隊" style={{marginBottom:0}}><Sel value={f.away} onChange={v=>setF({...f,away:v})} options={TEAMS} placeholder="客隊"/></Field>
+        <div style={{padding:"10px 0",color:C.m,fontWeight:700}}>vs</div>
+        <Field label="主隊" style={{marginBottom:0}}><Sel value={f.home} onChange={v=>setF({...f,home:v})} options={TEAMS} placeholder="主隊"/></Field>
+      </div>
+      <div style={{height:12}}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"end"}}>
+        <Field label="客隊得分" style={{marginBottom:0}}><Inp value={f.awayScore} onChange={v=>setF({...f,awayScore:v})} type="number" mono style={{textAlign:"center",fontSize:20,fontWeight:700}} placeholder="0"/></Field>
+        <div style={{padding:"10px 0",color:C.m,fontWeight:700,fontSize:20}}>:</div>
+        <Field label="主隊得分" style={{marginBottom:0}}><Inp value={f.homeScore} onChange={v=>setF({...f,homeScore:v})} type="number" mono style={{textAlign:"center",fontSize:20,fontWeight:700}} placeholder="0"/></Field>
+      </div>
+      <div style={{height:12}}/>
+      <Field label="備註（選填：先發投手等）"><Inp value={f.note} onChange={v=>setF({...f,note:v})} placeholder="Glasnow vs Irvin"/></Field>
+      <button onClick={submitG} disabled={!validG()} style={{width:"100%",padding:12,borderRadius:8,border:"none",fontSize:14,fontWeight:700,background:validG()?C.acc:C.m,color:validG()?"#000":C.d,cursor:validG()?"pointer":"default",outline:"none"}}>儲存賽果</button>
+    </div>}
+
+    {mode==="list"&&<div>
+      {games.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:C.d}}><div style={{fontSize:40,marginBottom:12}}>⚾</div><div>尚無賽果紀錄</div><div style={{fontSize:13,marginTop:4}}>點「新增」開始記錄，或上傳截圖給 Claude 做 OCR</div></div>:
+      games.slice(0,50).map(g=>{
+        const w=g.homeScore>g.awayScore?g.home:g.away;
+        const total=g.homeScore+g.awayScore;
+        const margin=Math.abs(g.homeScore-g.awayScore);
+        return<div key={g.id} style={{background:C.card,borderRadius:10,padding:"12px 16px",marginBottom:6,border:`1px solid ${C.bd}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:11,color:C.d}}>{g.date}</span>
+            <button onClick={()=>confirm("刪除？")&&deleteGame(g.id)} style={{background:"none",border:"none",color:C.m,cursor:"pointer",fontSize:11}}>刪除</button>
           </div>
-          <div style={{ fontSize: 12, color: C.dim, marginTop: 2, marginLeft: 13 }}>
-            {ML[leg.market]}{leg.line ? ` ${leg.line}` : ""} →{" "}
-            <span style={{ color: C.accent }}>
-              {leg.selection === "home" ? leg.home : leg.selection === "away" ? leg.away : leg.selection === "over" ? "大" : "小"}
-            </span>
-            {(leg.homeScore !== "" && leg.awayScore !== "") && (
-              <span style={{ marginLeft: 8, color: C.text }}>比數 {leg.awayScore}:{leg.homeScore}</span>
-            )}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"6px 0"}}>
+            <span style={{fontSize:14,fontWeight:w===g.away?700:400,color:w===g.away?C.g:C.t}}>{g.away}</span>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:18,fontWeight:700}}>{g.awayScore} <span style={{color:C.m}}>:</span> {g.homeScore}</span>
+            <span style={{fontSize:14,fontWeight:w===g.home?700:400,color:w===g.home?C.g:C.t}}>{g.home}</span>
           </div>
-          {editing && (
-            <div style={{ display: "flex", gap: 8, marginTop: 6, marginLeft: 13, alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: C.dim, minWidth: 30 }}>{leg.away}</span>
-              <input type="number" value={leg.awayScore ?? ""} onChange={e => updateScore(i, "awayScore", e.target.value)}
-                style={{ width: 44, padding: 4, borderRadius: 4, border: `1px solid ${C.border}`, background: C.bg, color: C.text, textAlign: "center", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
-              <span style={{ color: C.muted }}>:</span>
-              <input type="number" value={leg.homeScore ?? ""} onChange={e => updateScore(i, "homeScore", e.target.value)}
-                style={{ width: 44, padding: 4, borderRadius: 4, border: `1px solid ${C.border}`, background: C.bg, color: C.text, textAlign: "center", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
-              <span style={{ fontSize: 11, color: C.dim }}>{leg.home}</span>
-            </div>
-          )}
-        </div>
-      ))}
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
-        <span style={{ fontSize: 12, color: C.dim }}>NT${bet.amount.toLocaleString()} × {bet.totalOdds.toFixed(2)}</span>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={() => setEditing(!editing)} style={{ background: "none", border: "none", color: editing ? C.accent : C.dim, cursor: "pointer", fontSize: 12 }}>
-            {editing ? "✓ 完成" : "📝 填比數"}
-          </button>
-          <button onClick={() => { if (confirm("確定刪除？")) deleteBet(bet.id); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12 }}>刪除</button>
-        </div>
-      </div>
-      {bet.note && <div style={{ fontSize: 11, color: C.dim, marginTop: 6, fontStyle: "italic" }}>💬 {bet.note}</div>}
-    </div>
-  );
-}
-
-// ─── Stats ───
-function StatsView({ bets }) {
-  const ML = { normal: "不讓分", handi: "讓分", total: "大小分" };
-  const settled = bets.filter(b => calcBetPayout(b).status !== "pending");
-  const wins = settled.filter(b => calcBetPayout(b).status === "win").length;
-  const totalW = settled.reduce((a, b) => a + b.amount, 0);
-  const totalP = settled.reduce((a, b) => a + calcBetPayout(b).profit, 0);
-  const wr = settled.length > 0 ? ((wins / settled.length) * 100).toFixed(1) : "—";
-  const roi = totalW > 0 ? ((totalP / totalW) * 100).toFixed(1) : "—";
-
-  const byMarket = {};
-  settled.forEach(b => {
-    if (b.type === "parlay") return;
-    const l = b.legs[0]; const k = l.market;
-    if (!byMarket[k]) byMarket[k] = { t: 0, w: 0, p: 0 };
-    byMarket[k].t++; const rr = calcBetPayout(b);
-    if (rr.status === "win") byMarket[k].w++;
-    byMarket[k].p += rr.profit;
-  });
-
-  if (bets.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: "60px 20px", color: C.dim }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>📈</div>
-        <div>開始記錄投注後，統計會顯示在這裡</div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>投注統計</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
-        {[
-          { l: "已結算", v: settled.length, u: "注" },
-          { l: "勝率", v: wr, u: "%", c: Number(wr) >= 50 ? C.green : Number(wr) > 0 ? C.red : C.text },
-          { l: "總投注", v: `$${totalW.toLocaleString()}` },
-          { l: "累積盈虧", v: `${totalP >= 0 ? "+" : ""}$${totalP.toLocaleString()}`, c: totalP >= 0 ? C.green : C.red },
-          { l: "勝 / 負", v: `${wins} / ${settled.length - wins}` },
-          { l: "ROI", v: roi, u: "%", c: Number(roi) >= 0 ? C.green : C.red },
-        ].map((s, i) => (
-          <div key={i} style={{ background: C.card, borderRadius: 10, padding: 14, border: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 11, color: C.dim, marginBottom: 4 }}>{s.l}</div>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 19, fontWeight: 700, color: s.c || C.text }}>
-              {s.v}<span style={{ fontSize: 11, fontWeight: 400, color: C.dim }}> {s.u || ""}</span>
-            </div>
+          <div style={{display:"flex",gap:8,fontSize:11,color:C.d,flexWrap:"wrap"}}>
+            <span>總分 {total}</span><span>·</span><span>分差 {margin}</span>
+            <span>·</span><span>不讓分 <span style={{color:C.acc}}>{w}</span></span>
+            <span>·</span><span>{total>8.5?"大":"小"} 8.5</span>
+            <span>·</span><span>讓1.5 <span style={{color:C.acc}}>{margin>1.5?w:(w===g.home?g.away:g.home)+"(受讓)"}</span></span>
           </div>
-        ))}
-      </div>
+          {g.note&&<div style={{fontSize:11,color:C.d,marginTop:4,fontStyle:"italic"}}>💬 {g.note}</div>}
+        </div>;
+      })}
+    </div>}
+  </div>;
+}
 
-      {Object.keys(byMarket).length > 0 && (
-        <div style={{ background: C.card, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}`, marginBottom: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>各玩法統計（單場）</div>
-          {Object.entries(byMarket).map(([k, m]) => (
-            <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-              <span style={{ fontSize: 13 }}>{ML[k]}</span>
-              <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
-                <span style={{ color: C.dim }}>{m.w}/{m.t} ({(m.w/m.t*100).toFixed(0)}%)</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: m.p >= 0 ? C.green : C.red }}>
-                  {m.p >= 0 ? "+" : ""}{m.p.toLocaleString()}
-                </span>
-              </div>
+// ═══════════════════════════════════════
+// STATS VIEW
+// ═══════════════════════════════════════
+function StatsView({bets,games}){
+  const[section,setSection]=useState("bet");
+  const[selTeam,setSelTeam]=useState("");
+
+  // --- Bet stats ---
+  const settled=bets.filter(b=>calcPayout(b).status!=="pending");
+  const wins=settled.filter(b=>calcPayout(b).status==="win").length;
+  const tW=settled.reduce((a,b)=>a+b.amount,0);
+  const tP=settled.reduce((a,b)=>a+calcPayout(b).profit,0);
+  const wr=settled.length?((wins/settled.length)*100).toFixed(1):"—";
+  const roi=tW?((tP/tW)*100).toFixed(1):"—";
+  const byMkt={};
+  settled.filter(b=>b.type==="single").forEach(b=>{const k=b.legs[0].market;if(!byMkt[k])byMkt[k]={t:0,w:0,p:0};byMkt[k].t++;if(calcPayout(b).status==="win")byMkt[k].w++;byMkt[k].p+=calcPayout(b).profit});
+
+  // --- Game analytics ---
+  const teamGames=useMemo(()=>{
+    if(!selTeam||!games.length)return[];
+    return games.filter(g=>g.away===selTeam||g.home===selTeam).sort((a,b)=>b.date.localeCompare(a.date));
+  },[selTeam,games]);
+
+  const teamStats=useMemo(()=>{
+    if(!teamGames.length)return null;
+    const gs=teamGames;
+    const isHome=g=>g.home===selTeam;
+    const won=g=>(isHome(g)&&g.homeScore>g.awayScore)||(!isHome(g)&&g.awayScore>g.homeScore);
+    const scored=g=>isHome(g)?g.homeScore:g.awayScore;
+    const allowed=g=>isHome(g)?g.awayScore:g.homeScore;
+    const margin=g=>scored(g)-allowed(g);
+    const total=g=>g.homeScore+g.awayScore;
+    const absMargin=g=>Math.abs(g.homeScore-g.awayScore);
+
+    // Streak
+    let streak=0,streakType=won(gs[0])?"W":"L";
+    for(const g of gs){if((won(g)?"W":"L")===streakType)streak++;else break}
+
+    // Recent records
+    const rec=(n)=>{const s=gs.slice(0,n);const w=s.filter(won).length;return{w,l:s.length-w,n:s.length}};
+
+    // Home/away splits
+    const homeGs=gs.filter(isHome),awayGs=gs.filter(g=>!isHome(g));
+    const homeW=homeGs.filter(won).length,awayW=awayGs.filter(won).length;
+
+    // Averages
+    const avgScored=(gs.reduce((a,g)=>a+scored(g),0)/gs.length).toFixed(1);
+    const avgAllowed=(gs.reduce((a,g)=>a+allowed(g),0)/gs.length).toFixed(1);
+    const avgTotal=(gs.reduce((a,g)=>a+total(g),0)/gs.length).toFixed(1);
+    const avgMargin=(gs.filter(won).reduce((a,g)=>a+margin(g),0)/(gs.filter(won).length||1)).toFixed(1);
+
+    // Spread cover (as favorite, when they won by > 1.5)
+    const coverRate15=gs.length?(gs.filter(g=>won(g)&&absMargin(g)>1.5).length/gs.length*100).toFixed(0):"—";
+
+    // Over/under rates
+    const ouRate=(line)=>gs.length?(gs.filter(g=>total(g)>line).length/gs.length*100).toFixed(0):"—";
+
+    // Margin distribution
+    const margins={close:0,mid:0,blow:0};
+    gs.forEach(g=>{const m=absMargin(g);if(m<=2)margins.close++;else if(m<=4)margins.mid++;else margins.blow++});
+
+    // Recent 5 detail
+    const recent5=gs.slice(0,10).map(g=>({
+      date:g.date,opp:isHome(g)?g.away:g.home,
+      result:won(g)?"W":"L",
+      score:`${scored(g)}-${allowed(g)}`,
+      total:total(g),margin:margin(g),
+      home:isHome(g),
+    }));
+
+    return{streak,streakType,rec5:rec(5),rec10:rec(10),rec20:rec(20),homeW,homeTotal:homeGs.length,awayW,awayTotal:awayGs.length,avgScored,avgAllowed,avgTotal,avgMargin,coverRate15,ou75:ouRate(7.5),ou85:ouRate(8.5),ou95:ouRate(9.5),margins,recent5,totalGames:gs.length};
+  },[teamGames,selTeam]);
+
+  const ML={normal:"不讓分",handi:"讓分",total:"大小分"};
+
+  return<div>
+    <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>統計分析</div>
+    <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>球隊數據</Pill></div>
+
+    {section==="bet"&&<div>
+      {!settled.length?<div style={{textAlign:"center",padding:"40px",color:C.d}}>尚無已結算投注</div>:<>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+          <Stat label="已結算" value={settled.length} unit="注"/>
+          <Stat label="勝率" value={wr} unit="%" color={Number(wr)>=50?C.g:C.r}/>
+          <Stat label="總投注" value={`$${tW.toLocaleString()}`}/>
+          <Stat label="累積盈虧" value={`${tP>=0?"+":""}$${tP.toLocaleString()}`} color={tP>=0?C.g:C.r}/>
+          <Stat label="勝/負" value={`${wins}/${settled.length-wins}`}/>
+          <Stat label="ROI" value={roi} unit="%" color={Number(roi)>=0?C.g:C.r}/>
+        </div>
+        {Object.keys(byMkt).length>0&&<div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`}}>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>各玩法統計</div>
+          {Object.entries(byMkt).map(([k,m])=><div key={k} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.bd}`}}>
+            <span style={{fontSize:13}}>{ML[k]}</span>
+            <div style={{display:"flex",gap:16,fontSize:12}}><span style={{color:C.d}}>{m.w}/{m.t} ({(m.w/m.t*100).toFixed(0)}%)</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:m.p>=0?C.g:C.r}}>{m.p>=0?"+":""}{m.p.toLocaleString()}</span></div>
+          </div>)}
+        </div>}
+      </>}
+    </div>}
+
+    {section==="team"&&<div>
+      <Field label="選擇球隊"><Sel value={selTeam} onChange={setSelTeam} options={TEAMS} placeholder="選擇球隊分析"/></Field>
+
+      {!selTeam&&<div style={{textAlign:"center",padding:"40px",color:C.d}}>選擇球隊後顯示詳細數據</div>}
+      {selTeam&&!teamStats&&<div style={{textAlign:"center",padding:"40px",color:C.d}}>尚無 {selTeam} 的賽果資料</div>}
+      {teamStats&&<div>
+        {/* Streak & Record */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+          <Stat label="目前連勝/敗" value={`${teamStats.streakType==="W"?"🔥":"❄️"} ${teamStats.streak}${teamStats.streakType}`} color={teamStats.streakType==="W"?C.g:C.r}/>
+          <Stat label="總場次" value={teamStats.totalGames} unit="場"/>
+        </div>
+
+        {/* Recent records */}
+        <div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`,marginBottom:12}}>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>近期戰績</div>
+          {[teamStats.rec5,teamStats.rec10,teamStats.rec20].map((r,i)=>{
+            if(!r.n)return null;
+            const pct=r.n?(r.w/r.n*100).toFixed(0):"—";
+            return<div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.bd}`}}>
+              <span style={{fontSize:13,color:C.d}}>近 {[5,10,20][i]} 場</span>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13}}><span style={{color:C.g}}>{r.w}W</span> - <span style={{color:C.r}}>{r.l}L</span> <span style={{color:C.d}}>({pct}%)</span></span>
+            </div>;
+          })}
+        </div>
+
+        {/* Home/Away + Averages */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+          <Stat label="主場" value={`${teamStats.homeW}-${teamStats.homeTotal-teamStats.homeW}`} unit={teamStats.homeTotal?`(${(teamStats.homeW/teamStats.homeTotal*100).toFixed(0)}%)`:""}/>
+          <Stat label="客場" value={`${teamStats.awayW}-${teamStats.awayTotal-teamStats.awayW}`} unit={teamStats.awayTotal?`(${(teamStats.awayW/teamStats.awayTotal*100).toFixed(0)}%)`:""}/>
+          <Stat label="場均得分" value={teamStats.avgScored} color={C.g}/>
+          <Stat label="場均失分" value={teamStats.avgAllowed} color={C.r}/>
+          <Stat label="場均總分" value={teamStats.avgTotal} color={C.acc}/>
+          <Stat label="勝場均分差" value={teamStats.avgMargin}/>
+        </div>
+
+        {/* Spread & O/U */}
+        <div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`,marginBottom:12}}>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>盤口數據</div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.bd}`}}><span style={{fontSize:13}}>讓 1.5 過關率</span><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.acc}}>{teamStats.coverRate15}%</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.bd}`}}><span style={{fontSize:13}}>大 7.5 命中率</span><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.acc}}>{teamStats.ou75}%</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.bd}`}}><span style={{fontSize:13}}>大 8.5 命中率</span><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.acc}}>{teamStats.ou85}%</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{fontSize:13}}>大 9.5 命中率</span><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.acc}}>{teamStats.ou95}%</span></div>
+        </div>
+
+        {/* Margin distribution */}
+        <div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`,marginBottom:12}}>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>分差分布</div>
+          {[["接近 (≤2分)",teamStats.margins.close,C.b],["中等 (3-4分)",teamStats.margins.mid,C.acc],["大勝/大敗 (≥5分)",teamStats.margins.blow,C.g]].map(([l,v,c])=>{
+            const pct=teamStats.totalGames?(v/teamStats.totalGames*100).toFixed(0):0;
+            return<div key={l} style={{marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:C.d}}>{l}</span><span style={{color:c}}>{v}場 ({pct}%)</span></div>
+              <div style={{height:6,background:C.bg,borderRadius:3}}><div style={{height:6,background:c,borderRadius:3,width:`${pct}%`,transition:"width .3s"}}/></div>
+            </div>;
+          })}
+        </div>
+
+        {/* Recent 5 games detail */}
+        <div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`}}>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>近 10 場明細</div>
+          {teamStats.recent5.map((g,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<9?`1px solid ${C.bd}`:"none"}}>
+            <div><span style={{fontSize:11,color:C.d}}>{g.date}</span><span style={{fontSize:12,marginLeft:8}}>{g.home?"vs":"@"} {g.opp}</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13}}>{g.score}</span>
+              <span style={{fontSize:12,fontWeight:700,color:g.result==="W"?C.g:C.r,width:20,textAlign:"center"}}>{g.result}</span>
             </div>
-          ))}
+          </div>)}
         </div>
-      )}
-
-      {settled.length > 1 && (
-        <div style={{ background: C.card, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>盈虧走勢</div>
-          <MiniChart settled={settled} />
-        </div>
-      )}
-    </div>
-  );
+      </div>}
+    </div>}
+  </div>;
 }
 
-function MiniChart({ settled }) {
-  const data = settled.slice().reverse();
-  let cum = 0;
-  const pts = data.map(b => { cum += calcBetPayout(b).profit; return cum; });
-  const mx = Math.max(...pts, 0), mn = Math.min(...pts, 0), rg = mx - mn || 1;
-  const W = 100, H = 100;
-  const coords = pts.map((p, i) => ({
-    x: pts.length === 1 ? 50 : (i / (pts.length - 1)) * W,
-    y: H - ((p - mn) / rg) * H,
-  }));
-  const path = coords.map((c, i) => `${i === 0 ? "M" : "L"}${c.x},${c.y}`).join(" ");
-  const last = pts[pts.length - 1];
-  const zy = H - ((0 - mn) / rg) * H;
+// ═══════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════
+function App(){
+  const[tab,setTab]=useState("add");
+  const[bets,setBets]=useState(()=>load("mlb-b4",[]));
+  const[games,setGames]=useState(()=>load("mlb-g4",[]));
+  useEffect(()=>{save("mlb-b4",bets)},[bets]);
+  useEffect(()=>{save("mlb-g4",games)},[games]);
 
-  return (
-    <svg viewBox={`-4 -8 ${W + 8} ${H + 16}`} style={{ width: "100%", height: 130 }}>
-      {mn < 0 && mx > 0 && <line x1="0" y1={zy} x2={W} y2={zy} stroke={C.muted} strokeDasharray="2,2" strokeWidth="0.4" />}
-      <path d={path} fill="none" stroke={last >= 0 ? C.green : C.red} strokeWidth="1.5" strokeLinejoin="round" />
-      {coords.map((c, i) => <circle key={i} cx={c.x} cy={c.y} r="1.5" fill={pts[i] >= 0 ? C.green : C.red} />)}
-      <text x={coords[coords.length-1].x} y={coords[coords.length-1].y - 5} fill={last >= 0 ? C.green : C.red} fontSize="5" textAnchor="end" fontWeight="bold">
-        {last >= 0 ? "+" : ""}{last.toLocaleString()}
-      </text>
-    </svg>
-  );
-}
+  const addBet=b=>setBets(p=>[b,...p]);
+  const upBet=(id,fn)=>setBets(p=>p.map(b=>b.id===id?fn(b):b));
+  const delBet=id=>setBets(p=>p.filter(b=>b.id!==id));
+  const addGame=g=>setGames(p=>[g,...p].sort((a,b)=>b.date.localeCompare(a.date)));
+  const delGame=id=>setGames(p=>p.filter(g=>g.id!==id));
 
-// ─── Data Sync View ───
-function DataView({ bets, setBets }) {
-  const [importText, setImportText] = useState("");
-  const [msg, setMsg] = useState("");
-  const fileRef = useRef(null);
-
-  const exportData = () => {
-    const json = JSON.stringify(bets, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `mlb-bets-${todayStr()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setMsg("✅ 已匯出 " + bets.length + " 筆紀錄");
-    setTimeout(() => setMsg(""), 3000);
-  };
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(JSON.stringify(bets)).then(() => {
-      setMsg("✅ 已複製到剪貼簿");
-      setTimeout(() => setMsg(""), 3000);
-    }).catch(() => {
-      setMsg("❌ 複製失敗，請用下載方式");
-      setTimeout(() => setMsg(""), 3000);
-    });
-  };
-
-  const importFromText = () => {
-    try {
-      const data = JSON.parse(importText);
-      if (!Array.isArray(data)) throw new Error();
-      if (data.length === 0) { setMsg("⚠️ JSON 內無資料"); return; }
-      // Merge: add new bets that don't exist by id
-      const existingIds = new Set(bets.map(b => b.id));
-      const newBets = data.filter(b => !existingIds.has(b.id));
-      if (newBets.length === 0) {
-        setMsg("ℹ️ 所有紀錄都已存在，無需匯入");
-      } else {
-        setBets(prev => [...prev, ...newBets].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-        setMsg(`✅ 已匯入 ${newBets.length} 筆新紀錄（略過 ${data.length - newBets.length} 筆重複）`);
-      }
-      setImportText("");
-    } catch {
-      setMsg("❌ JSON 格式錯誤，請確認內容正確");
-    }
-    setTimeout(() => setMsg(""), 4000);
-  };
-
-  const importFromFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setImportText(ev.target.result);
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  };
-
-  const clearAll = () => {
-    if (confirm("確定清除所有紀錄？此操作無法復原！")) {
-      setBets([]);
-      setMsg("🗑️ 已清除所有紀錄");
-      setTimeout(() => setMsg(""), 3000);
-    }
-  };
-
-  return (
-    <div>
-      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>資料管理</div>
-
-      {msg && (
-        <div style={{ padding: "10px 14px", borderRadius: 8, background: C.card, border: `1px solid ${C.border}`, marginBottom: 14, fontSize: 13 }}>{msg}</div>
-      )}
-
-      {/* Export */}
-      <div style={{ background: C.card, borderRadius: 10, padding: "16px", border: `1px solid ${C.border}`, marginBottom: 12 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>📤 匯出資料</div>
-        <div style={{ fontSize: 12, color: C.dim, marginBottom: 12 }}>目前有 {bets.length} 筆投注紀錄</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={exportData} style={{
-            flex: 1, padding: 12, borderRadius: 8, border: "none", fontSize: 14, fontWeight: 600,
-            background: C.accent, color: "#000", cursor: "pointer", outline: "none",
-          }}>下載 JSON 檔</button>
-          <button onClick={copyToClipboard} style={{
-            flex: 1, padding: 12, borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 14, fontWeight: 600,
-            background: C.bg, color: C.text, cursor: "pointer", outline: "none",
-          }}>複製到剪貼簿</button>
-        </div>
-      </div>
-
-      {/* Import */}
-      <div style={{ background: C.card, borderRadius: 10, padding: "16px", border: `1px solid ${C.border}`, marginBottom: 12 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>📥 匯入資料</div>
-        <div style={{ fontSize: 12, color: C.dim, marginBottom: 12 }}>從其他裝置匯入紀錄（自動合併，不會覆蓋現有資料）</div>
-
-        <input ref={fileRef} type="file" accept=".json" onChange={importFromFile} style={{ display: "none" }} />
-        <button onClick={() => fileRef.current?.click()} style={{
-          width: "100%", padding: 12, borderRadius: 8, border: `1px dashed ${C.border}`, fontSize: 14,
-          background: "transparent", color: C.dim, cursor: "pointer", marginBottom: 10, outline: "none",
-        }}>📁 選擇 JSON 檔案</button>
-
-        <div style={{ fontSize: 12, color: C.muted, textAlign: "center", marginBottom: 10 }}>— 或貼上 JSON 內容 —</div>
-        <textarea value={importText} onChange={e => setImportText(e.target.value)} placeholder='貼上從其他裝置匯出的 JSON...'
-          style={{ width: "100%", minHeight: 80, padding: 10, borderRadius: 8, border: `1px solid ${C.border}`,
-            background: C.bg, color: C.text, fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
-            resize: "vertical", boxSizing: "border-box", outline: "none" }} />
-        <button onClick={importFromText} disabled={!importText.trim()} style={{
-          width: "100%", marginTop: 8, padding: 12, borderRadius: 8, border: "none", fontSize: 14, fontWeight: 600,
-          background: importText.trim() ? C.blue : C.muted, color: importText.trim() ? "#fff" : C.dim,
-          cursor: importText.trim() ? "pointer" : "default", outline: "none",
-        }}>匯入</button>
-      </div>
-
-      {/* Danger zone */}
-      <div style={{ background: C.card, borderRadius: 10, padding: "16px", border: `1px solid rgba(239,68,68,0.2)`, marginBottom: 12 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, color: C.red }}>⚠️ 危險區域</div>
-        <div style={{ fontSize: 12, color: C.dim, marginBottom: 12 }}>清除後無法復原，請先匯出備份</div>
-        <button onClick={clearAll} style={{
-          width: "100%", padding: 12, borderRadius: 8, border: `1px solid ${C.red}`, fontSize: 14,
-          background: C.redDim, color: C.red, cursor: "pointer", fontWeight: 600, outline: "none",
-        }}>清除所有紀錄</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main App ───
-function App() {
-  const [tab, setTab] = useState("add");
-  const [bets, setBets] = useState(() => load("mlb-bets-v3", []));
-
-  useEffect(() => { save("mlb-bets-v3", bets); }, [bets]);
-
-  const addBet = (bet) => setBets(prev => [bet, ...prev]);
-  const updateBet = (id, updater) => setBets(prev => prev.map(b => b.id === id ? updater(b) : b));
-  const deleteBet = (id) => setBets(prev => prev.filter(b => b.id !== id));
-
-  const tabs = [
-    { id: "add", icon: "＋", label: "新增" },
-    { id: "history", icon: "📋", label: "紀錄" },
-    { id: "stats", icon: "📈", label: "統計" },
-    { id: "data", icon: "🔄", label: "資料" },
+  const tabs=[
+    {id:"add",icon:"＋",label:"投注"},
+    {id:"hist",icon:"📋",label:"紀錄"},
+    {id:"results",icon:"⚾",label:"賽果"},
+    {id:"stats",icon:"📈",label:"統計"},
   ];
 
-  return (
-    <div style={{ background: C.bg, minHeight: "100vh", color: C.text, paddingBottom: 80 }}>
-      {/* Header */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 20px", display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 22 }}>⚾</span>
-        <div>
-          <div style={{ fontSize: 17, fontWeight: 700 }}>MLB 投注追蹤</div>
-          <div style={{ fontSize: 11, color: C.dim }}>台灣運彩 · 手動記錄</div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ maxWidth: 560, margin: "0 auto", padding: "12px 16px" }}>
-        {tab === "add" && <AddBetView addBet={addBet} />}
-        {tab === "history" && <HistoryView bets={bets} updateBet={updateBet} deleteBet={deleteBet} />}
-        {tab === "stats" && <StatsView bets={bets} />}
-        {tab === "data" && <DataView bets={bets} setBets={setBets} />}
-      </div>
-
-      {/* Bottom tabs */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: "flex", zIndex: 10 }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex: 1, padding: "10px 0 8px", background: "none", border: "none", cursor: "pointer",
-            color: tab === t.id ? C.accent : C.dim, display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
-            borderTop: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent", outline: "none",
-          }}>
-            <span style={{ fontSize: 18 }}>{t.icon}</span>
-            <span style={{ fontSize: 11, fontWeight: tab === t.id ? 700 : 400 }}>{t.label}</span>
-          </button>
-        ))}
-      </div>
+  return<div style={{background:C.bg,minHeight:"100vh",color:C.t,paddingBottom:80}}>
+    <div style={{background:C.sf,borderBottom:`1px solid ${C.bd}`,padding:"14px 20px",display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:22}}>⚾</span>
+      <div><div style={{fontSize:17,fontWeight:700}}>MLB 投注追蹤</div><div style={{fontSize:11,color:C.d}}>台灣運彩 · 賽果分析</div></div>
     </div>
-  );
+    <div style={{maxWidth:560,margin:"0 auto",padding:"12px 16px"}}>
+      {tab==="add"&&<AddBetView addBet={addBet}/>}
+      {tab==="hist"&&<HistView bets={bets} updateBet={upBet} deleteBet={delBet}/>}
+      {tab==="results"&&<ResultsView games={games} addGame={addGame} deleteGame={delGame}/>}
+      {tab==="stats"&&<StatsView bets={bets} games={games}/>}
+    </div>
+    <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.sf,borderTop:`1px solid ${C.bd}`,display:"flex",zIndex:10}}>
+      {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"10px 0 8px",background:"none",border:"none",cursor:"pointer",color:tab===t.id?C.acc:C.d,display:"flex",flexDirection:"column",alignItems:"center",gap:2,borderTop:tab===t.id?`2px solid ${C.acc}`:"2px solid transparent",outline:"none"}}>
+        <span style={{fontSize:18}}>{t.icon}</span><span style={{fontSize:11,fontWeight:tab===t.id?700:400}}>{t.label}</span>
+      </button>)}
+    </div>
+  </div>;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
