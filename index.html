@@ -136,8 +136,9 @@ function Stat({label,value,unit,color}){return<div style={{background:C.card,bor
 // ADD BET VIEW
 // ═══════════════════════════════════════
 function AddBetView({addBet}){
-  const empty=()=>({id:genId(),date:todayStr(),away:"",home:"",market:"normal",selection:"",line:"",odds:"",homeScore:"",awayScore:""});
+  const empty=()=>({id:genId(),away:"",home:"",market:"normal",selection:"",line:"",odds:"",homeScore:"",awayScore:""});
   const[type,setType]=useState("single");
+  const[date,setDate]=useState(todayStr());
   const[legs,setLegs]=useState([empty()]);
   const[amt,setAmt]=useState("");
   const[note,setNote]=useState("");
@@ -148,7 +149,7 @@ function AddBetView({addBet}){
   const tOdds=legs.reduce((a,l)=>a*(Number(l.odds)||1),1);
   const submit=()=>{
     if(!valid())return;
-    const mk=l=>{const res=(l.homeScore!==""&&l.awayScore!=="")?determineResult(l,l.homeScore,l.awayScore):"pending";return{...l,odds:Number(l.odds),result:res}};
+    const mk=l=>{const wl={...l,date};const res=(wl.homeScore!==""&&wl.awayScore!=="")?determineResult(wl,wl.homeScore,wl.awayScore):"pending";return{...wl,odds:Number(wl.odds),result:res}};
     if(type==="single")legs.forEach(l=>addBet({id:genId(),type:"single",legs:[mk(l)],amount:Number(amt),totalOdds:Number(l.odds),note,createdAt:new Date().toISOString()}));
     else addBet({id:genId(),type:"parlay",legs:legs.map(mk),amount:Number(amt),totalOdds:Math.round(tOdds*100)/100,note,createdAt:new Date().toISOString()});
     setLegs([empty()]);setAmt("");setNote("");
@@ -160,6 +161,8 @@ function AddBetView({addBet}){
       <Pill sel={type==="single"} onClick={()=>{setType("single");if(legs.length>1)setLegs([legs[0]])}}>單場</Pill>
       <Pill sel={type==="parlay"} onClick={()=>{setType("parlay");if(legs.length<2)setLegs([...legs,empty()])}}>串關</Pill>
     </div></Field>
+
+    <Field label="比賽日期"><DatePicker value={date} onChange={setDate}/></Field>
 
     {legs.map((leg,i)=><LegEdit key={leg.id} leg={leg} idx={i} onChange={l=>upLeg(i,l)} onRemove={()=>rmLeg(i)} canRemove={type==="parlay"&&legs.length>2}/>)}
 
@@ -180,7 +183,6 @@ function LegEdit({leg,idx,onChange,onRemove,canRemove}){
   return<div style={{background:C.card,borderRadius:10,padding:14,marginBottom:10,border:`1px solid ${C.bd}`,position:"relative"}}>
     {canRemove&&<button onClick={onRemove} style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:C.r,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>}
     <div style={{fontSize:12,color:C.acc,fontWeight:700,marginBottom:10}}>第{idx+1}關</div>
-    <Field label="日期"><DatePicker value={leg.date} onChange={v=>u("date",v)}/></Field>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
       <Field label="客隊"><Sel value={leg.away} onChange={v=>u("away",v)} options={TEAMS} placeholder="客隊"/></Field>
       <Field label="主隊"><Sel value={leg.home} onChange={v=>u("home",v)} options={TEAMS} placeholder="主隊"/></Field>
@@ -224,6 +226,7 @@ function BetCard({bet,r,updateBet,deleteBet,ML}){
   const sc=r.status==="win"?C.g:r.status==="lose"?C.r:C.m;
   const upScore=(li,f,v)=>updateBet(bet.id,b=>{const nl=b.legs.map((l,i)=>{if(i!==li)return l;const u={...l,[f]:v};u.result=(u.homeScore!==""&&u.awayScore!=="")?determineResult(u,u.homeScore,u.awayScore):"pending";return u});return{...b,legs:nl}});
   const upLeg=(li,f,v)=>updateBet(bet.id,b=>{const nl=b.legs.map((l,i)=>{if(i!==li)return l;const u={...l,[f]:v};if(u.homeScore!==""&&u.awayScore!=="")u.result=determineResult(u,u.homeScore,u.awayScore);return u});return{...b,legs:nl,totalOdds:Math.round(nl.reduce((a,l)=>a*(Number(l.odds)||1),1)*100)/100}});
+  const upAllDate=v=>updateBet(bet.id,b=>({...b,legs:b.legs.map(l=>{const u={...l,date:v};if(u.homeScore!==""&&u.awayScore!=="")u.result=determineResult(u,u.homeScore,u.awayScore);return u})}));
   const upBetField=(f,v)=>updateBet(bet.id,b=>({...b,[f]:v}));
 
   const eInp={padding:"4px 6px",borderRadius:4,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,fontSize:12,outline:"none",boxSizing:"border-box"};
@@ -231,9 +234,9 @@ function BetCard({bet,r,updateBet,deleteBet,ML}){
   if(mode==="edit"){
     return<div style={{background:C.card,borderRadius:10,padding:"14px 16px",marginBottom:8,border:`1px solid ${C.acc}`}}>
       <div style={{fontSize:13,fontWeight:700,color:C.acc,marginBottom:10}}>編輯投注</div>
+      <Field label="比賽日期"><DatePicker value={bet.legs[0]?.date||""} onChange={upAllDate}/></Field>
       {bet.legs.map((leg,i)=><div key={i} style={{background:C.bg,borderRadius:8,padding:10,marginBottom:8,border:`1px solid ${C.bd}`}}>
         <div style={{fontSize:11,color:C.acc,fontWeight:700,marginBottom:8}}>第{i+1}關</div>
-        <Field label="日期"><DatePicker value={leg.date} onChange={v=>upLeg(i,"date",v)}/></Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
           <Field label="客隊"><Sel value={leg.away} onChange={v=>upLeg(i,"away",v)} options={TEAMS} placeholder="客隊"/></Field>
           <Field label="主隊"><Sel value={leg.home} onChange={v=>upLeg(i,"home",v)} options={TEAMS} placeholder="主隊"/></Field>
@@ -530,7 +533,12 @@ function StatsView({bets,games}){
 function App(){
   const[tab,setTab]=useState("add");
   const[bets,setBets]=useState(()=>{
-    const b=load("mlb-b4",[]),g=load("mlb-g4",[]);
+    // Migration: normalize all legs in a bet to share the first leg's date
+    const b=load("mlb-b4",[]).map(bet=>{
+      if(bet.legs.length>1){const d=bet.legs[0].date;return{...bet,legs:bet.legs.map(l=>l.date===d?l:{...l,date:d})};}
+      return bet;
+    });
+    const g=load("mlb-g4",[]);
     // Initial sync: apply existing game scores to pending bets
     let synced=b;
     g.forEach(game=>{
