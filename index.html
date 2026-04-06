@@ -63,6 +63,71 @@ const C={bg:"#0d1117",sf:"#161b22",card:"#1c2333",bd:"#2d3748",
 // ─── UI Atoms ───
 function Field({label,children,style:s}){return<div style={{marginBottom:12,...s}}><div style={{fontSize:12,color:C.d,marginBottom:5,fontWeight:500}}>{label}</div>{children}</div>}
 function Inp({value,onChange,placeholder,type="text",mono,style:s,...r}){return<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,fontSize:14,boxSizing:"border-box",fontFamily:mono?"'JetBrains Mono',monospace":"inherit",outline:"none",...s}} {...r}/>}
+
+// ─── DatePicker ───
+function DatePicker({value,onChange}){
+  const ref=useRef(null);
+  const[open,setOpen]=useState(false);
+  const parsed=value?value.split("-").map(Number):[null,null,null];
+  const[viewY,setViewY]=useState(parsed[0]||new Date().getFullYear());
+  const[viewM,setViewM]=useState(parsed[1]||new Date().getMonth()+1);
+
+  useEffect(()=>{
+    if(!open)return;
+    const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};
+    document.addEventListener("mousedown",h);document.addEventListener("touchstart",h);
+    return()=>{document.removeEventListener("mousedown",h);document.removeEventListener("touchstart",h)};
+  },[open]);
+
+  useEffect(()=>{
+    if(open&&value){const p=value.split("-").map(Number);setViewY(p[0]);setViewM(p[1])}
+  },[open]);
+
+  const daysInMonth=(y,m)=>new Date(y,m,0).getDate();
+  const firstDay=(y,m)=>new Date(y,m-1,1).getDay();
+  const pad=n=>String(n).padStart(2,"0");
+  const fmt=value?`${parsed[0]}/${pad(parsed[1])}/${pad(parsed[2])}`:"選擇日期";
+
+  const prevM=()=>{if(viewM===1){setViewM(12);setViewY(viewY-1)}else setViewM(viewM-1)};
+  const nextM=()=>{if(viewM===12){setViewM(1);setViewY(viewY+1)}else setViewM(viewM+1)};
+
+  const days=daysInMonth(viewY,viewM);
+  const start=firstDay(viewY,viewM);
+  const weeks=["日","一","二","三","四","五","六"];
+  const cells=[];
+  for(let i=0;i<start;i++)cells.push(null);
+  for(let d=1;d<=days;d++)cells.push(d);
+
+  const selDay=(d)=>{
+    onChange(`${viewY}-${pad(viewM)}-${pad(d)}`);
+    setOpen(false);
+  };
+
+  const isToday=(d)=>{const t=new Date();return viewY===t.getFullYear()&&viewM===t.getMonth()+1&&d===t.getDate()};
+  const isSel=(d)=>value===`${viewY}-${pad(viewM)}-${pad(d)}`;
+
+  return<div ref={ref} style={{position:"relative"}}>
+    <button onClick={()=>setOpen(!open)} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:value?C.t:C.m,fontSize:14,textAlign:"left",cursor:"pointer",outline:"none",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <span>{fmt}</span><span style={{color:C.d,fontSize:12}}>📅</span>
+    </button>
+    {open&&<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:C.card,border:`1px solid ${C.bd}`,borderRadius:10,padding:12,zIndex:100,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <button onClick={()=>setViewY(viewY-1)} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:14,padding:"2px 6px"}}>«</button>
+        <button onClick={prevM} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:14,padding:"2px 6px"}}>‹</button>
+        <span style={{fontSize:14,fontWeight:700,color:C.t}}>{viewY}年 {viewM}月</span>
+        <button onClick={nextM} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:14,padding:"2px 6px"}}>›</button>
+        <button onClick={()=>setViewY(viewY+1)} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:14,padding:"2px 6px"}}>»</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,textAlign:"center"}}>
+        {weeks.map(w=><div key={w} style={{fontSize:11,color:C.m,padding:"4px 0",fontWeight:600}}>{w}</div>)}
+        {cells.map((d,i)=>d?<button key={i} onClick={()=>selDay(d)} style={{padding:"6px 0",borderRadius:6,border:"none",cursor:"pointer",fontSize:13,fontWeight:isSel(d)?700:400,background:isSel(d)?C.acc:isToday(d)?"rgba(245,158,11,0.15)":"transparent",color:isSel(d)?"#000":isToday(d)?C.acc:C.t,outline:"none",transition:"background .1s"}}>{d}</button>:<div key={i}/>)}
+      </div>
+      <div style={{display:"flex",justifyContent:"center",marginTop:8}}>
+        <button onClick={()=>{const t=todayStr();onChange(t);const p=t.split("-").map(Number);setViewY(p[0]);setViewM(p[1]);setOpen(false)}} style={{background:"none",border:`1px solid ${C.bd}`,borderRadius:6,padding:"4px 12px",color:C.acc,cursor:"pointer",fontSize:12,outline:"none"}}>今天</button>
+      </div>
+    </div>}
+  </div>;
+}
 function Sel({value,onChange,options,placeholder}){return<select value={value} onChange={e=>onChange(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:value?C.t:C.m,fontSize:14,boxSizing:"border-box",outline:"none"}}><option value="">{placeholder||"請選擇"}</option>{options.map(o=><option key={o} value={o}>{o}</option>)}</select>}
 function Pill({sel,onClick,children}){return<button onClick={onClick} style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,border:sel?`2px solid ${C.acc}`:`1px solid ${C.bd}`,background:sel?C.accD:C.bg,color:sel?C.acc:C.d,transition:"all .15s",outline:"none"}}>{children}</button>}
 function Stat({label,value,unit,color}){return<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`}}><div style={{fontSize:11,color:C.d,marginBottom:4}}>{label}</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:19,fontWeight:700,color:color||C.t}}>{value}<span style={{fontSize:11,fontWeight:400,color:C.d}}> {unit||""}</span></div></div>}
@@ -115,7 +180,7 @@ function LegEdit({leg,idx,onChange,onRemove,canRemove}){
   return<div style={{background:C.card,borderRadius:10,padding:14,marginBottom:10,border:`1px solid ${C.bd}`,position:"relative"}}>
     {canRemove&&<button onClick={onRemove} style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:C.r,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>}
     <div style={{fontSize:12,color:C.acc,fontWeight:700,marginBottom:10}}>第{idx+1}關</div>
-    <Field label="日期"><Inp type="date" value={leg.date} onChange={v=>u("date",v)}/></Field>
+    <Field label="日期"><DatePicker value={leg.date} onChange={v=>u("date",v)}/></Field>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
       <Field label="客隊"><Sel value={leg.away} onChange={v=>u("away",v)} options={TEAMS} placeholder="客隊"/></Field>
       <Field label="主隊"><Sel value={leg.home} onChange={v=>u("home",v)} options={TEAMS} placeholder="主隊"/></Field>
@@ -199,7 +264,7 @@ function ResultsView({games,addGame,deleteGame}){
     </div>
 
     {mode==="add"&&<div style={{background:C.card,borderRadius:10,padding:16,border:`1px solid ${C.bd}`,marginBottom:16}}>
-      <Field label="日期"><Inp type="date" value={f.date} onChange={v=>setF({...f,date:v})}/></Field>
+      <Field label="日期"><DatePicker value={f.date} onChange={v=>setF({...f,date:v})}/></Field>
       <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"end"}}>
         <Field label="客隊" style={{marginBottom:0}}><Sel value={f.away} onChange={v=>setF({...f,away:v})} options={TEAMS} placeholder="客隊"/></Field>
         <div style={{padding:"10px 0",color:C.m,fontWeight:700}}>vs</div>
