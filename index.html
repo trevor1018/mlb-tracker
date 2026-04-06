@@ -293,7 +293,7 @@ function BetCard({bet,r,updateBet,deleteBet,ML}){
 // ═══════════════════════════════════════
 // GAME RESULTS VIEW
 // ═══════════════════════════════════════
-function ResultsView({games,addGame,deleteGame}){
+function ResultsView({games,addGame,updateGame,deleteGame}){
   const[mode,setMode]=useState("list");
   const[f,setF]=useState({date:todayStr(),away:"",home:"",awayScore:"",homeScore:"",note:""});
   const validG=()=>f.away&&f.home&&f.awayScore!==""&&f.homeScore!==""&&f.away!==f.home;
@@ -329,30 +329,64 @@ function ResultsView({games,addGame,deleteGame}){
 
     {mode==="list"&&<div>
       {games.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:C.d}}><div style={{fontSize:40,marginBottom:12}}>⚾</div><div>尚無賽果紀錄</div><div style={{fontSize:13,marginTop:4}}>點「新增」開始記錄，或上傳截圖給 Claude 做 OCR</div></div>:
-      games.slice(0,50).map(g=>{
-        const w=g.homeScore>g.awayScore?g.home:g.away;
-        const total=g.homeScore+g.awayScore;
-        const margin=Math.abs(g.homeScore-g.awayScore);
-        return<div key={g.id} style={{background:C.card,borderRadius:10,padding:"12px 16px",marginBottom:6,border:`1px solid ${C.bd}`}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:11,color:C.d}}>{g.date}</span>
-            <button onClick={()=>confirm("刪除？")&&deleteGame(g.id)} style={{background:"none",border:"none",color:C.m,cursor:"pointer",fontSize:11}}>刪除</button>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"6px 0"}}>
-            <span style={{fontSize:14,fontWeight:w===g.away?700:400,color:w===g.away?C.g:C.t}}>{g.away}</span>
-            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:18,fontWeight:700}}>{g.awayScore} <span style={{color:C.m}}>:</span> {g.homeScore}</span>
-            <span style={{fontSize:14,fontWeight:w===g.home?700:400,color:w===g.home?C.g:C.t}}>{g.home}</span>
-          </div>
-          <div style={{display:"flex",gap:8,fontSize:11,color:C.d,flexWrap:"wrap"}}>
-            <span>總分 {total}</span><span>·</span><span>分差 {margin}</span>
-            <span>·</span><span>不讓分 <span style={{color:C.acc}}>{w}</span></span>
-            <span>·</span><span>{total>8.5?"大":"小"} 8.5</span>
-            <span>·</span><span>讓1.5 <span style={{color:C.acc}}>{margin>1.5?w:(w===g.home?g.away:g.home)+"(受讓)"}</span></span>
-          </div>
-          {g.note&&<div style={{fontSize:11,color:C.d,marginTop:4,fontStyle:"italic"}}>💬 {g.note}</div>}
-        </div>;
-      })}
+      games.slice(0,50).map(g=><GameCard key={g.id} game={g} updateGame={updateGame} deleteGame={deleteGame}/>)}
     </div>}
+  </div>;
+}
+
+function GameCard({game:g,updateGame,deleteGame}){
+  const[ed,setEd]=useState(false);
+  const[f,setF]=useState({date:g.date,away:g.away,home:g.home,awayScore:String(g.awayScore),homeScore:String(g.homeScore),note:g.note||""});
+  const validG=()=>f.away&&f.home&&f.awayScore!==""&&f.homeScore!==""&&f.away!==f.home;
+  const save=()=>{if(!validG())return;updateGame(g.id,{...g,date:f.date,away:f.away,home:f.home,awayScore:Number(f.awayScore),homeScore:Number(f.homeScore),note:f.note});setEd(false)};
+
+  if(ed){
+    return<div style={{background:C.card,borderRadius:10,padding:"12px 16px",marginBottom:6,border:`1px solid ${C.acc}`}}>
+      <div style={{fontSize:13,fontWeight:700,color:C.acc,marginBottom:10}}>編輯賽果</div>
+      <Field label="日期"><DatePicker value={f.date} onChange={v=>setF({...f,date:v})}/></Field>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"end"}}>
+        <Field label="客隊" style={{marginBottom:0}}><Sel value={f.away} onChange={v=>setF({...f,away:v})} options={TEAMS} placeholder="客隊"/></Field>
+        <div style={{padding:"10px 0",color:C.m,fontWeight:700}}>vs</div>
+        <Field label="主隊" style={{marginBottom:0}}><Sel value={f.home} onChange={v=>setF({...f,home:v})} options={TEAMS} placeholder="主隊"/></Field>
+      </div>
+      <div style={{height:12}}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"end"}}>
+        <Field label="客隊得分" style={{marginBottom:0}}><Inp value={f.awayScore} onChange={v=>setF({...f,awayScore:v})} type="number" mono style={{textAlign:"center",fontSize:20,fontWeight:700}} placeholder="0"/></Field>
+        <div style={{padding:"10px 0",color:C.m,fontWeight:700,fontSize:20}}>:</div>
+        <Field label="主隊得分" style={{marginBottom:0}}><Inp value={f.homeScore} onChange={v=>setF({...f,homeScore:v})} type="number" mono style={{textAlign:"center",fontSize:20,fontWeight:700}} placeholder="0"/></Field>
+      </div>
+      <div style={{height:12}}/>
+      <Field label="備註（選填）"><Inp value={f.note} onChange={v=>setF({...f,note:v})} placeholder="先發投手..."/></Field>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={save} disabled={!validG()} style={{flex:1,padding:10,borderRadius:8,border:"none",fontSize:14,fontWeight:700,background:validG()?C.acc:C.m,color:validG()?"#000":C.d,cursor:validG()?"pointer":"default",outline:"none"}}>儲存</button>
+        <button onClick={()=>{setF({date:g.date,away:g.away,home:g.home,awayScore:String(g.awayScore),homeScore:String(g.homeScore),note:g.note||""});setEd(false)}} style={{padding:"10px 16px",borderRadius:8,border:`1px solid ${C.bd}`,background:"transparent",color:C.d,cursor:"pointer",fontSize:14,outline:"none"}}>取消</button>
+      </div>
+    </div>;
+  }
+
+  const w=g.homeScore>g.awayScore?g.home:g.away;
+  const total=g.homeScore+g.awayScore;
+  const margin=Math.abs(g.homeScore-g.awayScore);
+  return<div style={{background:C.card,borderRadius:10,padding:"12px 16px",marginBottom:6,border:`1px solid ${C.bd}`}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <span style={{fontSize:11,color:C.d}}>{g.date}</span>
+      <div style={{display:"flex",gap:10}}>
+        <button onClick={()=>setEd(true)} style={{background:"none",border:"none",color:C.b,cursor:"pointer",fontSize:11}}>✏️ 編輯</button>
+        <button onClick={()=>confirm("刪除？")&&deleteGame(g.id)} style={{background:"none",border:"none",color:C.m,cursor:"pointer",fontSize:11}}>刪除</button>
+      </div>
+    </div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"6px 0"}}>
+      <span style={{fontSize:14,fontWeight:w===g.away?700:400,color:w===g.away?C.g:C.t}}>{g.away}</span>
+      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:18,fontWeight:700}}>{g.awayScore} <span style={{color:C.m}}>:</span> {g.homeScore}</span>
+      <span style={{fontSize:14,fontWeight:w===g.home?700:400,color:w===g.home?C.g:C.t}}>{g.home}</span>
+    </div>
+    <div style={{display:"flex",gap:8,fontSize:11,color:C.d,flexWrap:"wrap"}}>
+      <span>總分 {total}</span><span>·</span><span>分差 {margin}</span>
+      <span>·</span><span>不讓分 <span style={{color:C.acc}}>{w}</span></span>
+      <span>·</span><span>{total>8.5?"大":"小"} 8.5</span>
+      <span>·</span><span>讓1.5 <span style={{color:C.acc}}>{margin>1.5?w:(w===g.home?g.away:g.home)+"(受讓)"}</span></span>
+    </div>
+    {g.note&&<div style={{fontSize:11,color:C.d,marginTop:4,fontStyle:"italic"}}>💬 {g.note}</div>}
   </div>;
 }
 
@@ -585,6 +619,10 @@ function App(){
     setGames(p=>[g,...p].sort((a,b)=>b.date.localeCompare(a.date)));
     setBets(p=>syncBetsWithGame(g,p));
   };
+  const upGame=(id,updated)=>{
+    setGames(p=>p.map(g=>g.id===id?updated:g).sort((a,b)=>b.date.localeCompare(a.date)));
+    setBets(p=>syncBetsWithGame(updated,p));
+  };
   const delGame=id=>setGames(p=>p.filter(g=>g.id!==id));
 
   const tabs=[
@@ -602,7 +640,7 @@ function App(){
     <div style={{maxWidth:560,margin:"0 auto",padding:"12px 16px"}}>
       {tab==="add"&&<AddBetView addBet={addBet}/>}
       {tab==="hist"&&<HistView bets={bets} updateBet={upBet} deleteBet={delBet}/>}
-      {tab==="results"&&<ResultsView games={games} addGame={addGame} deleteGame={delGame}/>}
+      {tab==="results"&&<ResultsView games={games} addGame={addGame} updateGame={upGame} deleteGame={delGame}/>}
       {tab==="stats"&&<StatsView bets={bets} games={games}/>}
     </div>
     <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.sf,borderTop:`1px solid ${C.bd}`,display:"flex",zIndex:10}}>
