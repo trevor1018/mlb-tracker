@@ -569,8 +569,69 @@ function GameCard({game:g,updateGame,deleteGame}){
 // ═══════════════════════════════════════
 // STATS VIEW
 // ═══════════════════════════════════════
+// ─── Standings Component ───
+const DIV_NAMES={200:"美聯西區",201:"美聯東區",202:"美聯中區",203:"國聯西區",204:"國聯東區",205:"國聯中區"};
+const DIV_ORDER=[201,202,200,204,205,203];
+
+function Standings(){
+  const[data,setData]=useState(null);
+  const[loading,setLoading]=useState(true);
+  const[err,setErr]=useState(null);
+  const mono={fontFamily:"'JetBrains Mono',monospace"};
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const res=await fetch(`${MLB_API}/standings?leagueId=103,104&season=${new Date().getFullYear()}&standingsTypes=regularSeason`);
+        const json=await res.json();
+        setData(json.records||[]);
+      }catch(e){setErr("載入失敗："+e.message)}
+      setLoading(false);
+    })();
+  },[]);
+
+  if(loading)return<div style={{textAlign:"center",padding:40,color:C.d}}>載入戰績中...</div>;
+  if(err)return<div style={{textAlign:"center",padding:40,color:C.r}}>{err}</div>;
+  if(!data)return null;
+
+  const sorted=DIV_ORDER.map(id=>data.find(r=>r.division?.id===id)).filter(Boolean);
+
+  return<div>
+    {sorted.map(div=>{
+      const divName=DIV_NAMES[div.division?.id]||div.division?.name||"";
+      const isAL=div.division?.id<=202;
+      return<div key={div.division?.id} style={{background:C.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.bd}`,marginBottom:10}}>
+        <div style={{fontSize:13,fontWeight:700,color:isAL?C.b:C.acc,marginBottom:8}}>{divName}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 32px 32px 40px 36px 40px",gap:0,fontSize:11,textAlign:"center"}}>
+          <div style={{textAlign:"left",color:C.m,paddingBottom:4}}>球隊</div>
+          <div style={{color:C.m,paddingBottom:4}}>W</div>
+          <div style={{color:C.m,paddingBottom:4}}>L</div>
+          <div style={{color:C.m,paddingBottom:4}}>勝率</div>
+          <div style={{color:C.m,paddingBottom:4}}>GB</div>
+          <div style={{color:C.m,paddingBottom:4}}>連勝</div>
+          {div.teamRecords.map(t=>{
+            const zh=teamZh(t.team.id);
+            const en=teamEn(t.team.id);
+            const isFirst=t.divisionRank==="1";
+            return<React.Fragment key={t.team.id}>
+              <div style={{textAlign:"left",padding:"5px 0",borderTop:`1px solid ${C.bd}`,fontWeight:isFirst?700:400,color:isFirst?C.t:C.d}}>
+                {zh} <span style={{color:C.m,fontSize:10}}>{en}</span>
+              </div>
+              <div style={{padding:"5px 0",borderTop:`1px solid ${C.bd}`,...mono,color:C.g}}>{t.wins}</div>
+              <div style={{padding:"5px 0",borderTop:`1px solid ${C.bd}`,...mono,color:C.r}}>{t.losses}</div>
+              <div style={{padding:"5px 0",borderTop:`1px solid ${C.bd}`,...mono}}>{t.winningPercentage}</div>
+              <div style={{padding:"5px 0",borderTop:`1px solid ${C.bd}`,...mono,color:C.d}}>{t.divisionGamesBack==="-"?"—":t.divisionGamesBack}</div>
+              <div style={{padding:"5px 0",borderTop:`1px solid ${C.bd}`,...mono,color:t.streak?.streakCode?.startsWith("W")?C.g:C.r}}>{t.streak?.streakCode||""}</div>
+            </React.Fragment>;
+          })}
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
 function StatsView({bets,games}){
-  const[section,setSection]=useState("bet");
+  const[section,setSection]=useState("standings");
   const[selTeam,setSelTeam]=useState("");
 
   // --- Bet stats ---
@@ -643,7 +704,9 @@ function StatsView({bets,games}){
 
   return<div>
     <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>統計分析</div>
-    <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>球隊數據</Pill></div>
+    <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="standings"} onClick={()=>setSection("standings")}>各區戰績</Pill><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>球隊數據</Pill></div>
+
+    {section==="standings"&&<Standings/>}
 
     {section==="bet"&&<div>
       {!settled.length?<div style={{textAlign:"center",padding:"40px",color:C.d}}>尚無已結算投注</div>:<>
