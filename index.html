@@ -753,47 +753,32 @@ function StatsView({bets,games}){
 
   const ML={normal:"不讓分",handi:"讓分",total:"大小分"};
 
-  const exportMD=()=>{
-    let md="# MLB 投注追蹤報告\n\n";
+  const exportMD=async()=>{
+    let md="# MLB 賽季報告\n\n";
     md+=`匯出時間：${new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei"})}\n\n`;
 
-    // 1. Betting summary
-    md+="## 投注績效摘要\n\n";
-    md+=`| 項目 | 數值 |\n|------|------|\n`;
-    md+=`| 已結算 | ${settled.length} 注 |\n`;
-    md+=`| 勝率 | ${wr}% (${wins}勝/${settled.length-wins}負) |\n`;
-    md+=`| 總投注 | NT$${tW.toLocaleString()} |\n`;
-    md+=`| 累積盈虧 | ${tP>=0?"+":""}NT$${tP.toLocaleString()} |\n`;
-    md+=`| ROI | ${roi}% |\n\n`;
-
-    if(Object.keys(byMkt).length){
-      md+="### 各玩法統計\n\n| 玩法 | 勝/總 | 勝率 | 盈虧 |\n|------|-------|------|------|\n";
-      Object.entries(byMkt).forEach(([k,m])=>{md+=`| ${ML[k]} | ${m.w}/${m.t} | ${(m.w/m.t*100).toFixed(0)}% | ${m.p>=0?"+":""}${m.p.toLocaleString()} |\n`});
-      md+="\n";
-    }
-
-    // 2. All bets detail
-    md+="## 投注明細\n\n";
-    bets.forEach(bet=>{
-      const r=calcPayout(bet);
-      const st=r.status==="win"?"WIN":r.status==="lose"?"LOSE":"PENDING";
-      md+=`### ${bet.legs[0]?.date} ${bet.type==="parlay"?`串${bet.legs.length}關`:"單場"} [${st}]\n\n`;
-      md+=`- 金額：NT$${bet.amount.toLocaleString()} × ${bet.totalOdds.toFixed(2)}\n`;
-      if(r.status!=="pending")md+=`- 盈虧：${r.profit>=0?"+":""}NT$${r.profit.toLocaleString()}\n`;
-      if(bet.note)md+=`- 備註：${bet.note}\n`;
-      md+="\n";
-      bet.legs.forEach((l,i)=>{
-        const res=l.result==="win"?"WIN":l.result==="lose"?"LOSE":"PENDING";
-        md+=`**第${i+1}關** ${l.away} @ ${l.home} [${res}]\n`;
-        md+=`- 玩法：${ML[l.market]||l.market}${l.line?` ${l.line}`:""} → ${l.selection==="home"?l.home:l.selection==="away"?l.away:l.selection==="over"?"大":"小"}\n`;
-        md+=`- 賠率：${Number(l.odds).toFixed(2)}\n`;
-        if(l.homeScore!==""&&l.awayScore!=="")md+=`- 比數：${l.awayScore}:${l.homeScore}\n`;
+    // 1. Standings from API
+    md+="## 各區戰績\n\n";
+    try{
+      const res=await fetch(`${MLB_API}/standings?leagueId=103,104&season=${new Date().getFullYear()}&standingsTypes=regularSeason`);
+      const json=await res.json();
+      const sorted=DIV_ORDER.map(id=>(json.records||[]).find(r=>r.division?.id===id)).filter(Boolean);
+      sorted.forEach(div=>{
+        const divName=DIV_NAMES[div.division?.id]||"";
+        md+=`### ${divName}\n\n`;
+        md+=`| 球隊 | W | L | 勝率 | GB | 連勝 | L10 | 主場 | 客場 |\n`;
+        md+=`|------|---|---|------|-----|------|-----|------|------|\n`;
+        div.teamRecords.forEach(t=>{
+          const zh=teamZh(t.team.id);
+          const sp=(type)=>(t.records?.splitRecords||[]).find(r=>r.type===type);
+          const l10=sp("lastTen");const hm=sp("home");const aw=sp("away");
+          md+=`| ${zh} | ${t.wins} | ${t.losses} | ${t.winningPercentage} | ${t.divisionGamesBack==="-"?"—":t.divisionGamesBack} | ${t.streak?.streakCode||""} | ${l10?l10.wins+"-"+l10.losses:"—"} | ${hm?hm.wins+"-"+hm.losses:"—"} | ${aw?aw.wins+"-"+aw.losses:"—"} |\n`;
+        });
         md+="\n";
       });
-      md+="---\n\n";
-    });
+    }catch(e){md+="（戰績載入失敗）\n\n"}
 
-    // 3. Game results
+    // 2. Game results
     md+="## 賽果紀錄\n\n";
     games.forEach(g=>{
       const w=g.homeScore>g.awayScore?g.home:g.away;
