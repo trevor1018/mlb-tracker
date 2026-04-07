@@ -753,6 +753,89 @@ function StatsView({bets,games}){
 
   const ML={normal:"不讓分",handi:"讓分",total:"大小分"};
 
+  const exportMD=()=>{
+    let md="# MLB 投注追蹤報告\n\n";
+    md+=`匯出時間：${new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei"})}\n\n`;
+
+    // 1. Betting summary
+    md+="## 投注績效摘要\n\n";
+    md+=`| 項目 | 數值 |\n|------|------|\n`;
+    md+=`| 已結算 | ${settled.length} 注 |\n`;
+    md+=`| 勝率 | ${wr}% (${wins}勝/${settled.length-wins}負) |\n`;
+    md+=`| 總投注 | NT$${tW.toLocaleString()} |\n`;
+    md+=`| 累積盈虧 | ${tP>=0?"+":""}NT$${tP.toLocaleString()} |\n`;
+    md+=`| ROI | ${roi}% |\n\n`;
+
+    if(Object.keys(byMkt).length){
+      md+="### 各玩法統計\n\n| 玩法 | 勝/總 | 勝率 | 盈虧 |\n|------|-------|------|------|\n";
+      Object.entries(byMkt).forEach(([k,m])=>{md+=`| ${ML[k]} | ${m.w}/${m.t} | ${(m.w/m.t*100).toFixed(0)}% | ${m.p>=0?"+":""}${m.p.toLocaleString()} |\n`});
+      md+="\n";
+    }
+
+    // 2. All bets detail
+    md+="## 投注明細\n\n";
+    bets.forEach(bet=>{
+      const r=calcPayout(bet);
+      const st=r.status==="win"?"WIN":r.status==="lose"?"LOSE":"PENDING";
+      md+=`### ${bet.legs[0]?.date} ${bet.type==="parlay"?`串${bet.legs.length}關`:"單場"} [${st}]\n\n`;
+      md+=`- 金額：NT$${bet.amount.toLocaleString()} × ${bet.totalOdds.toFixed(2)}\n`;
+      if(r.status!=="pending")md+=`- 盈虧：${r.profit>=0?"+":""}NT$${r.profit.toLocaleString()}\n`;
+      if(bet.note)md+=`- 備註：${bet.note}\n`;
+      md+="\n";
+      bet.legs.forEach((l,i)=>{
+        const res=l.result==="win"?"WIN":l.result==="lose"?"LOSE":"PENDING";
+        md+=`**第${i+1}關** ${l.away} @ ${l.home} [${res}]\n`;
+        md+=`- 玩法：${ML[l.market]||l.market}${l.line?` ${l.line}`:""} → ${l.selection==="home"?l.home:l.selection==="away"?l.away:l.selection==="over"?"大":"小"}\n`;
+        md+=`- 賠率：${Number(l.odds).toFixed(2)}\n`;
+        if(l.homeScore!==""&&l.awayScore!=="")md+=`- 比數：${l.awayScore}:${l.homeScore}\n`;
+        md+="\n";
+      });
+      md+="---\n\n";
+    });
+
+    // 3. Game results
+    md+="## 賽果紀錄\n\n";
+    games.forEach(g=>{
+      const w=g.homeScore>g.awayScore?g.home:g.away;
+      const total=g.homeScore+g.awayScore;
+      md+=`### ${g.date} ${g.away}${g.awayEn?" ("+g.awayEn+")":""} @ ${g.home}${g.homeEn?" ("+g.homeEn+")":""}\n\n`;
+      md+=`**${g.awayScore} : ${g.homeScore}** | 總分 ${total} | 分差 ${Math.abs(g.homeScore-g.awayScore)} | 勝：${w}\n\n`;
+
+      if(g.winner)md+=`W: ${g.winner} / L: ${g.loser}${g.save?" / SV: "+g.save:""}\n\n`;
+
+      if(g.innings){
+        md+=`| | ${g.innings.map(inn=>inn.num).join(" | ")} | R | H | E |\n`;
+        md+=`|---|${g.innings.map(()=>"---").join("|")}|---|---|---|\n`;
+        md+=`| ${g.away} | ${g.innings.map(inn=>inn.away).join(" | ")} | ${g.awayScore} | ${g.awayHits||0} | ${g.awayErrors||0} |\n`;
+        md+=`| ${g.home} | ${g.innings.map(inn=>inn.home).join(" | ")} | ${g.homeScore} | ${g.homeHits||0} | ${g.homeErrors||0} |\n\n`;
+      }
+
+      if(g.spAway||g.spHome){
+        md+="**先發投手**\n\n| 隊伍 | 投手 | IP | H | R | ER | BB | SO | HR | 球數 |\n|------|------|-----|---|---|----|----|----|----|------|\n";
+        [["away",g.spAway,g.away],["home",g.spHome,g.home]].forEach(([,sp,team])=>{
+          if(sp)md+=`| ${team} | ${sp.name} | ${sp.ip} | ${sp.h} | ${sp.r} | ${sp.er} | ${sp.bb} | ${sp.so} | ${sp.hr} | ${sp.pitches}(${sp.strikes}K) |\n`;
+        });
+        md+="\n";
+      }
+
+      if(g.homeRuns&&g.homeRuns.length){
+        md+="**全壘打**\n\n";
+        g.homeRuns.forEach(hr=>{md+=`- ${hr}\n`});
+        md+="\n";
+      }
+
+      md+="---\n\n";
+    });
+
+    // Download
+    const blob=new Blob([md],{type:"text/markdown;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download=`mlb-report-${todayStr()}.md`;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return<div>
     <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>統計分析</div>
     <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="standings"} onClick={()=>setSection("standings")}>各區戰績</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>球隊數據</Pill><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill></div>
@@ -769,13 +852,14 @@ function StatsView({bets,games}){
           <Stat label="勝/負" value={`${wins}/${settled.length-wins}`}/>
           <Stat label="ROI" value={roi} unit="%" color={Number(roi)>=0?C.g:C.r}/>
         </div>
-        {Object.keys(byMkt).length>0&&<div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`}}>
+        {Object.keys(byMkt).length>0&&<div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`,marginBottom:12}}>
           <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>各玩法統計</div>
           {Object.entries(byMkt).map(([k,m])=><div key={k} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.bd}`}}>
             <span style={{fontSize:13}}>{ML[k]}</span>
             <div style={{display:"flex",gap:16,fontSize:12}}><span style={{color:C.d}}>{m.w}/{m.t} ({(m.w/m.t*100).toFixed(0)}%)</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:m.p>=0?C.g:C.r}}>{m.p>=0?"+":""}{m.p.toLocaleString()}</span></div>
           </div>)}
         </div>}
+        <button onClick={exportMD} style={{width:"100%",padding:12,borderRadius:8,border:`1px solid ${C.bd}`,background:C.card,color:C.t,fontSize:14,fontWeight:600,cursor:"pointer",outline:"none"}}>匯出分析報告 (.md)</button>
       </>}
     </div>}
 
