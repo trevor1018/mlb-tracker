@@ -778,7 +778,28 @@ function StatsView({bets,games}){
       });
     }catch(e){md+="（戰績載入失敗）\n\n"}
 
-    // 2. Game results
+    // 2. All bets detail
+    md+="## 投注紀錄\n\n";
+    bets.forEach(bet=>{
+      const r=calcPayout(bet);
+      const st=r.status==="win"?"WIN":r.status==="lose"?"LOSE":"PENDING";
+      md+=`### ${bet.legs[0]?.date} ${bet.type==="parlay"?`串${bet.legs.length}關`:"單場"} [${st}]\n\n`;
+      md+=`- 金額：NT$${bet.amount.toLocaleString()} × ${bet.totalOdds.toFixed(2)}\n`;
+      if(r.status!=="pending")md+=`- 盈虧：${r.profit>=0?"+":""}NT$${r.profit.toLocaleString()}\n`;
+      if(bet.note)md+=`- 備註：${bet.note}\n`;
+      md+="\n";
+      bet.legs.forEach((l,i)=>{
+        const res=l.result==="win"?"WIN":l.result==="lose"?"LOSE":"PENDING";
+        md+=`**第${i+1}關** ${l.away} @ ${l.home} [${res}]\n`;
+        md+=`- 玩法：${ML[l.market]||l.market}${l.line?` ${l.line}`:""} → ${l.selection==="home"?l.home:l.selection==="away"?l.away:l.selection==="over"?"大":"小"}\n`;
+        md+=`- 賠率：${Number(l.odds).toFixed(2)}\n`;
+        if(l.homeScore!==""&&l.awayScore!=="")md+=`- 比數：${l.awayScore}:${l.homeScore}\n`;
+        md+="\n";
+      });
+      md+="---\n\n";
+    });
+
+    // 3. Game results
     md+="## 賽果紀錄\n\n";
     games.forEach(g=>{
       const w=g.homeScore>g.awayScore?g.home:g.away;
@@ -825,10 +846,7 @@ function StatsView({bets,games}){
     <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>統計分析</div>
     <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="standings"} onClick={()=>setSection("standings")}>各區戰績</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>球隊數據</Pill><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill></div>
 
-    {section==="standings"&&<div>
-      <button onClick={exportMD} style={{width:"100%",padding:12,borderRadius:8,border:`1px solid ${C.bd}`,background:C.card,color:C.t,fontSize:14,fontWeight:600,cursor:"pointer",outline:"none",marginBottom:12}}>匯出分析報告 (.md)</button>
-      <Standings/>
-    </div>}
+    {section==="standings"&&<Standings/>}
 
     {section==="bet"&&<div>
       {!settled.length?<div style={{textAlign:"center",padding:"40px",color:C.d}}>尚無已結算投注</div>:<>
@@ -847,6 +865,7 @@ function StatsView({bets,games}){
             <div style={{display:"flex",gap:16,fontSize:12}}><span style={{color:C.d}}>{m.w}/{m.t} ({(m.w/m.t*100).toFixed(0)}%)</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:m.p>=0?C.g:C.r}}>{m.p>=0?"+":""}{m.p.toLocaleString()}</span></div>
           </div>)}
         </div>}
+        <button onClick={exportMD} style={{width:"100%",padding:12,borderRadius:8,border:`1px solid ${C.bd}`,background:C.card,color:C.t,fontSize:14,fontWeight:600,cursor:"pointer",outline:"none",marginTop:12}}>匯出分析報告 (.md)</button>
       </>}
     </div>}
 
