@@ -825,7 +825,10 @@ function StatsView({bets,games}){
     <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>統計分析</div>
     <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="standings"} onClick={()=>setSection("standings")}>各區戰績</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>球隊數據</Pill><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill></div>
 
-    {section==="standings"&&<Standings/>}
+    {section==="standings"&&<div>
+      <button onClick={exportMD} style={{width:"100%",padding:12,borderRadius:8,border:`1px solid ${C.bd}`,background:C.card,color:C.t,fontSize:14,fontWeight:600,cursor:"pointer",outline:"none",marginBottom:12}}>匯出分析報告 (.md)</button>
+      <Standings/>
+    </div>}
 
     {section==="bet"&&<div>
       {!settled.length?<div style={{textAlign:"center",padding:"40px",color:C.d}}>尚無已結算投注</div>:<>
@@ -844,7 +847,6 @@ function StatsView({bets,games}){
             <div style={{display:"flex",gap:16,fontSize:12}}><span style={{color:C.d}}>{m.w}/{m.t} ({(m.w/m.t*100).toFixed(0)}%)</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:m.p>=0?C.g:C.r}}>{m.p>=0?"+":""}{m.p.toLocaleString()}</span></div>
           </div>)}
         </div>}
-        <button onClick={exportMD} style={{width:"100%",padding:12,borderRadius:8,border:`1px solid ${C.bd}`,background:C.card,color:C.t,fontSize:14,fontWeight:600,cursor:"pointer",outline:"none"}}>匯出分析報告 (.md)</button>
       </>}
     </div>}
 
