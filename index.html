@@ -50,6 +50,7 @@ const load=(k,fb)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f
 const save=(k,d)=>{try{localStorage.setItem(k,JSON.stringify(d))}catch{}};
 const genId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const todayStr=()=>{const d=new Date();return new Date(d.getTime()+(480-d.getTimezoneOffset())*60000).toISOString().slice(0,10)};
+const todayPT=()=>{const p=new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});return p};
 
 const TEAMS=["洋基","紅襪","藍鳥","光芒","金鶯","白襪","守護者","皇家","老虎","雙城","太空人","運動家","水手","天使","遊騎兵","大都會","勇士","費城人","馬林魚","國民","小熊","紅雀","海盜","釀酒人","紅人","道奇","教士","巨人","響尾蛇","洛磯"];
 
@@ -401,10 +402,10 @@ function BetCard({bet,r,updateBet,deleteBet,ML}){
 // ═══════════════════════════════════════
 function ResultsView({games,addGames,updateGame,deleteGame}){
   const[mode,setMode]=useState("list");
-  const[importDate,setImportDate]=useState(todayStr());
+  const[importDate,setImportDate]=useState(todayPT());
   const[importing,setImporting]=useState(false);
   const[importResult,setImportResult]=useState(null);
-  const[listDate,setListDate]=useState(todayStr());
+  const[listDate,setListDate]=useState(todayPT());
 
   const doImport=async()=>{
     setImporting(true);setImportResult(null);
