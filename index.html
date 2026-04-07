@@ -831,7 +831,7 @@ function StatsView({bets,games}){
     const blob=new Blob([md],{type:"text/markdown;charset=utf-8"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
-    a.href=url;a.download=`mlb-report-${todayStr()}.md`;
+    a.href=url;a.download=`mlb-report-${todayPT()}.md`;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
