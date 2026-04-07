@@ -53,6 +53,96 @@ const todayStr=()=>{const d=new Date();return new Date(d.getTime()+(480-d.getTim
 
 const TEAMS=["洋基","紅襪","藍鳥","光芒","金鶯","白襪","守護者","皇家","老虎","雙城","太空人","運動家","水手","天使","遊騎兵","大都會","勇士","費城人","馬林魚","國民","小熊","紅雀","海盜","釀酒人","紅人","道奇","教士","巨人","響尾蛇","洛磯"];
 
+// ─── MLB Team ID Mapping ───
+const TEAM_MAP={
+  108:{zh:"天使",en:"Angels"},109:{zh:"響尾蛇",en:"D-backs"},110:{zh:"金鶯",en:"Orioles"},
+  111:{zh:"紅襪",en:"Red Sox"},112:{zh:"小熊",en:"Cubs"},113:{zh:"紅人",en:"Reds"},
+  114:{zh:"守護者",en:"Guardians"},115:{zh:"洛磯",en:"Rockies"},116:{zh:"老虎",en:"Tigers"},
+  117:{zh:"太空人",en:"Astros"},118:{zh:"皇家",en:"Royals"},119:{zh:"道奇",en:"Dodgers"},
+  120:{zh:"國民",en:"Nationals"},121:{zh:"大都會",en:"Mets"},133:{zh:"運動家",en:"Athletics"},
+  134:{zh:"海盜",en:"Pirates"},135:{zh:"教士",en:"Padres"},136:{zh:"水手",en:"Mariners"},
+  137:{zh:"巨人",en:"Giants"},138:{zh:"紅雀",en:"Cardinals"},139:{zh:"光芒",en:"Rays"},
+  140:{zh:"遊騎兵",en:"Rangers"},141:{zh:"藍鳥",en:"Blue Jays"},142:{zh:"雙城",en:"Twins"},
+  143:{zh:"費城人",en:"Phillies"},144:{zh:"勇士",en:"Braves"},145:{zh:"白襪",en:"White Sox"},
+  146:{zh:"馬林魚",en:"Marlins"},147:{zh:"洋基",en:"Yankees"},158:{zh:"釀酒人",en:"Brewers"}
+};
+const teamZh=id=>TEAM_MAP[id]?.zh||"?";
+const teamEn=id=>TEAM_MAP[id]?.en||"?";
+
+// ─── MLB API Fetch ───
+const MLB_API="https://statsapi.mlb.com/api/v1";
+
+async function fetchMLBGames(dateStr){
+  // 1. Get schedule with linescore & decisions
+  const schRes=await fetch(`${MLB_API}/schedule?date=${dateStr}&sportId=1&hydrate=linescore,decisions`);
+  const sch=await schRes.json();
+  if(!sch.dates||!sch.dates.length)return[];
+  const gamesRaw=sch.dates[0].games.filter(g=>g.status.detailedState==="Final"||g.status.detailedState.startsWith("Completed"));
+
+  // 2. For each game, fetch boxscore + playByPlay in parallel
+  const results=await Promise.all(gamesRaw.map(async g=>{
+    const[boxRes,pbpRes]=await Promise.all([
+      fetch(`${MLB_API}/game/${g.gamePk}/boxscore`),
+      fetch(`${MLB_API}/game/${g.gamePk}/playByPlay`)
+    ]);
+    const box=await boxRes.json();
+    const pbp=await pbpRes.json();
+
+    const awayId=g.teams.away.team.id,homeId=g.teams.home.team.id;
+    const ls=g.linescore;
+
+    // Innings
+    const innings=(ls?.innings||[]).map(inn=>({
+      num:inn.num,
+      away:inn.away?.runs??0,
+      home:inn.home?.runs??0
+    }));
+
+    // Starting pitchers (first in pitchers array)
+    const extractSP=(side)=>{
+      const t=box.teams[side];
+      const spId=t.pitchers?.[0];
+      if(!spId)return null;
+      const p=t.players?.["ID"+spId];
+      if(!p)return null;
+      const s=p.stats?.pitching||{};
+      return{
+        name:p.person?.fullName||"?",
+        ip:s.inningsPitched||"0",h:s.hits||0,r:s.runs||0,er:s.earnedRuns||0,
+        bb:s.baseOnBalls||0,so:s.strikeOuts||0,hr:s.homeRuns||0,
+        pitches:s.numberOfPitches||0,strikes:s.strikes||0
+      };
+    };
+
+    // Home runs from play-by-play
+    const homeRuns=(pbp.allPlays||[])
+      .filter(p=>p.result?.event==="Home Run")
+      .map(p=>p.result?.description||"");
+
+    // Decisions
+    const dec=g.decisions||{};
+
+    return{
+      id:"mlb-"+g.gamePk,
+      date:dateStr,
+      away:teamZh(awayId),home:teamZh(homeId),
+      awayEn:teamEn(awayId),homeEn:teamEn(homeId),
+      awayScore:ls?.teams?.away?.runs??0,
+      homeScore:ls?.teams?.home?.runs??0,
+      awayHits:ls?.teams?.away?.hits??0,homeHits:ls?.teams?.home?.hits??0,
+      awayErrors:ls?.teams?.away?.errors??0,homeErrors:ls?.teams?.home?.errors??0,
+      innings,
+      spAway:extractSP("away"),spHome:extractSP("home"),
+      winner:dec.winner?.fullName||"",loser:dec.loser?.fullName||"",
+      save:dec.save?.fullName||"",
+      homeRuns,
+      note:"",
+      createdAt:new Date().toISOString()
+    };
+  }));
+  return results;
+}
+
 // ─── Bet logic ───
 function determineResult(leg,hs,as){
   const h=Number(hs),a=Number(as);if(isNaN(h)||isNaN(a))return"pending";
@@ -312,6 +402,9 @@ function BetCard({bet,r,updateBet,deleteBet,ML}){
 function ResultsView({games,addGame,updateGame,deleteGame}){
   const[mode,setMode]=useState("list");
   const[f,setF]=useState({date:todayStr(),away:"",home:"",awayScore:"",homeScore:"",note:""});
+  const[importDate,setImportDate]=useState(todayStr());
+  const[importing,setImporting]=useState(false);
+  const[importResult,setImportResult]=useState(null);
   const validG=()=>f.away&&f.home&&f.awayScore!==""&&f.homeScore!==""&&f.away!==f.home;
   const submitG=()=>{
     if(!validG())return;
@@ -319,11 +412,34 @@ function ResultsView({games,addGame,updateGame,deleteGame}){
     setF({date:f.date,away:"",home:"",awayScore:"",homeScore:"",note:""});
   };
 
+  const doImport=async()=>{
+    setImporting(true);setImportResult(null);
+    try{
+      const fetched=await fetchMLBGames(importDate);
+      if(!fetched.length){setImportResult({ok:false,msg:"該日無已完賽的比賽"});setImporting(false);return}
+      const existIds=new Set(games.map(g=>g.id));
+      const newGames=fetched.filter(g=>!existIds.has(g.id));
+      if(!newGames.length){setImportResult({ok:true,msg:`${fetched.length} 場比賽皆已匯入過`});setImporting(false);return}
+      for(const g of newGames)await addGame(g);
+      setImportResult({ok:true,msg:`成功匯入 ${newGames.length} 場比賽（共 ${fetched.length} 場）`});
+    }catch(e){setImportResult({ok:false,msg:"匯入失敗："+e.message})}
+    setImporting(false);
+  };
+
   return<div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
       <div style={{fontSize:16,fontWeight:700}}>賽果紀錄</div>
-      <div style={{display:"flex",gap:6}}><Pill sel={mode==="list"} onClick={()=>setMode("list")}>列表</Pill><Pill sel={mode==="add"} onClick={()=>setMode("add")}>新增</Pill></div>
+      <div style={{display:"flex",gap:6}}><Pill sel={mode==="list"} onClick={()=>setMode("list")}>列表</Pill><Pill sel={mode==="import"} onClick={()=>setMode("import")}>匯入</Pill><Pill sel={mode==="add"} onClick={()=>setMode("add")}>手動</Pill></div>
     </div>
+
+    {mode==="import"&&<div style={{background:C.card,borderRadius:10,padding:16,border:`1px solid ${C.bd}`,marginBottom:16}}>
+      <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>從 MLB 匯入賽果</div>
+      <Field label="選擇日期（美東時間）"><DatePicker value={importDate} onChange={setImportDate}/></Field>
+      <button onClick={doImport} disabled={importing} style={{width:"100%",padding:12,borderRadius:8,border:"none",fontSize:14,fontWeight:700,background:importing?C.m:C.acc,color:importing?C.d:"#000",cursor:importing?"default":"pointer",outline:"none"}}>
+        {importing?"匯入中...":"匯入該日所有賽果"}
+      </button>
+      {importResult&&<div style={{marginTop:10,padding:"10px 14px",borderRadius:8,fontSize:13,background:importResult.ok?C.gD:C.rD,color:importResult.ok?C.g:C.r}}>{importResult.msg}</div>}
+    </div>}
 
     {mode==="add"&&<div style={{background:C.card,borderRadius:10,padding:16,border:`1px solid ${C.bd}`,marginBottom:16}}>
       <Field label="日期"><DatePicker value={f.date} onChange={v=>setF({...f,date:v})}/></Field>
@@ -344,7 +460,7 @@ function ResultsView({games,addGame,updateGame,deleteGame}){
     </div>}
 
     {mode==="list"&&<div>
-      {games.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:C.d}}><div style={{fontSize:40,marginBottom:12}}>⚾</div><div>尚無賽果紀錄</div><div style={{fontSize:13,marginTop:4}}>點「新增」開始記錄，或上傳截圖給 Claude 做 OCR</div></div>:
+      {games.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:C.d}}><div style={{fontSize:40,marginBottom:12}}>⚾</div><div>尚無賽果紀錄</div><div style={{fontSize:13,marginTop:4}}>點「匯入」從 MLB 自動抓取賽果</div></div>:
       games.slice(0,50).map(g=><GameCard key={g.id} game={g} updateGame={updateGame} deleteGame={deleteGame}/>)}
     </div>}
   </div>;
@@ -352,9 +468,12 @@ function ResultsView({games,addGame,updateGame,deleteGame}){
 
 function GameCard({game:g,updateGame,deleteGame}){
   const[ed,setEd]=useState(false);
+  const[detail,setDetail]=useState(false);
   const[f,setF]=useState({date:g.date,away:g.away,home:g.home,awayScore:String(g.awayScore),homeScore:String(g.homeScore),note:g.note||""});
   const validG=()=>f.away&&f.home&&f.awayScore!==""&&f.homeScore!==""&&f.away!==f.home;
-  const save=()=>{if(!validG())return;updateGame(g.id,{...g,date:f.date,away:f.away,home:f.home,awayScore:Number(f.awayScore),homeScore:Number(f.homeScore),note:f.note});setEd(false)};
+  const doSave=()=>{if(!validG())return;updateGame(g.id,{...g,date:f.date,away:f.away,home:f.home,awayScore:Number(f.awayScore),homeScore:Number(f.homeScore),note:f.note});setEd(false)};
+  const hasMLB=!!g.innings;
+  const mono={fontFamily:"'JetBrains Mono',monospace"};
 
   if(ed){
     return<div style={{background:C.card,borderRadius:10,padding:"12px 16px",marginBottom:6,border:`1px solid ${C.acc}`}}>
@@ -374,7 +493,7 @@ function GameCard({game:g,updateGame,deleteGame}){
       <div style={{height:12}}/>
       <Field label="備註（選填）"><Inp value={f.note} onChange={v=>setF({...f,note:v})} placeholder="先發投手..."/></Field>
       <div style={{display:"flex",gap:8}}>
-        <button onClick={save} disabled={!validG()} style={{flex:1,padding:10,borderRadius:8,border:"none",fontSize:14,fontWeight:700,background:validG()?C.acc:C.m,color:validG()?"#000":C.d,cursor:validG()?"pointer":"default",outline:"none"}}>儲存</button>
+        <button onClick={doSave} disabled={!validG()} style={{flex:1,padding:10,borderRadius:8,border:"none",fontSize:14,fontWeight:700,background:validG()?C.acc:C.m,color:validG()?"#000":C.d,cursor:validG()?"pointer":"default",outline:"none"}}>儲存</button>
         <button onClick={()=>{setF({date:g.date,away:g.away,home:g.home,awayScore:String(g.awayScore),homeScore:String(g.homeScore),note:g.note||""});setEd(false)}} style={{padding:"10px 16px",borderRadius:8,border:`1px solid ${C.bd}`,background:"transparent",color:C.d,cursor:"pointer",fontSize:14,outline:"none"}}>取消</button>
       </div>
     </div>;
@@ -383,17 +502,24 @@ function GameCard({game:g,updateGame,deleteGame}){
   const w=g.homeScore>g.awayScore?g.home:g.away;
   const total=g.homeScore+g.awayScore;
   const margin=Math.abs(g.homeScore-g.awayScore);
+  const hdr={fontSize:11,color:C.m,padding:"4px 0",textAlign:"center",borderBottom:`1px solid ${C.bd}`};
+  const cell={fontSize:11,padding:"3px 0",textAlign:"center",...mono};
+
   return<div style={{background:C.card,borderRadius:10,padding:"12px 16px",marginBottom:6,border:`1px solid ${C.bd}`}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-      <span style={{fontSize:11,color:C.d}}>{g.date}</span>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:11,color:C.d}}>{g.date}</span>
+        {g.awayEn&&<span style={{fontSize:10,color:C.m}}>{g.awayEn} @ {g.homeEn}</span>}
+      </div>
       <div style={{display:"flex",gap:10}}>
-        <button onClick={()=>setEd(true)} style={{background:"none",border:"none",color:C.b,cursor:"pointer",fontSize:11}}>✏️ 編輯</button>
+        {hasMLB&&<button onClick={()=>setDetail(!detail)} style={{background:"none",border:"none",color:detail?C.acc:C.d,cursor:"pointer",fontSize:11}}>{detail?"收合":"詳細"}</button>}
+        <button onClick={()=>setEd(true)} style={{background:"none",border:"none",color:C.b,cursor:"pointer",fontSize:11}}>編輯</button>
         <button onClick={()=>confirm("刪除？")&&deleteGame(g.id)} style={{background:"none",border:"none",color:C.m,cursor:"pointer",fontSize:11}}>刪除</button>
       </div>
     </div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"6px 0"}}>
       <span style={{fontSize:14,fontWeight:w===g.away?700:400,color:w===g.away?C.g:C.t}}>{g.away}</span>
-      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:18,fontWeight:700}}>{g.awayScore} <span style={{color:C.m}}>:</span> {g.homeScore}</span>
+      <span style={{...mono,fontSize:18,fontWeight:700}}>{g.awayScore} <span style={{color:C.m}}>:</span> {g.homeScore}</span>
       <span style={{fontSize:14,fontWeight:w===g.home?700:400,color:w===g.home?C.g:C.t}}>{g.home}</span>
     </div>
     <div style={{display:"flex",gap:8,fontSize:11,color:C.d,flexWrap:"wrap"}}>
@@ -402,6 +528,59 @@ function GameCard({game:g,updateGame,deleteGame}){
       <span>·</span><span>{total>8.5?"大":"小"} 8.5</span>
       <span>·</span><span>讓1.5 <span style={{color:C.acc}}>{margin>1.5?w:(w===g.home?g.away:g.home)+"(受讓)"}</span></span>
     </div>
+
+    {/* Decisions summary (always show if available) */}
+    {g.winner&&<div style={{fontSize:11,color:C.d,marginTop:4}}>
+      <span style={{color:C.g}}>W</span> {g.winner} · <span style={{color:C.r}}>L</span> {g.loser}{g.save&&<span> · <span style={{color:C.b}}>SV</span> {g.save}</span>}
+    </div>}
+
+    {/* Expandable detail section */}
+    {detail&&hasMLB&&<div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${C.bd}`}}>
+
+      {/* Linescore table */}
+      {g.innings&&<div style={{overflowX:"auto",marginBottom:10}}>
+        <div style={{display:"grid",gridTemplateColumns:`60px repeat(${g.innings.length},1fr) repeat(3,36px)`,gap:0,minWidth:300}}>
+          <div style={hdr}></div>
+          {g.innings.map(inn=><div key={inn.num} style={hdr}>{inn.num}</div>)}
+          <div style={{...hdr,color:C.t,fontWeight:700}}>R</div>
+          <div style={{...hdr,color:C.t,fontWeight:700}}>H</div>
+          <div style={{...hdr,color:C.t,fontWeight:700}}>E</div>
+
+          <div style={{fontSize:11,padding:"4px 0",color:w===g.away?C.g:C.t,fontWeight:w===g.away?700:400}}>{g.away}</div>
+          {g.innings.map(inn=><div key={inn.num} style={cell}>{inn.away}</div>)}
+          <div style={{...cell,fontWeight:700,color:C.t}}>{g.awayScore}</div>
+          <div style={cell}>{g.awayHits}</div>
+          <div style={cell}>{g.awayErrors}</div>
+
+          <div style={{fontSize:11,padding:"4px 0",color:w===g.home?C.g:C.t,fontWeight:w===g.home?700:400}}>{g.home}</div>
+          {g.innings.map(inn=><div key={inn.num} style={cell}>{inn.home}</div>)}
+          <div style={{...cell,fontWeight:700,color:C.t}}>{g.homeScore}</div>
+          <div style={cell}>{g.homeHits}</div>
+          <div style={cell}>{g.homeErrors}</div>
+        </div>
+      </div>}
+
+      {/* Starting pitchers */}
+      {(g.spAway||g.spHome)&&<div style={{marginBottom:10}}>
+        <div style={{fontSize:12,fontWeight:600,marginBottom:6,color:C.t}}>先發投手</div>
+        {[["away",g.spAway,g.away],["home",g.spHome,g.home]].map(([side,sp,team])=>sp&&<div key={side} style={{fontSize:11,padding:"4px 0",borderBottom:`1px solid ${C.bd}`}}>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+            <span><span style={{color:C.acc}}>{team}</span> {sp.name}</span>
+            <span style={{color:C.d,...mono}}>{sp.ip} IP</span>
+          </div>
+          <div style={{color:C.d,...mono,marginTop:2}}>
+            {sp.pitches}球({sp.strikes}K) · {sp.h}H · {sp.r}R({sp.er}ER) · {sp.bb}BB · {sp.so}SO · {sp.hr}HR
+          </div>
+        </div>)}
+      </div>}
+
+      {/* Home runs */}
+      {g.homeRuns&&g.homeRuns.length>0&&<div style={{marginBottom:6}}>
+        <div style={{fontSize:12,fontWeight:600,marginBottom:6,color:C.t}}>全壘打</div>
+        {g.homeRuns.map((hr,i)=><div key={i} style={{fontSize:11,color:C.d,padding:"3px 0",borderBottom:i<g.homeRuns.length-1?`1px solid ${C.bd}`:"none"}}>{hr}</div>)}
+      </div>}
+    </div>}
+
     {g.note&&<div style={{fontSize:11,color:C.d,marginTop:4,fontStyle:"italic"}}>💬 {g.note}</div>}
   </div>;
 }
