@@ -26,10 +26,26 @@ select{-webkit-appearance:auto;appearance:auto}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.9/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script type="text/babel">
-const {useState,useEffect,useRef,useMemo}=React;
+const {useState,useEffect,useRef,useMemo,useCallback}=React;
 
-// ─── Storage ───
+// ─── Firebase ───
+const firebaseApp=firebase.initializeApp({
+  apiKey:"AIzaSyBrjdOW_23VDCkKDRnfIon4ZSXJaxIZPMQ",
+  authDomain:"mlb-tracker-f42f1.firebaseapp.com",
+  projectId:"mlb-tracker-f42f1",
+  storageBucket:"mlb-tracker-f42f1.firebasestorage.app",
+  messagingSenderId:"647490003363",
+  appId:"1:647490003363:web:23fd2a1527e8546305fa16"
+});
+const auth=firebase.auth();
+const db=firebase.firestore();
+const googleProvider=new firebase.auth.GoogleAuthProvider();
+
+// ─── Storage (localStorage as cache) ───
 const load=(k,fb)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb}catch{return fb}};
 const save=(k,d)=>{try{localStorage.setItem(k,JSON.stringify(d))}catch{}};
 const genId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -562,68 +578,144 @@ function StatsView({bets,games}){
 }
 
 // ═══════════════════════════════════════
+// FIRESTORE HELPERS
+// ═══════════════════════════════════════
+function userDoc(uid,col){return db.collection("users").doc(uid).collection(col)}
+
+function useFirestore(uid,colName,localKey,orderField="createdAt"){
+  const[data,setData]=useState(()=>load(localKey,[]));
+  const fromSnap=useRef(false);
+
+  // Listen to Firestore realtime updates
+  useEffect(()=>{
+    if(!uid)return;
+    const unsub=userDoc(uid,colName).orderBy(orderField,"desc").onSnapshot(snap=>{
+      const docs=snap.docs.map(d=>({id:d.id,...d.data()}));
+      fromSnap.current=true;
+      setData(docs);
+      save(localKey,docs);
+    },err=>console.error("Firestore listen error:",err));
+    return()=>unsub();
+  },[uid,colName]);
+
+  const add=useCallback(async(item)=>{
+    const{id,...rest}=item;
+    if(!rest.createdAt)rest.createdAt=new Date().toISOString();
+    await userDoc(uid,colName).doc(id).set(rest);
+  },[uid,colName]);
+
+  const update=useCallback(async(id,item)=>{
+    const{id:_,...rest}=item;
+    await userDoc(uid,colName).doc(id).update(rest);
+  },[uid,colName]);
+
+  const remove=useCallback(async(id)=>{
+    await userDoc(uid,colName).doc(id).delete();
+  },[uid,colName]);
+
+  return{data,setData,add,update,remove,fromSnap};
+}
+
+// ═══════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════
 function App(){
+  const[user,setUser]=useState(undefined); // undefined=loading, null=logged out
   const[tab,setTab]=useState("add");
-  const[bets,setBets]=useState(()=>{
-    // Migration: normalize all legs in a bet to share the first leg's date
-    const b=load("mlb-b4",[]).map(bet=>{
-      if(bet.legs.length>1){const d=bet.legs[0].date;return{...bet,legs:bet.legs.map(l=>l.date===d?l:{...l,date:d})};}
-      return bet;
-    });
-    const g=load("mlb-g4",[]);
-    // Initial sync: apply existing game scores to pending bets
-    let synced=b;
-    g.forEach(game=>{
-      synced=synced.map(bet=>{
-        let changed=false;
-        const nl=bet.legs.map(l=>{
-          if(l.date===game.date&&l.away===game.away&&l.home===game.home&&(l.homeScore===""||l.awayScore==="")){
-            const u={...l,homeScore:String(game.homeScore),awayScore:String(game.awayScore)};
-            u.result=determineResult(u,u.homeScore,u.awayScore);
-            changed=true;return u;
-          }
-          return l;
-        });
-        return changed?{...bet,legs:nl}:bet;
-      });
-    });
-    return synced;
-  });
-  const[games,setGames]=useState(()=>load("mlb-g4",[]));
-  useEffect(()=>{save("mlb-b4",bets)},[bets]);
-  useEffect(()=>{save("mlb-g4",games)},[games]);
+  const[migrated,setMigrated]=useState(false);
+
+  // Auth listener
+  useEffect(()=>{
+    const unsub=auth.onAuthStateChanged(u=>setUser(u||null));
+    return()=>unsub();
+  },[]);
+
+  const uid=user?.uid;
+  const betsStore=useFirestore(uid,"bets","mlb-b4","createdAt");
+  const gamesStore=useFirestore(uid,"games","mlb-g4","date");
+  const bets=betsStore.data;
+  const games=gamesStore.data;
+
+  // One-time migration: upload localStorage data to Firestore
+  useEffect(()=>{
+    if(!uid||migrated)return;
+    const localBets=load("mlb-b4",[]);
+    const localGames=load("mlb-g4",[]);
+    (async()=>{
+      // Only migrate if Firestore is empty and localStorage has data
+      const bSnap=await userDoc(uid,"bets").limit(1).get();
+      if(bSnap.empty&&localBets.length){
+        for(const b of localBets){const{id,...rest}=b;if(!rest.createdAt)rest.createdAt=new Date().toISOString();await userDoc(uid,"bets").doc(id).set(rest)}
+      }
+      const gSnap=await userDoc(uid,"games").limit(1).get();
+      if(gSnap.empty&&localGames.length){
+        for(const g of localGames){const{id,...rest}=g;if(!rest.createdAt)rest.createdAt=new Date().toISOString();await userDoc(uid,"games").doc(id).set(rest)}
+      }
+      setMigrated(true);
+    })();
+  },[uid]);
 
   // Sync game scores into matching bet legs
-  const syncBetsWithGame=(game,prevBets)=>{
-    return prevBets.map(b=>{
+  const syncBetsWithGame=useCallback(async(game)=>{
+    const snap=await userDoc(uid,"bets").get();
+    snap.docs.forEach(async doc=>{
+      const b={id:doc.id,...doc.data()};
       let changed=false;
       const nl=b.legs.map(l=>{
         if(l.date===game.date&&l.away===game.away&&l.home===game.home){
           const u={...l,homeScore:String(game.homeScore),awayScore:String(game.awayScore)};
           u.result=determineResult(u,u.homeScore,u.awayScore);
-          changed=true;
-          return u;
+          changed=true;return u;
         }
         return l;
       });
-      return changed?{...b,legs:nl}:b;
+      if(changed)await userDoc(uid,"bets").doc(doc.id).update({legs:nl});
     });
-  };
+  },[uid]);
 
-  const addBet=b=>setBets(p=>[b,...p]);
-  const upBet=(id,fn)=>setBets(p=>p.map(b=>b.id===id?fn(b):b));
-  const delBet=id=>setBets(p=>p.filter(b=>b.id!==id));
-  const addGame=g=>{
-    setGames(p=>[g,...p].sort((a,b)=>b.date.localeCompare(a.date)));
-    setBets(p=>syncBetsWithGame(g,p));
+  const addBet=async b=>{await betsStore.add(b)};
+  const upBet=(id,fn)=>{
+    const bet=bets.find(b=>b.id===id);
+    if(!bet)return;
+    const updated=fn(bet);
+    betsStore.update(id,updated);
   };
-  const upGame=(id,updated)=>{
-    setGames(p=>p.map(g=>g.id===id?updated:g).sort((a,b)=>b.date.localeCompare(a.date)));
-    setBets(p=>syncBetsWithGame(updated,p));
+  const delBet=id=>betsStore.remove(id);
+  const addGame=async g=>{
+    await gamesStore.add(g);
+    syncBetsWithGame(g);
   };
-  const delGame=id=>setGames(p=>p.filter(g=>g.id!==id));
+  const upGame=async(id,updated)=>{
+    await gamesStore.update(id,updated);
+    syncBetsWithGame(updated);
+  };
+  const delGame=id=>gamesStore.remove(id);
+
+  const signIn=()=>auth.signInWithPopup(googleProvider).catch(e=>{
+    // Fallback to redirect for mobile browsers that block popups
+    if(e.code==="auth/popup-blocked"||e.code==="auth/cancelled-popup-request")auth.signInWithRedirect(googleProvider);
+    else alert("登入失敗："+e.message);
+  });
+  const signOut=()=>auth.signOut();
+
+  // Loading state
+  if(user===undefined)return<div style={{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.d}}>
+    <div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>⚾</div><div>載入中...</div></div>
+  </div>;
+
+  // Login screen
+  if(!user)return<div style={{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.t}}>
+    <div style={{textAlign:"center",padding:40}}>
+      <div style={{fontSize:60,marginBottom:16}}>⚾</div>
+      <div style={{fontSize:22,fontWeight:700,marginBottom:6}}>MLB 投注追蹤</div>
+      <div style={{fontSize:13,color:C.d,marginBottom:32}}>台灣運彩 · 賽果分析</div>
+      <button onClick={signIn} style={{padding:"12px 32px",borderRadius:10,border:`1px solid ${C.bd}`,background:C.card,color:C.t,fontSize:15,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:10,margin:"0 auto",outline:"none"}}>
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59A14.5 14.5 0 019.5 24c0-1.59.28-3.14.76-4.59l-7.98-6.19A23.99 23.99 0 000 24c0 3.77.9 7.35 2.56 10.56l7.97-5.97z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 5.97C6.51 42.62 14.62 48 24 48z"/></svg>
+        使用 Google 登入
+      </button>
+      <div style={{fontSize:11,color:C.m,marginTop:16}}>登入後資料自動跨裝置同步</div>
+    </div>
+  </div>;
 
   const tabs=[
     {id:"add",icon:"＋",label:"投注"},
@@ -635,7 +727,11 @@ function App(){
   return<div style={{background:C.bg,minHeight:"100vh",color:C.t,paddingBottom:80}}>
     <div style={{background:C.sf,borderBottom:`1px solid ${C.bd}`,padding:"14px 20px",display:"flex",alignItems:"center",gap:10}}>
       <span style={{fontSize:22}}>⚾</span>
-      <div><div style={{fontSize:17,fontWeight:700}}>MLB 投注追蹤</div><div style={{fontSize:11,color:C.d}}>台灣運彩 · 賽果分析</div></div>
+      <div style={{flex:1}}><div style={{fontSize:17,fontWeight:700}}>MLB 投注追蹤</div><div style={{fontSize:11,color:C.d}}>台灣運彩 · 賽果分析</div></div>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        {user.photoURL&&<img src={user.photoURL} style={{width:24,height:24,borderRadius:"50%"}} referrerPolicy="no-referrer"/>}
+        <button onClick={signOut} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:11}}>登出</button>
+      </div>
     </div>
     <div style={{maxWidth:560,margin:"0 auto",padding:"12px 16px"}}>
       {tab==="add"&&<AddBetView addBet={addBet}/>}
