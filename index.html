@@ -602,7 +602,7 @@ function Standings(){
       const isAL=div.division?.id<=202;
       return<div key={div.division?.id} style={{background:C.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.bd}`,marginBottom:10}}>
         <div style={{fontSize:13,fontWeight:700,color:isAL?C.b:C.acc,marginBottom:8}}>{divName}</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 30px 30px 42px 34px 38px 46px 46px 46px",gap:0,fontSize:13,textAlign:"center",overflowX:"auto"}}>
+        <div style={{overflowX:"auto"}}><div style={{display:"grid",gridTemplateColumns:"52px 30px 30px 42px 34px 38px 46px 46px 46px",gap:0,fontSize:13,textAlign:"center",minWidth:364}}>
           <div style={{textAlign:"left",color:C.m,paddingBottom:6,fontSize:12}}>球隊</div>
           <div style={{color:C.m,paddingBottom:6,fontSize:12}}>W</div>
           <div style={{color:C.m,paddingBottom:6,fontSize:12}}>L</div>
@@ -620,7 +620,7 @@ function Standings(){
             const l10=sp("lastTen");const hm=sp("home");const aw=sp("away");
             const bdr={borderTop:`1px solid ${C.bd}`,padding:"6px 0"};
             return<React.Fragment key={t.team.id}>
-              <div style={{textAlign:"left",...bdr,fontWeight:isFirst?700:400,color:isFirst?C.t:C.d}}>
+              <div style={{textAlign:"left",...bdr,fontWeight:isFirst?700:400,color:isFirst?C.t:C.d,whiteSpace:"nowrap"}}>
                 {zh}
               </div>
               <div style={{...bdr,...mono,color:C.g}}>{t.wins}</div>
@@ -633,7 +633,7 @@ function Standings(){
               <div style={{...bdr,...mono}}>{aw?`${aw.wins}-${aw.losses}`:"—"}</div>
             </React.Fragment>;
           })}
-        </div>
+        </div></div>
       </div>;
     })}
   </div>;
