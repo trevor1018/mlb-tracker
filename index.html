@@ -602,7 +602,7 @@ function Standings(){
       const isAL=div.division?.id<=202;
       return<div key={div.division?.id} style={{background:C.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.bd}`,marginBottom:10}}>
         <div style={{fontSize:13,fontWeight:700,color:isAL?C.b:C.acc,marginBottom:8}}>{divName}</div>
-        <div style={{overflowX:"auto"}}><div style={{display:"grid",gridTemplateColumns:"52px 30px 30px 42px 34px 38px 46px 46px 46px",gap:0,fontSize:13,textAlign:"center",minWidth:364}}>
+        <div style={{overflowX:"auto"}}><div style={{display:"grid",gridTemplateColumns:"minmax(52px,1fr) repeat(8,minmax(30px,1fr))",gap:0,fontSize:13,textAlign:"center",minWidth:364}}>
           <div style={{textAlign:"left",color:C.m,paddingBottom:6,fontSize:12}}>球隊</div>
           <div style={{color:C.m,paddingBottom:6,fontSize:12}}>W</div>
           <div style={{color:C.m,paddingBottom:6,fontSize:12}}>L</div>
