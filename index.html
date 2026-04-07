@@ -602,26 +602,35 @@ function Standings(){
       const isAL=div.division?.id<=202;
       return<div key={div.division?.id} style={{background:C.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.bd}`,marginBottom:10}}>
         <div style={{fontSize:13,fontWeight:700,color:isAL?C.b:C.acc,marginBottom:8}}>{divName}</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 32px 32px 40px 36px 40px",gap:0,fontSize:11,textAlign:"center"}}>
-          <div style={{textAlign:"left",color:C.m,paddingBottom:4}}>球隊</div>
-          <div style={{color:C.m,paddingBottom:4}}>W</div>
-          <div style={{color:C.m,paddingBottom:4}}>L</div>
-          <div style={{color:C.m,paddingBottom:4}}>勝率</div>
-          <div style={{color:C.m,paddingBottom:4}}>GB</div>
-          <div style={{color:C.m,paddingBottom:4}}>連勝</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 30px 30px 42px 34px 38px 46px 46px 46px",gap:0,fontSize:13,textAlign:"center",overflowX:"auto"}}>
+          <div style={{textAlign:"left",color:C.m,paddingBottom:6,fontSize:12}}>球隊</div>
+          <div style={{color:C.m,paddingBottom:6,fontSize:12}}>W</div>
+          <div style={{color:C.m,paddingBottom:6,fontSize:12}}>L</div>
+          <div style={{color:C.m,paddingBottom:6,fontSize:12}}>勝率</div>
+          <div style={{color:C.m,paddingBottom:6,fontSize:12}}>GB</div>
+          <div style={{color:C.m,paddingBottom:6,fontSize:12}}>連勝</div>
+          <div style={{color:C.m,paddingBottom:6,fontSize:12}}>L10</div>
+          <div style={{color:C.m,paddingBottom:6,fontSize:12}}>主場</div>
+          <div style={{color:C.m,paddingBottom:6,fontSize:12}}>客場</div>
           {div.teamRecords.map(t=>{
             const zh=teamZh(t.team.id);
             const en=teamEn(t.team.id);
             const isFirst=t.divisionRank==="1";
+            const sp=(type)=>(t.records?.splitRecords||[]).find(r=>r.type===type);
+            const l10=sp("lastTen");const hm=sp("home");const aw=sp("away");
+            const bdr={borderTop:`1px solid ${C.bd}`,padding:"6px 0"};
             return<React.Fragment key={t.team.id}>
-              <div style={{textAlign:"left",padding:"5px 0",borderTop:`1px solid ${C.bd}`,fontWeight:isFirst?700:400,color:isFirst?C.t:C.d}}>
-                {zh} <span style={{color:C.m,fontSize:10}}>{en}</span>
+              <div style={{textAlign:"left",...bdr,fontWeight:isFirst?700:400,color:isFirst?C.t:C.d}}>
+                {zh} <span style={{color:C.m,fontSize:11}}>{en}</span>
               </div>
-              <div style={{padding:"5px 0",borderTop:`1px solid ${C.bd}`,...mono,color:C.g}}>{t.wins}</div>
-              <div style={{padding:"5px 0",borderTop:`1px solid ${C.bd}`,...mono,color:C.r}}>{t.losses}</div>
-              <div style={{padding:"5px 0",borderTop:`1px solid ${C.bd}`,...mono}}>{t.winningPercentage}</div>
-              <div style={{padding:"5px 0",borderTop:`1px solid ${C.bd}`,...mono,color:C.d}}>{t.divisionGamesBack==="-"?"—":t.divisionGamesBack}</div>
-              <div style={{padding:"5px 0",borderTop:`1px solid ${C.bd}`,...mono,color:t.streak?.streakCode?.startsWith("W")?C.g:C.r}}>{t.streak?.streakCode||""}</div>
+              <div style={{...bdr,...mono,color:C.g}}>{t.wins}</div>
+              <div style={{...bdr,...mono,color:C.r}}>{t.losses}</div>
+              <div style={{...bdr,...mono}}>{t.winningPercentage}</div>
+              <div style={{...bdr,...mono,color:C.d}}>{t.divisionGamesBack==="-"?"—":t.divisionGamesBack}</div>
+              <div style={{...bdr,...mono,color:t.streak?.streakCode?.startsWith("W")?C.g:C.r}}>{t.streak?.streakCode||""}</div>
+              <div style={{...bdr,...mono}}>{l10?`${l10.wins}-${l10.losses}`:"—"}</div>
+              <div style={{...bdr,...mono}}>{hm?`${hm.wins}-${hm.losses}`:"—"}</div>
+              <div style={{...bdr,...mono}}>{aw?`${aw.wins}-${aw.losses}`:"—"}</div>
             </React.Fragment>;
           })}
         </div>
@@ -630,9 +639,107 @@ function Standings(){
   </div>;
 }
 
+// ─── Team Stats Calculator ───
+function calcTeamStats(games,team){
+  const gs=games.filter(g=>g.away===team||g.home===team).sort((a,b)=>b.date.localeCompare(a.date));
+  if(!gs.length)return null;
+  const isHome=g=>g.home===team;
+  const won=g=>(isHome(g)&&g.homeScore>g.awayScore)||(!isHome(g)&&g.awayScore>g.homeScore);
+  const scored=g=>isHome(g)?g.homeScore:g.awayScore;
+  const allowed=g=>isHome(g)?g.awayScore:g.homeScore;
+  const margin=g=>scored(g)-allowed(g);
+  const total=g=>g.homeScore+g.awayScore;
+  const absMargin=g=>Math.abs(g.homeScore-g.awayScore);
+  let streak=0,streakType=won(gs[0])?"W":"L";
+  for(const g of gs){if((won(g)?"W":"L")===streakType)streak++;else break}
+  const rec=(n)=>{const s=gs.slice(0,n);const w=s.filter(won).length;return{w,l:s.length-w,n:s.length}};
+  const homeGs=gs.filter(isHome),awayGs=gs.filter(g=>!isHome(g));
+  const homeW=homeGs.filter(won).length,awayW=awayGs.filter(won).length;
+  const avgScored=(gs.reduce((a,g)=>a+scored(g),0)/gs.length).toFixed(1);
+  const avgAllowed=(gs.reduce((a,g)=>a+allowed(g),0)/gs.length).toFixed(1);
+  const avgTotal=(gs.reduce((a,g)=>a+total(g),0)/gs.length).toFixed(1);
+  const avgMargin=(gs.filter(won).reduce((a,g)=>a+margin(g),0)/(gs.filter(won).length||1)).toFixed(1);
+  const coverRate15=gs.length?(gs.filter(g=>won(g)&&absMargin(g)>1.5).length/gs.length*100).toFixed(0):"—";
+  const ouRate=(line)=>gs.length?(gs.filter(g=>total(g)>line).length/gs.length*100).toFixed(0):"—";
+  const margins={close:0,mid:0,blow:0};
+  gs.forEach(g=>{const m=absMargin(g);if(m<=2)margins.close++;else if(m<=4)margins.mid++;else margins.blow++});
+  const recent=gs.slice(0,10).map(g=>({date:g.date,opp:isHome(g)?g.away:g.home,result:won(g)?"W":"L",score:`${scored(g)}-${allowed(g)}`,total:total(g),margin:margin(g),home:isHome(g)}));
+  return{streak,streakType,rec5:rec(5),rec10:rec(10),rec20:rec(20),homeW,homeTotal:homeGs.length,awayW,awayTotal:awayGs.length,avgScored,avgAllowed,avgTotal,avgMargin,coverRate15,ou75:ouRate(7.5),ou85:ouRate(8.5),ou95:ouRate(9.5),margins,recent,totalGames:gs.length};
+}
+
+// ─── Team Panel (single column) ───
+function TeamPanel({team,setTeam,games,color}){
+  const ts=useMemo(()=>team?calcTeamStats(games,team):null,[team,games]);
+  const mono={fontFamily:"'JetBrains Mono',monospace"};
+  return<div>
+    <Sel value={team} onChange={setTeam} options={TEAMS} placeholder="選擇球隊"/>
+    {!team&&<div style={{textAlign:"center",padding:"30px 0",color:C.d,fontSize:12}}>選擇球隊</div>}
+    {team&&!ts&&<div style={{textAlign:"center",padding:"30px 0",color:C.d,fontSize:12}}>無 {team} 資料</div>}
+    {ts&&<div style={{marginTop:10}}>
+      <div style={{background:C.card,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <span style={{fontSize:12,color:C.d}}>連勝/敗</span>
+          <span style={{fontSize:13,fontWeight:700,...mono,color:ts.streakType==="W"?C.g:C.r}}>{ts.streak}{ts.streakType}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <span style={{fontSize:12,color:C.d}}>總場次</span>
+          <span style={{fontSize:13,...mono}}>{ts.totalGames}</span>
+        </div>
+        {[ts.rec5,ts.rec10,ts.rec20].map((r,i)=>r.n?<div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+          <span style={{fontSize:12,color:C.d}}>近{[5,10,20][i]}場</span>
+          <span style={{fontSize:12,...mono}}><span style={{color:C.g}}>{r.w}W</span>-<span style={{color:C.r}}>{r.l}L</span></span>
+        </div>:null)}
+      </div>
+
+      <div style={{background:C.card,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
+        {[["主場",`${ts.homeW}-${ts.homeTotal-ts.homeW}`,ts.homeTotal?(ts.homeW/ts.homeTotal*100).toFixed(0)+"%":""],
+          ["客場",`${ts.awayW}-${ts.awayTotal-ts.awayW}`,ts.awayTotal?(ts.awayW/ts.awayTotal*100).toFixed(0)+"%":""],
+          ["場均得分",ts.avgScored,C.g],["場均失分",ts.avgAllowed,C.r],
+          ["場均總分",ts.avgTotal,C.acc],["勝場均分差",ts.avgMargin,""]
+        ].map(([l,v,extra],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+          <span style={{fontSize:12,color:C.d}}>{l}</span>
+          <span style={{fontSize:13,...mono,color:typeof extra==="string"&&extra.startsWith("#")?extra:C.t}}>{v} {typeof extra==="string"&&!extra.startsWith("#")?<span style={{color:C.d,fontSize:11}}>{extra}</span>:""}</span>
+        </div>)}
+      </div>
+
+      <div style={{background:C.card,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
+        <div style={{fontSize:12,fontWeight:600,marginBottom:6}}>盤口數據</div>
+        {[["讓1.5過關",ts.coverRate15],["大7.5",ts.ou75],["大8.5",ts.ou85],["大9.5",ts.ou95]].map(([l,v],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+          <span style={{fontSize:12,color:C.d}}>{l}</span>
+          <span style={{fontSize:12,...mono,color:C.acc}}>{v}%</span>
+        </div>)}
+      </div>
+
+      <div style={{background:C.card,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
+        <div style={{fontSize:12,fontWeight:600,marginBottom:6}}>分差分布</div>
+        {[["≤2分",ts.margins.close,C.b],["3-4分",ts.margins.mid,C.acc],["≥5分",ts.margins.blow,C.g]].map(([l,v,c])=>{
+          const pct=ts.totalGames?(v/ts.totalGames*100).toFixed(0):0;
+          return<div key={l} style={{marginBottom:6}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{color:C.d}}>{l}</span><span style={{color:c}}>{v}場({pct}%)</span></div>
+            <div style={{height:5,background:C.bg,borderRadius:3}}><div style={{height:5,background:c,borderRadius:3,width:`${pct}%`,transition:"width .3s"}}/></div>
+          </div>;
+        })}
+      </div>
+
+      <div style={{background:C.card,borderRadius:8,padding:10,border:`1px solid ${C.bd}`}}>
+        <div style={{fontSize:12,fontWeight:600,marginBottom:6}}>近10場</div>
+        {ts.recent.map((g,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:i<ts.recent.length-1?`1px solid ${C.bd}`:"none"}}>
+          <div><span style={{fontSize:10,color:C.d}}>{g.date}</span><span style={{fontSize:11,marginLeft:4}}>{g.home?"vs":"@"}{g.opp}</span></div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{...mono,fontSize:12}}>{g.score}</span>
+            <span style={{fontSize:11,fontWeight:700,color:g.result==="W"?C.g:C.r}}>{g.result}</span>
+          </div>
+        </div>)}
+      </div>
+    </div>}
+  </div>;
+}
+
 function StatsView({bets,games}){
   const[section,setSection]=useState("standings");
-  const[selTeam,setSelTeam]=useState("");
+  const[teamL,setTeamL]=useState("");
+  const[teamR,setTeamR]=useState("");
+  const[teamMode,setTeamMode]=useState("single");
 
   // --- Bet stats ---
   const settled=bets.filter(b=>calcPayout(b).status!=="pending");
@@ -643,62 +750,6 @@ function StatsView({bets,games}){
   const roi=tW?((tP/tW)*100).toFixed(1):"—";
   const byMkt={};
   settled.filter(b=>b.type==="single").forEach(b=>{const k=b.legs[0].market;if(!byMkt[k])byMkt[k]={t:0,w:0,p:0};byMkt[k].t++;if(calcPayout(b).status==="win")byMkt[k].w++;byMkt[k].p+=calcPayout(b).profit});
-
-  // --- Game analytics ---
-  const teamGames=useMemo(()=>{
-    if(!selTeam||!games.length)return[];
-    return games.filter(g=>g.away===selTeam||g.home===selTeam).sort((a,b)=>b.date.localeCompare(a.date));
-  },[selTeam,games]);
-
-  const teamStats=useMemo(()=>{
-    if(!teamGames.length)return null;
-    const gs=teamGames;
-    const isHome=g=>g.home===selTeam;
-    const won=g=>(isHome(g)&&g.homeScore>g.awayScore)||(!isHome(g)&&g.awayScore>g.homeScore);
-    const scored=g=>isHome(g)?g.homeScore:g.awayScore;
-    const allowed=g=>isHome(g)?g.awayScore:g.homeScore;
-    const margin=g=>scored(g)-allowed(g);
-    const total=g=>g.homeScore+g.awayScore;
-    const absMargin=g=>Math.abs(g.homeScore-g.awayScore);
-
-    // Streak
-    let streak=0,streakType=won(gs[0])?"W":"L";
-    for(const g of gs){if((won(g)?"W":"L")===streakType)streak++;else break}
-
-    // Recent records
-    const rec=(n)=>{const s=gs.slice(0,n);const w=s.filter(won).length;return{w,l:s.length-w,n:s.length}};
-
-    // Home/away splits
-    const homeGs=gs.filter(isHome),awayGs=gs.filter(g=>!isHome(g));
-    const homeW=homeGs.filter(won).length,awayW=awayGs.filter(won).length;
-
-    // Averages
-    const avgScored=(gs.reduce((a,g)=>a+scored(g),0)/gs.length).toFixed(1);
-    const avgAllowed=(gs.reduce((a,g)=>a+allowed(g),0)/gs.length).toFixed(1);
-    const avgTotal=(gs.reduce((a,g)=>a+total(g),0)/gs.length).toFixed(1);
-    const avgMargin=(gs.filter(won).reduce((a,g)=>a+margin(g),0)/(gs.filter(won).length||1)).toFixed(1);
-
-    // Spread cover (as favorite, when they won by > 1.5)
-    const coverRate15=gs.length?(gs.filter(g=>won(g)&&absMargin(g)>1.5).length/gs.length*100).toFixed(0):"—";
-
-    // Over/under rates
-    const ouRate=(line)=>gs.length?(gs.filter(g=>total(g)>line).length/gs.length*100).toFixed(0):"—";
-
-    // Margin distribution
-    const margins={close:0,mid:0,blow:0};
-    gs.forEach(g=>{const m=absMargin(g);if(m<=2)margins.close++;else if(m<=4)margins.mid++;else margins.blow++});
-
-    // Recent 5 detail
-    const recent5=gs.slice(0,10).map(g=>({
-      date:g.date,opp:isHome(g)?g.away:g.home,
-      result:won(g)?"W":"L",
-      score:`${scored(g)}-${allowed(g)}`,
-      total:total(g),margin:margin(g),
-      home:isHome(g),
-    }));
-
-    return{streak,streakType,rec5:rec(5),rec10:rec(10),rec20:rec(20),homeW,homeTotal:homeGs.length,awayW,awayTotal:awayGs.length,avgScored,avgAllowed,avgTotal,avgMargin,coverRate15,ou75:ouRate(7.5),ou85:ouRate(8.5),ou95:ouRate(9.5),margins,recent5,totalGames:gs.length};
-  },[teamGames,selTeam]);
 
   const ML={normal:"不讓分",handi:"讓分",total:"大小分"};
 
@@ -729,72 +780,11 @@ function StatsView({bets,games}){
     </div>}
 
     {section==="team"&&<div>
-      <Field label="選擇球隊"><Sel value={selTeam} onChange={setSelTeam} options={TEAMS} placeholder="選擇球隊分析"/></Field>
-
-      {!selTeam&&<div style={{textAlign:"center",padding:"40px",color:C.d}}>選擇球隊後顯示詳細數據</div>}
-      {selTeam&&!teamStats&&<div style={{textAlign:"center",padding:"40px",color:C.d}}>尚無 {selTeam} 的賽果資料</div>}
-      {teamStats&&<div>
-        {/* Streak & Record */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-          <Stat label="目前連勝/敗" value={`${teamStats.streakType==="W"?"🔥":"❄️"} ${teamStats.streak}${teamStats.streakType}`} color={teamStats.streakType==="W"?C.g:C.r}/>
-          <Stat label="總場次" value={teamStats.totalGames} unit="場"/>
-        </div>
-
-        {/* Recent records */}
-        <div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`,marginBottom:12}}>
-          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>近期戰績</div>
-          {[teamStats.rec5,teamStats.rec10,teamStats.rec20].map((r,i)=>{
-            if(!r.n)return null;
-            const pct=r.n?(r.w/r.n*100).toFixed(0):"—";
-            return<div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.bd}`}}>
-              <span style={{fontSize:13,color:C.d}}>近 {[5,10,20][i]} 場</span>
-              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13}}><span style={{color:C.g}}>{r.w}W</span> - <span style={{color:C.r}}>{r.l}L</span> <span style={{color:C.d}}>({pct}%)</span></span>
-            </div>;
-          })}
-        </div>
-
-        {/* Home/Away + Averages */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-          <Stat label="主場" value={`${teamStats.homeW}-${teamStats.homeTotal-teamStats.homeW}`} unit={teamStats.homeTotal?`(${(teamStats.homeW/teamStats.homeTotal*100).toFixed(0)}%)`:""}/>
-          <Stat label="客場" value={`${teamStats.awayW}-${teamStats.awayTotal-teamStats.awayW}`} unit={teamStats.awayTotal?`(${(teamStats.awayW/teamStats.awayTotal*100).toFixed(0)}%)`:""}/>
-          <Stat label="場均得分" value={teamStats.avgScored} color={C.g}/>
-          <Stat label="場均失分" value={teamStats.avgAllowed} color={C.r}/>
-          <Stat label="場均總分" value={teamStats.avgTotal} color={C.acc}/>
-          <Stat label="勝場均分差" value={teamStats.avgMargin}/>
-        </div>
-
-        {/* Spread & O/U */}
-        <div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`,marginBottom:12}}>
-          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>盤口數據</div>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.bd}`}}><span style={{fontSize:13}}>讓 1.5 過關率</span><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.acc}}>{teamStats.coverRate15}%</span></div>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.bd}`}}><span style={{fontSize:13}}>大 7.5 命中率</span><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.acc}}>{teamStats.ou75}%</span></div>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.bd}`}}><span style={{fontSize:13}}>大 8.5 命中率</span><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.acc}}>{teamStats.ou85}%</span></div>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{fontSize:13}}>大 9.5 命中率</span><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.acc}}>{teamStats.ou95}%</span></div>
-        </div>
-
-        {/* Margin distribution */}
-        <div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`,marginBottom:12}}>
-          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>分差分布</div>
-          {[["接近 (≤2分)",teamStats.margins.close,C.b],["中等 (3-4分)",teamStats.margins.mid,C.acc],["大勝/大敗 (≥5分)",teamStats.margins.blow,C.g]].map(([l,v,c])=>{
-            const pct=teamStats.totalGames?(v/teamStats.totalGames*100).toFixed(0):0;
-            return<div key={l} style={{marginBottom:8}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:C.d}}>{l}</span><span style={{color:c}}>{v}場 ({pct}%)</span></div>
-              <div style={{height:6,background:C.bg,borderRadius:3}}><div style={{height:6,background:c,borderRadius:3,width:`${pct}%`,transition:"width .3s"}}/></div>
-            </div>;
-          })}
-        </div>
-
-        {/* Recent 5 games detail */}
-        <div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`}}>
-          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>近 10 場明細</div>
-          {teamStats.recent5.map((g,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<9?`1px solid ${C.bd}`:"none"}}>
-            <div><span style={{fontSize:11,color:C.d}}>{g.date}</span><span style={{fontSize:12,marginLeft:8}}>{g.home?"vs":"@"} {g.opp}</span></div>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13}}>{g.score}</span>
-              <span style={{fontSize:12,fontWeight:700,color:g.result==="W"?C.g:C.r,width:20,textAlign:"center"}}>{g.result}</span>
-            </div>
-          </div>)}
-        </div>
+      <div style={{display:"flex",gap:6,marginBottom:12}}><Pill sel={teamMode==="single"} onClick={()=>setTeamMode("single")}>單隊</Pill><Pill sel={teamMode==="compare"} onClick={()=>setTeamMode("compare")}>比較</Pill></div>
+      {teamMode==="single"?<TeamPanel team={teamL} setTeam={setTeamL} games={games}/>:
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <TeamPanel team={teamL} setTeam={setTeamL} games={games}/>
+        <TeamPanel team={teamR} setTeam={setTeamR} games={games}/>
       </div>}
     </div>}
   </div>;
