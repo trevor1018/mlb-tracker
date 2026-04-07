@@ -621,7 +621,7 @@ function Standings(){
             const bdr={borderTop:`1px solid ${C.bd}`,padding:"6px 0"};
             return<React.Fragment key={t.team.id}>
               <div style={{textAlign:"left",...bdr,fontWeight:isFirst?700:400,color:isFirst?C.t:C.d}}>
-                {zh} <span style={{color:C.m,fontSize:11}}>{en}</span>
+                {zh}
               </div>
               <div style={{...bdr,...mono,color:C.g}}>{t.wins}</div>
               <div style={{...bdr,...mono,color:C.r}}>{t.losses}</div>
@@ -724,7 +724,7 @@ function TeamPanel({team,setTeam,games,color}){
       <div style={{background:C.card,borderRadius:8,padding:10,border:`1px solid ${C.bd}`}}>
         <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>近10場</div>
         {ts.recent.map((g,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:i<ts.recent.length-1?`1px solid ${C.bd}`:"none"}}>
-          <div><span style={{fontSize:12,color:C.d}}>{g.date}</span><span style={{fontSize:13,marginLeft:4}}>{g.home?"vs":"@"}{g.opp}</span></div>
+          <div><span style={{fontSize:12,color:C.d}}>{g.date.slice(5)}</span><span style={{fontSize:13,marginLeft:4}}>{g.home?"vs":"@"}{g.opp}</span></div>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             <span style={{...mono,fontSize:13}}>{g.score}</span>
             <span style={{fontSize:13,fontWeight:700,color:g.result==="W"?C.g:C.r}}>{g.result}</span>
