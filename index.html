@@ -399,18 +399,12 @@ function BetCard({bet,r,updateBet,deleteBet,ML}){
 // ═══════════════════════════════════════
 // GAME RESULTS VIEW
 // ═══════════════════════════════════════
-function ResultsView({games,addGame,updateGame,deleteGame}){
+function ResultsView({games,addGames,updateGame,deleteGame}){
   const[mode,setMode]=useState("list");
-  const[f,setF]=useState({date:todayStr(),away:"",home:"",awayScore:"",homeScore:"",note:""});
   const[importDate,setImportDate]=useState(todayStr());
   const[importing,setImporting]=useState(false);
   const[importResult,setImportResult]=useState(null);
-  const validG=()=>f.away&&f.home&&f.awayScore!==""&&f.homeScore!==""&&f.away!==f.home;
-  const submitG=()=>{
-    if(!validG())return;
-    addGame({id:genId(),date:f.date,away:f.away,home:f.home,awayScore:Number(f.awayScore),homeScore:Number(f.homeScore),note:f.note});
-    setF({date:f.date,away:"",home:"",awayScore:"",homeScore:"",note:""});
-  };
+  const[listDate,setListDate]=useState(todayStr());
 
   const doImport=async()=>{
     setImporting(true);setImportResult(null);
@@ -420,16 +414,18 @@ function ResultsView({games,addGame,updateGame,deleteGame}){
       const existIds=new Set(games.map(g=>g.id));
       const newGames=fetched.filter(g=>!existIds.has(g.id));
       if(!newGames.length){setImportResult({ok:true,msg:`${fetched.length} 場比賽皆已匯入過`});setImporting(false);return}
-      for(const g of newGames)await addGame(g);
+      await addGames(newGames);
       setImportResult({ok:true,msg:`成功匯入 ${newGames.length} 場比賽（共 ${fetched.length} 場）`});
     }catch(e){setImportResult({ok:false,msg:"匯入失敗："+e.message})}
     setImporting(false);
   };
 
+  const filtered=games.filter(g=>g.date===listDate);
+
   return<div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
       <div style={{fontSize:16,fontWeight:700}}>賽果紀錄</div>
-      <div style={{display:"flex",gap:6}}><Pill sel={mode==="list"} onClick={()=>setMode("list")}>列表</Pill><Pill sel={mode==="import"} onClick={()=>setMode("import")}>匯入</Pill><Pill sel={mode==="add"} onClick={()=>setMode("add")}>手動</Pill></div>
+      <div style={{display:"flex",gap:6}}><Pill sel={mode==="list"} onClick={()=>setMode("list")}>列表</Pill><Pill sel={mode==="import"} onClick={()=>setMode("import")}>匯入</Pill></div>
     </div>
 
     {mode==="import"&&<div style={{background:C.card,borderRadius:10,padding:16,border:`1px solid ${C.bd}`,marginBottom:16}}>
@@ -441,27 +437,11 @@ function ResultsView({games,addGame,updateGame,deleteGame}){
       {importResult&&<div style={{marginTop:10,padding:"10px 14px",borderRadius:8,fontSize:13,background:importResult.ok?C.gD:C.rD,color:importResult.ok?C.g:C.r}}>{importResult.msg}</div>}
     </div>}
 
-    {mode==="add"&&<div style={{background:C.card,borderRadius:10,padding:16,border:`1px solid ${C.bd}`,marginBottom:16}}>
-      <Field label="日期"><DatePicker value={f.date} onChange={v=>setF({...f,date:v})}/></Field>
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"end"}}>
-        <Field label="客隊" style={{marginBottom:0}}><Sel value={f.away} onChange={v=>setF({...f,away:v})} options={TEAMS} placeholder="客隊"/></Field>
-        <div style={{padding:"10px 0",color:C.m,fontWeight:700}}>vs</div>
-        <Field label="主隊" style={{marginBottom:0}}><Sel value={f.home} onChange={v=>setF({...f,home:v})} options={TEAMS} placeholder="主隊"/></Field>
-      </div>
-      <div style={{height:12}}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"end"}}>
-        <Field label="客隊得分" style={{marginBottom:0}}><Inp value={f.awayScore} onChange={v=>setF({...f,awayScore:v})} type="number" mono style={{textAlign:"center",fontSize:20,fontWeight:700}} placeholder="0"/></Field>
-        <div style={{padding:"10px 0",color:C.m,fontWeight:700,fontSize:20}}>:</div>
-        <Field label="主隊得分" style={{marginBottom:0}}><Inp value={f.homeScore} onChange={v=>setF({...f,homeScore:v})} type="number" mono style={{textAlign:"center",fontSize:20,fontWeight:700}} placeholder="0"/></Field>
-      </div>
-      <div style={{height:12}}/>
-      <Field label="備註（選填：先發投手等）"><Inp value={f.note} onChange={v=>setF({...f,note:v})} placeholder="Glasnow vs Irvin"/></Field>
-      <button onClick={submitG} disabled={!validG()} style={{width:"100%",padding:12,borderRadius:8,border:"none",fontSize:14,fontWeight:700,background:validG()?C.acc:C.m,color:validG()?"#000":C.d,cursor:validG()?"pointer":"default",outline:"none"}}>儲存賽果</button>
-    </div>}
-
     {mode==="list"&&<div>
-      {games.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:C.d}}><div style={{fontSize:40,marginBottom:12}}>⚾</div><div>尚無賽果紀錄</div><div style={{fontSize:13,marginTop:4}}>點「匯入」從 MLB 自動抓取賽果</div></div>:
-      games.slice(0,50).map(g=><GameCard key={g.id} game={g} updateGame={updateGame} deleteGame={deleteGame}/>)}
+      <Field label="選擇日期"><DatePicker value={listDate} onChange={setListDate}/></Field>
+      {filtered.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:C.d}}><div style={{fontSize:40,marginBottom:12}}>⚾</div><div>{listDate} 無賽果紀錄</div><div style={{fontSize:13,marginTop:4}}>到「匯入」頁面抓取該日賽果</div></div>:
+      filtered.map(g=><GameCard key={g.id} game={g} updateGame={updateGame} deleteGame={deleteGame}/>)}
+      {filtered.length>0&&<div style={{textAlign:"center",fontSize:12,color:C.m,padding:8}}>共 {filtered.length} 場</div>}
     </div>}
   </div>;
 }
@@ -834,22 +814,25 @@ function App(){
     })();
   },[uid]);
 
-  // Sync game scores into matching bet legs
-  const syncBetsWithGame=useCallback(async(game)=>{
+  // Sync game scores into matching bet legs (supports single game or array)
+  const syncBetsWithGames=useCallback(async(gameOrGames)=>{
+    const gamesToSync=Array.isArray(gameOrGames)?gameOrGames:[gameOrGames];
     const snap=await userDoc(uid,"bets").get();
-    snap.docs.forEach(async doc=>{
+    for(const doc of snap.docs){
       const b={id:doc.id,...doc.data()};
       let changed=false;
       const nl=b.legs.map(l=>{
-        if(l.date===game.date&&l.away===game.away&&l.home===game.home){
-          const u={...l,homeScore:String(game.homeScore),awayScore:String(game.awayScore)};
-          u.result=determineResult(u,u.homeScore,u.awayScore);
-          changed=true;return u;
+        for(const game of gamesToSync){
+          if(l.date===game.date&&l.away===game.away&&l.home===game.home){
+            const u={...l,homeScore:String(game.homeScore),awayScore:String(game.awayScore)};
+            u.result=determineResult(u,u.homeScore,u.awayScore);
+            changed=true;return u;
+          }
         }
         return l;
       });
       if(changed)await userDoc(uid,"bets").doc(doc.id).update({legs:nl});
-    });
+    }
   },[uid]);
 
   const addBet=async b=>{await betsStore.add(b)};
@@ -862,11 +845,15 @@ function App(){
   const delBet=id=>betsStore.remove(id);
   const addGame=async g=>{
     await gamesStore.add(g);
-    syncBetsWithGame(g);
+    await syncBetsWithGames(g);
+  };
+  const addGames=async gs=>{
+    for(const g of gs)await gamesStore.add(g);
+    await syncBetsWithGames(gs);
   };
   const upGame=async(id,updated)=>{
     await gamesStore.update(id,updated);
-    syncBetsWithGame(updated);
+    await syncBetsWithGames(updated);
   };
   const delGame=id=>gamesStore.remove(id);
 
@@ -915,7 +902,7 @@ function App(){
     <div style={{maxWidth:560,margin:"0 auto",padding:"12px 16px"}}>
       {tab==="add"&&<AddBetView addBet={addBet}/>}
       {tab==="hist"&&<HistView bets={bets} updateBet={upBet} deleteBet={delBet}/>}
-      {tab==="results"&&<ResultsView games={games} addGame={addGame} updateGame={upGame} deleteGame={delGame}/>}
+      {tab==="results"&&<ResultsView games={games} addGames={addGames} updateGame={upGame} deleteGame={delGame}/>}
       {tab==="stats"&&<StatsView bets={bets} games={games}/>}
     </div>
     <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.sf,borderTop:`1px solid ${C.bd}`,display:"flex",zIndex:10}}>
