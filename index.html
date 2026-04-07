@@ -673,21 +673,21 @@ function TeamPanel({team,setTeam,games,color}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
   return<div>
     <Sel value={team} onChange={setTeam} options={TEAMS} placeholder="選擇球隊"/>
-    {!team&&<div style={{textAlign:"center",padding:"30px 0",color:C.d,fontSize:12}}>選擇球隊</div>}
-    {team&&!ts&&<div style={{textAlign:"center",padding:"30px 0",color:C.d,fontSize:12}}>無 {team} 資料</div>}
+    {!team&&<div style={{textAlign:"center",padding:"30px 0",color:C.d,fontSize:13}}>選擇球隊</div>}
+    {team&&!ts&&<div style={{textAlign:"center",padding:"30px 0",color:C.d,fontSize:13}}>無 {team} 資料</div>}
     {ts&&<div style={{marginTop:10}}>
       <div style={{background:C.card,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-          <span style={{fontSize:12,color:C.d}}>連勝/敗</span>
+          <span style={{fontSize:13,color:C.d}}>連勝/敗</span>
           <span style={{fontSize:13,fontWeight:700,...mono,color:ts.streakType==="W"?C.g:C.r}}>{ts.streak}{ts.streakType}</span>
         </div>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-          <span style={{fontSize:12,color:C.d}}>總場次</span>
+          <span style={{fontSize:13,color:C.d}}>總場次</span>
           <span style={{fontSize:13,...mono}}>{ts.totalGames}</span>
         </div>
         {[ts.rec5,ts.rec10,ts.rec20].map((r,i)=>r.n?<div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-          <span style={{fontSize:12,color:C.d}}>近{[5,10,20][i]}場</span>
-          <span style={{fontSize:12,...mono}}><span style={{color:C.g}}>{r.w}W</span>-<span style={{color:C.r}}>{r.l}L</span></span>
+          <span style={{fontSize:13,color:C.d}}>近{[5,10,20][i]}場</span>
+          <span style={{fontSize:13,...mono}}><span style={{color:C.g}}>{r.w}W</span>-<span style={{color:C.r}}>{r.l}L</span></span>
         </div>:null)}
       </div>
 
@@ -697,37 +697,37 @@ function TeamPanel({team,setTeam,games,color}){
           ["場均得分",ts.avgScored,C.g],["場均失分",ts.avgAllowed,C.r],
           ["場均總分",ts.avgTotal,C.acc],["勝場均分差",ts.avgMargin,""]
         ].map(([l,v,extra],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-          <span style={{fontSize:12,color:C.d}}>{l}</span>
-          <span style={{fontSize:13,...mono,color:typeof extra==="string"&&extra.startsWith("#")?extra:C.t}}>{v} {typeof extra==="string"&&!extra.startsWith("#")?<span style={{color:C.d,fontSize:11}}>{extra}</span>:""}</span>
+          <span style={{fontSize:13,color:C.d}}>{l}</span>
+          <span style={{fontSize:13,...mono,color:typeof extra==="string"&&extra.startsWith("#")?extra:C.t}}>{v} {typeof extra==="string"&&!extra.startsWith("#")?<span style={{color:C.d,fontSize:12}}>{extra}</span>:""}</span>
         </div>)}
       </div>
 
       <div style={{background:C.card,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
-        <div style={{fontSize:12,fontWeight:600,marginBottom:6}}>盤口數據</div>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>盤口數據</div>
         {[["讓1.5過關",ts.coverRate15],["大7.5",ts.ou75],["大8.5",ts.ou85],["大9.5",ts.ou95]].map(([l,v],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-          <span style={{fontSize:12,color:C.d}}>{l}</span>
-          <span style={{fontSize:12,...mono,color:C.acc}}>{v}%</span>
+          <span style={{fontSize:13,color:C.d}}>{l}</span>
+          <span style={{fontSize:13,...mono,color:C.acc}}>{v}%</span>
         </div>)}
       </div>
 
       <div style={{background:C.card,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
-        <div style={{fontSize:12,fontWeight:600,marginBottom:6}}>分差分布</div>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>分差分布</div>
         {[["≤2分",ts.margins.close,C.b],["3-4分",ts.margins.mid,C.acc],["≥5分",ts.margins.blow,C.g]].map(([l,v,c])=>{
           const pct=ts.totalGames?(v/ts.totalGames*100).toFixed(0):0;
           return<div key={l} style={{marginBottom:6}}>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{color:C.d}}>{l}</span><span style={{color:c}}>{v}場({pct}%)</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:2}}><span style={{color:C.d}}>{l}</span><span style={{color:c}}>{v}場({pct}%)</span></div>
             <div style={{height:5,background:C.bg,borderRadius:3}}><div style={{height:5,background:c,borderRadius:3,width:`${pct}%`,transition:"width .3s"}}/></div>
           </div>;
         })}
       </div>
 
       <div style={{background:C.card,borderRadius:8,padding:10,border:`1px solid ${C.bd}`}}>
-        <div style={{fontSize:12,fontWeight:600,marginBottom:6}}>近10場</div>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>近10場</div>
         {ts.recent.map((g,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:i<ts.recent.length-1?`1px solid ${C.bd}`:"none"}}>
-          <div><span style={{fontSize:10,color:C.d}}>{g.date}</span><span style={{fontSize:11,marginLeft:4}}>{g.home?"vs":"@"}{g.opp}</span></div>
+          <div><span style={{fontSize:12,color:C.d}}>{g.date}</span><span style={{fontSize:13,marginLeft:4}}>{g.home?"vs":"@"}{g.opp}</span></div>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{...mono,fontSize:12}}>{g.score}</span>
-            <span style={{fontSize:11,fontWeight:700,color:g.result==="W"?C.g:C.r}}>{g.result}</span>
+            <span style={{...mono,fontSize:13}}>{g.score}</span>
+            <span style={{fontSize:13,fontWeight:700,color:g.result==="W"?C.g:C.r}}>{g.result}</span>
           </div>
         </div>)}
       </div>
@@ -755,7 +755,7 @@ function StatsView({bets,games}){
 
   return<div>
     <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>統計分析</div>
-    <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="standings"} onClick={()=>setSection("standings")}>各區戰績</Pill><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>球隊數據</Pill></div>
+    <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="standings"} onClick={()=>setSection("standings")}>各區戰績</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>球隊數據</Pill><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill></div>
 
     {section==="standings"&&<Standings/>}
 
