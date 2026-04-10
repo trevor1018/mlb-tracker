@@ -967,7 +967,7 @@ function CorrelationsTable({correlations}){
   const sorted=Object.entries(correlations).sort(([,a],[,b])=>b.pct-a.pct);
   return<div>
     <div style={{fontSize:11,color:C.d,marginBottom:10,padding:"8px 12px",background:C.card,borderRadius:8,border:`1px solid ${C.bd}`}}>
-      綠色 = 有效信號 (≥55%)　·　黃色 = 弱反向　·　紅色 = 反向指標 (<45%)，跟反方向才會贏
+      綠色 = 有效信號 (≥55%)　·　黃色 = 弱反向　·　紅色 = 反向指標 ({"<"}45%)，跟反方向才會贏
     </div>
     {sorted.map(([key,c],i)=>{
       const meta=METRIC_LABELS[key]||{name:key,reverse:false};
