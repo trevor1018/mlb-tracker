@@ -920,43 +920,27 @@ function useFirestore(uid,colName,localKey,orderField="createdAt"){
 }
 
 // ═══════════════════════════════════════
-// ANALYSIS VIEW (v2)
+// ANALYSIS VIEW (v3 — multi bet types)
 // ═══════════════════════════════════════
-const METRIC_LABELS={
-  // Team cumulative
-  win_pct:{name:"勝率",cat:"team"},
-  run_diff_pg:{name:"場均得失分差",cat:"team"},
-  pyth_pct:{name:"皮塔哥拉斯勝率",cat:"team"},
-  ops:{name:"OPS",cat:"team"},
-  slg:{name:"SLG",cat:"team"},
-  obp:{name:"OBP",cat:"team"},
-  avg:{name:"AVG",cat:"team"},
-  era:{name:"ERA",cat:"team"},
-  whip:{name:"WHIP",cat:"team"},
-  fip:{name:"FIP",cat:"team"},
-  k9:{name:"K/9",cat:"team"},
-  run_diff_per_game:{name:"場均得失分差",cat:"team"},
-  bp_fatigue:{name:"🔋 牛棚疲勞",cat:"team",warn:true},
-  home_adv:{name:"🏠 主場優勢",cat:"team"},
-  // Starting pitcher
-  sp_starts:{name:"先發場次",cat:"sp"},
-  sp_era:{name:"SP ERA",cat:"sp"},
-  sp_whip:{name:"SP WHIP",cat:"sp"},
-  sp_fip:{name:"SP FIP",cat:"sp"},
-  sp_k9:{name:"SP K/9",cat:"sp"},
-  sp_bb9:{name:"SP BB/9",cat:"sp"},
-  sp_k_bb:{name:"SP K/BB",cat:"sp"}
-};
+const BET_TYPES=[
+  {key:"ml",label:"不讓分",short:"不讓分"},
+  {key:"spread_1.5",label:"讓分 1.5",short:"讓1.5"},
+  {key:"spread_2.5",label:"讓分 2.5",short:"讓2.5"},
+  {key:"total_7.5",label:"大小分 7.5",short:"7.5"},
+  {key:"total_8.5",label:"大小分 8.5",short:"8.5"},
+  {key:"total_9.5",label:"大小分 9.5",short:"9.5"}
+];
 
 function getMetricMeta(key){
-  if(METRIC_LABELS[key])return METRIC_LABELS[key];
   if(key.startsWith("composite:"))return{name:key.replace("composite:",""),cat:"composite"};
   if(key.startsWith("comp:"))return{name:key.replace("comp:",""),cat:"composite"};
   if(key.startsWith("sp_"))return{name:key.toUpperCase(),cat:"sp"};
+  if(key==="bp_fatigue")return{name:"🔋 牛棚疲勞",cat:"bullpen"};
+  if(key==="home_adv")return{name:"🏠 主場優勢",cat:"situational"};
   return{name:key,cat:"team"};
 }
 
-function pctColorV2(pct){
+function pctColorV3(pct){
   if(pct>=56)return C.g;
   if(pct>=54)return"#34d399";
   if(pct>=52)return C.d;
@@ -968,6 +952,28 @@ function fmtNum(v){
   if(typeof v!=="number")return v;
   if(Math.abs(v)<10)return v.toFixed(3);
   return v.toFixed(2);
+}
+
+// Convert predicted value to display label
+function formatPrediction(predicted,awayZh,homeZh){
+  if(predicted==="home")return homeZh;
+  if(predicted==="away")return awayZh;
+  if(predicted==="over")return"大";
+  if(predicted==="under")return"小";
+  return"—";
+}
+
+function confidenceStars(conf){
+  if(conf==="high")return"⭐⭐⭐";
+  if(conf==="medium")return"⭐⭐";
+  if(conf==="low")return"⭐";
+  return"";
+}
+function confidenceLabel(conf){
+  if(conf==="high")return"高";
+  if(conf==="medium")return"中";
+  if(conf==="low")return"低";
+  return"—";
 }
 
 // ─── Stat Comparison Row ───
@@ -987,75 +993,78 @@ function StatRow({label,away,home,edge,awayZh,homeZh,warn}){
   </React.Fragment>;
 }
 
-// ─── Correlations Table ───
-function CorrelationsTable({correlations}){
+// ─── Indicator Ranking Table (per bet type) ───
+function IndicatorRanking({ranking,btKey}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
-  const[filter,setFilter]=useState("all");
-  const filtered=Object.entries(correlations).filter(([k])=>{
-    const meta=getMetricMeta(k);
-    if(filter==="all")return true;
-    return meta.cat===filter;
-  }).sort(([,a],[,b])=>b.pct-a.pct);
+  const[catFilter,setCatFilter]=useState("all");
+  const isSpread=btKey==="spread_1.5"||btKey==="spread_2.5";
+  const isTotal=btKey&&btKey.startsWith("total_");
+  const is95=btKey==="total_9.5";
+
+  if(!ranking||!ranking.length)return<div style={{textAlign:"center",padding:30,color:C.d,fontSize:12}}>無指標資料</div>;
+
+  const filtered=ranking.filter(r=>{
+    const cat=r.category||getMetricMeta(r.name).cat;
+    if(catFilter==="all")return true;
+    return cat===catFilter;
+  });
 
   return<div>
-    <div style={{fontSize:11,color:C.d,marginBottom:10,padding:"8px 12px",background:C.card,borderRadius:8,border:`1px solid ${C.bd}`}}>
-      深綠 ≥56% 強信號　·　淺綠 54-56% 有效　·　灰 52-54% 微弱　·　黃 50-52% 持平　·　紅 {"<"}50% 反向
+    <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+      <Pill sel={catFilter==="all"} onClick={()=>setCatFilter("all")}>全部</Pill>
+      <Pill sel={catFilter==="composite"} onClick={()=>setCatFilter("composite")}>複合</Pill>
+      <Pill sel={catFilter==="starter"} onClick={()=>setCatFilter("starter")}>先發</Pill>
+      <Pill sel={catFilter==="team"} onClick={()=>setCatFilter("team")}>球隊</Pill>
     </div>
-    <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-      <Pill sel={filter==="all"} onClick={()=>setFilter("all")}>全部</Pill>
-      <Pill sel={filter==="team"} onClick={()=>setFilter("team")}>球隊累積</Pill>
-      <Pill sel={filter==="sp"} onClick={()=>setFilter("sp")}>先發投手</Pill>
-      <Pill sel={filter==="composite"} onClick={()=>setFilter("composite")}>複合指標</Pill>
-    </div>
-    {filtered.map(([key,c],i)=>{
-      const meta=getMetricMeta(key);
-      const col=pctColorV2(c.pct);
-      const isBP=key==="bp_fatigue";
-      const isHome=key==="home_adv";
-      const isSP=meta.cat==="sp";
-      const isComp=meta.cat==="composite";
-      const hasHomeBonus=key.includes("+home");
-      return<div key={key} style={{background:C.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${isBP?"#f59e0b":C.bd}`,marginBottom:8}}>
+
+    {filtered.map((r,i)=>{
+      const meta=getMetricMeta(r.name);
+      const cat=r.category||meta.cat;
+      const col=pctColorV3(r.pct);
+      const isBP=r.name==="bp_fatigue";
+      const isHomeAdv=r.name==="home_adv";
+      const reverseHome=isSpread&&isHomeAdv;
+      const bpInvalid=isBP&&!is95;
+      const isComposite=cat==="composite";
+      const isStarter=cat==="starter";
+      const hasHomeBonus=r.name.includes("+home");
+      return<div key={r.name+"_"+i} style={{background:C.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${(reverseHome||bpInvalid)?"#f59e0b":C.bd}`,marginBottom:8}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:4}}>
           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
             <span style={{fontSize:11,color:C.m,...mono,minWidth:18}}>#{i+1}</span>
-            <span style={{fontSize:13,fontWeight:600,color:C.t}}>{meta.name}</span>
-            {isSP&&<span style={{fontSize:10,color:C.b,background:C.bD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>先發投手</span>}
-            {isComp&&<span style={{fontSize:10,color:C.acc,background:C.accD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>複合</span>}
+            <span style={{fontSize:13,fontWeight:600,color:C.t,wordBreak:"break-all"}}>{meta.name}</span>
+            {isStarter&&<span style={{fontSize:10,color:C.b,background:C.bD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>先發投手</span>}
+            {isComposite&&<span style={{fontSize:10,color:C.acc,background:C.accD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>複合</span>}
             {hasHomeBonus&&<span style={{fontSize:10,color:C.g,background:C.gD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>主場修正</span>}
-            {isHome&&<span style={{fontSize:10,color:C.d}}>🏠</span>}
-            {c.significant&&<span style={{fontSize:10,color:C.g,background:C.gD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>顯著</span>}
+            {cat==="bullpen"&&<span style={{fontSize:10,color:"#f59e0b",background:"rgba(245,158,11,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>牛棚 ⚠️</span>}
+            {cat==="situational"&&<span style={{fontSize:10,color:C.d,background:"rgba(107,114,128,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>情境</span>}
+            {r.significant&&<span style={{fontSize:10,color:C.g,background:C.gD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>顯著</span>}
           </div>
-          <span style={{fontSize:16,fontWeight:700,...mono,color:col}}>{c.pct.toFixed(1)}%</span>
+          <span style={{fontSize:16,fontWeight:700,...mono,color:col}}>{r.pct?.toFixed(1)}%</span>
         </div>
         <div style={{height:6,background:C.bg,borderRadius:3,marginBottom:6}}>
-          <div style={{height:"100%",width:`${Math.min(100,c.pct)}%`,background:col,borderRadius:3,transition:"width .3s"}}/>
+          <div style={{height:"100%",width:`${Math.min(100,r.pct||0)}%`,background:col,borderRadius:3,transition:"width .3s"}}/>
         </div>
         <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.d}}>
-          <span>{c.correct}/{c.total} 場{c.direction?` · ${c.direction}`:""}</span>
-          {c.z_score!=null&&<span style={{...mono}}>z={c.z_score.toFixed(2)}</span>}
+          <span>{r.correct}/{r.total} 場{r.direction?` · ${r.direction}`:""}</span>
+          {r.z_score!=null&&<span style={{...mono}}>z={r.z_score.toFixed(2)}</span>}
         </div>
-        {isBP&&<div style={{fontSize:11,color:"#f59e0b",marginTop:6,fontStyle:"italic"}}>⚠️ 樣本不足，10 年大樣本驗證為 50.0%，實質無效</div>}
+        {reverseHome&&<div style={{fontSize:11,color:"#f59e0b",marginTop:6,fontStyle:"italic"}}>⚠️ 讓分盤口下主場優勢為反向指標，已自動排除 +home 複合變體</div>}
+        {bpInvalid&&<div style={{fontSize:11,color:"#f59e0b",marginTop:6,fontStyle:"italic"}}>⚠️ bp_fatigue 僅在大小分 9.5 有效，其他盤口為 50% 無效</div>}
+        {isBP&&is95&&<div style={{fontSize:11,color:C.g,marginTop:6,fontStyle:"italic"}}>★ 大小分 9.5 是唯一 bp_fatigue 有效的盤口</div>}
       </div>;
     })}
   </div>;
 }
 
-// ─── Profitable Filters ───
-function ProfitableFilters({filters,generatedAt,totalGames,seasonRange}){
+// ─── Profitable Filters Table (per bet type) ───
+function ProfitableFiltersTable({filters,limit=15}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
-  if(!filters||!filters.length)return<div style={{textAlign:"center",padding:40,color:C.d}}>無篩選條件資料</div>;
+  const[showAll,setShowAll]=useState(false);
+  if(!filters||!filters.length)return<div style={{textAlign:"center",padding:30,color:C.d,fontSize:12}}>該盤口無可獲利篩選</div>;
+  const list=showAll?filters:filters.slice(0,limit);
   return<div>
-    <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
-      <div style={{fontSize:13,fontWeight:700,color:C.acc,marginBottom:8}}>💡 如何使用此頁面</div>
-      <div style={{fontSize:12,color:C.d,lineHeight:1.6}}>
-        1. 下方列出「歷史命中率最高」的篩選條件<br/>
-        2. <span style={{color:C.t,fontWeight:600}}>Top%</span> 表示該指標差距最大的前 N% 場次<br/>
-        3. <span style={{color:C.t,fontWeight:600}}>損益平衡</span> 表示要正 ROI，串 2 關合計賠率必須超過此數字<br/>
-        4. 範例：用最強篩選找兩場符合條件的比賽串關，台彩合計賠率 {">"} 損益平衡值 = 正期望值
-      </div>
-    </div>
-    {filters.map((f,i)=>{
+    {list.map((f,i)=>{
       const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`;
       const isTop=i<3;
       return<div key={i} style={{background:C.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${isTop?C.acc:C.bd}`,marginBottom:8}}>
@@ -1083,26 +1092,115 @@ function ProfitableFilters({filters,generatedAt,totalGames,seasonRange}){
         </div>
       </div>;
     })}
-    <div style={{fontSize:11,color:C.m,padding:"12px 4px",textAlign:"center"}}>
-      📊 數據樣本：{totalGames?totalGames.toLocaleString():"—"} 場{seasonRange?` (${seasonRange})`:""}<br/>
-      🔄 上次更新：{generatedAt||"—"}
-    </div>
+    {filters.length>limit&&<button onClick={()=>setShowAll(!showAll)} style={{width:"100%",padding:10,borderRadius:8,border:`1px solid ${C.bd}`,background:"transparent",color:C.acc,fontSize:12,cursor:"pointer",outline:"none",marginTop:4}}>
+      {showAll?"收合":`展開全部 (${filters.length})`}
+    </button>}
   </div>;
 }
 
-// ─── Matchup Card (v2) ───
-function MatchupCardV2({m,reverseSet}){
+// ─── Bet Type Panel inside a matchup card ───
+function BetTypePanel({btKey,bt,awayZh,homeZh}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
+  if(!bt)return<div style={{padding:20,textAlign:"center",color:C.d,fontSize:12}}>該盤口無資料</div>;
+
+  const isTop10=bt.is_top_10_pct;
+  const conf=bt.confidence||"";
+  const stars=confidenceStars(conf);
+  const predictedZh=formatPrediction(bt.predicted,awayZh,homeZh);
+  const votes=bt.votes||{};
+  const matchedFilters=bt.matched_filters||[];
+  const compScores=bt.composite_scores||{};
+
+  // Top 3 composite scores by abs value
+  const topScores=Object.entries(compScores)
+    .sort(([,a],[,b])=>Math.abs(b.value||0)-Math.abs(a.value||0))
+    .slice(0,5);
+
+  // Determine vote color (which side is voting)
+  const voteEntries=Object.entries(votes);
+
+  return<div style={{padding:"10px 0"}}>
+    {/* Top 10% banner */}
+    {isTop10&&<div style={{background:"rgba(16,185,129,0.12)",border:`1px solid ${C.g}`,borderRadius:6,padding:"6px 10px",marginBottom:10,fontSize:12,fontWeight:700,color:C.g,display:"flex",alignItems:"center",gap:6}}>
+      ⭐ Top 10% 高信心場次
+    </div>}
+
+    {/* Prediction summary */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+      <div style={{background:C.bg,borderRadius:6,padding:"8px 10px",textAlign:"center",border:`1px solid ${C.bd}`}}>
+        <div style={{fontSize:10,color:C.d,marginBottom:2}}>預測</div>
+        <div style={{fontSize:15,fontWeight:700,color:isTop10?C.g:C.t}}>{predictedZh}</div>
+      </div>
+      <div style={{background:C.bg,borderRadius:6,padding:"8px 10px",textAlign:"center",border:`1px solid ${C.bd}`}}>
+        <div style={{fontSize:10,color:C.d,marginBottom:2}}>信心度</div>
+        <div style={{fontSize:14,fontWeight:700}}>{stars} <span style={{fontSize:11,color:C.d}}>({confidenceLabel(conf)})</span></div>
+      </div>
+    </div>
+
+    {/* Vote breakdown */}
+    {voteEntries.length>0&&<div style={{background:C.bg,borderRadius:6,padding:"8px 10px",border:`1px solid ${C.bd}`,marginBottom:10}}>
+      <div style={{fontSize:10,color:C.d,marginBottom:4}}>複合分數投票</div>
+      <div style={{display:"flex",gap:10,fontSize:12,...mono,justifyContent:"center"}}>
+        {voteEntries.map(([k,v])=>{
+          const lbl=k==="home"?homeZh:k==="away"?awayZh:k==="over"?"大":k==="under"?"小":k;
+          const isPredicted=k===bt.predicted;
+          return<span key={k} style={{color:isPredicted?C.g:C.d,fontWeight:isPredicted?700:400}}>{lbl} {v}</span>;
+        })}
+      </div>
+    </div>}
+
+    {/* Min combined odds needed */}
+    {bt.min_combined_odds_needed!=null&&<div style={{background:"rgba(245,158,11,0.08)",borderRadius:6,padding:"8px 10px",border:`1px solid ${C.acc}`,marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <span style={{fontSize:11,color:C.d}}>建議最低合計賠率</span>
+      <span style={{fontSize:14,fontWeight:700,...mono,color:C.acc}}>{bt.min_combined_odds_needed.toFixed(2)}</span>
+    </div>}
+
+    {/* Matched filters */}
+    {matchedFilters.length>0&&<div style={{background:"rgba(16,185,129,0.08)",borderRadius:6,padding:"8px 10px",border:`1px solid ${C.g}`,marginBottom:10}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.g,marginBottom:6}}>✅ 符合篩選 ({matchedFilters.length})</div>
+      {matchedFilters.map((f,i)=><div key={i} style={{fontSize:11,color:C.t,padding:"3px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
+        <div style={{fontWeight:600,wordBreak:"break-all"}}>✓ {f.stat} <span style={{color:C.acc}}>Top {f.top_pct}%</span></div>
+        {(f.baseline_hit_rate!=null||f.min_odds_needed!=null)&&<div style={{fontSize:10,color:C.d,marginTop:2,...mono}}>
+          {f.baseline_hit_rate!=null&&<>歷史命中 {f.baseline_hit_rate.toFixed(1)}%</>}
+          {f.min_odds_needed!=null&&<> · 最低賠率 {f.min_odds_needed.toFixed(2)}</>}
+        </div>}
+      </div>)}
+    </div>}
+
+    {/* Top composite scores */}
+    {topScores.length>0&&<div style={{background:C.bg,borderRadius:6,padding:"8px 10px",border:`1px solid ${C.bd}`}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.acc,marginBottom:6}}>🧮 主要複合分數</div>
+      {topScores.map(([k,c])=>{
+        const bucket=c.bucket;
+        const bucketStars=bucket==="Top 10%"?"⭐⭐⭐":bucket==="Top 20%"?"⭐⭐":bucket==="Top 30%"?"⭐":"";
+        const predicts=c.predicts;
+        const predictsZh=formatPrediction(predicts,awayZh,homeZh);
+        const valColor=c.value>=0?C.acc:C.b;
+        return<div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderTop:`1px solid ${C.bd}`,fontSize:11}}>
+          <span style={{color:C.d,wordBreak:"break-all",flex:1,minWidth:0}}>{k}</span>
+          <span style={{...mono,color:valColor,fontWeight:700,marginLeft:6,minWidth:48,textAlign:"right"}}>{c.value>=0?"+":""}{c.value?.toFixed(2)}</span>
+          <span style={{color:C.m,margin:"0 6px"}}>→</span>
+          <span style={{color:predicts==="away"||predicts==="over"?C.g:C.acc,fontWeight:700,minWidth:28,textAlign:"left"}}>{predictsZh}</span>
+          {bucketStars&&<span style={{marginLeft:4,fontSize:10}}>{bucketStars}</span>}
+        </div>;
+      })}
+    </div>}
+  </div>;
+}
+
+// ─── Matchup Card (v3) ───
+function MatchupCardV3({m}){
   const awayZh=m.away_zh||m.away;
   const homeZh=m.home_zh||m.home;
-  const rec=m.recommendation||{};
-  const isTop10=rec.is_top_10_pct;
   const teamComps=m.team_comparisons||{};
   const spComps=m.sp_comparisons||{};
-  const compScores=m.composite_scores||{};
-  const buckets=m.bucket_position||{};
-  const conf=rec.confidence||"";
-  const stars=conf==="high"?"⭐⭐⭐⭐⭐":conf==="medium"?"⭐⭐⭐":conf==="low"?"⭐":"";
+  const betTypes=m.bet_types||{};
+  const isTop10=m.any_top_10_pct;
+
+  // Default to first bet type that exists; prefer ml
+  const availableBts=BET_TYPES.filter(b=>betTypes[b.key]);
+  const defaultBt=availableBts.find(b=>b.key==="ml")?.key||availableBts[0]?.key;
+  const[selBt,setSelBt]=useState(defaultBt);
 
   const cardStyle={
     background:isTop10?"rgba(16,185,129,0.06)":C.card,
@@ -1115,15 +1213,16 @@ function MatchupCardV2({m,reverseSet}){
 
   return<div style={cardStyle}>
     {isTop10&&<div style={{background:C.g,color:"#000",padding:"6px 14px",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
-      ⭐ 強烈推薦 — 符合 Top 10% 篩選條件
+      ⭐ 符合 Top 10% 高信心篩選
     </div>}
 
     <div style={{padding:14}}>
+      {/* Header */}
       <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>
-        <span style={{color:m.edge_summary==="away"?C.g:C.t}}>{awayZh}</span>
+        <span style={{color:m.away_edges>m.home_edges?C.g:C.t}}>{awayZh}</span>
         <span style={{fontSize:11,color:C.d,marginLeft:4}}>({m.away_record||"—"})</span>
         <span style={{color:C.m,margin:"0 6px"}}>@</span>
-        <span style={{color:m.edge_summary==="home"?C.acc:C.t}}>{homeZh}</span>
+        <span style={{color:m.home_edges>m.away_edges?C.acc:C.t}}>{homeZh}</span>
         <span style={{fontSize:11,color:C.d,marginLeft:4}}>({m.home_record||"—"})</span>
       </div>
       {(m.away_sp||m.home_sp)&&<div style={{fontSize:11,color:C.d,marginBottom:12}}>
@@ -1147,73 +1246,62 @@ function MatchupCardV2({m,reverseSet}){
         <div style={{display:"grid",gridTemplateColumns:"auto 1fr 14px 1fr auto",gap:"4px 8px",alignItems:"center"}}>
           {Object.entries(teamComps).map(([k,c])=>{
             const meta=getMetricMeta(k);
-            const warn=k==="bp_fatigue"||reverseSet.has(k);
+            const warn=k==="bp_fatigue";
             return<StatRow key={k} label={meta.name} away={c.away} home={c.home} edge={c.edge} awayZh={awayZh} homeZh={homeZh} warn={warn}/>;
           })}
         </div>
       </div>}
 
-      {/* Composite Scores */}
-      {Object.keys(compScores).length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
-        <div style={{fontSize:12,fontWeight:700,color:C.acc,marginBottom:8}}>🧮 複合分數</div>
-        {Object.entries(compScores).map(([k,c])=>{
-          const bucketKey="comp:"+k;
-          const bucket=buckets[bucketKey]||buckets[k];
-          const isTopBucket=bucket==="Top 10%";
-          const predicts=c.predicts;
-          const predictsZh=predicts==="away"?awayZh:predicts==="home"?homeZh:"—";
-          const valColor=c.value>=0?C.acc:C.b;
-          return<div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${C.bd}`}}>
-            <span style={{fontSize:11,color:C.d,wordBreak:"break-all",flex:1}}>{k}</span>
-            <span style={{...mono,fontSize:12,color:valColor,fontWeight:700,marginLeft:6}}>{c.value>=0?"+":""}{c.value?.toFixed(2)}</span>
-            <span style={{color:C.m,margin:"0 6px",fontSize:11}}>→</span>
-            <span style={{fontSize:12,color:predicts==="away"?C.g:C.acc,fontWeight:700}}>{predictsZh}</span>
-            {isTopBucket&&<span style={{marginLeft:6,fontSize:12}}>⭐</span>}
-          </div>;
-        })}
+      {/* Bet Type Tabs */}
+      {availableBts.length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`}}>
+        <div style={{fontSize:12,fontWeight:700,color:C.acc,marginBottom:8}}>🎯 六盤口預測</div>
+        <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"}}>
+          {availableBts.map(b=>{
+            const bt=betTypes[b.key];
+            const top=bt?.is_top_10_pct;
+            const sel=selBt===b.key;
+            return<button key={b.key} onClick={()=>setSelBt(b.key)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,cursor:"pointer",fontWeight:600,border:sel?`2px solid ${top?C.g:C.acc}`:`1px solid ${C.bd}`,background:sel?(top?"rgba(16,185,129,0.12)":C.accD):"transparent",color:sel?(top?C.g:C.acc):C.d,outline:"none"}}>
+              {b.short}{top?" ⭐":""}
+            </button>;
+          })}
+        </div>
+        <BetTypePanel btKey={selBt} bt={betTypes[selBt]} awayZh={awayZh} homeZh={homeZh}/>
       </div>}
 
-      {/* Matched Filters */}
-      {rec.matched_filters&&rec.matched_filters.length>0&&<div style={{background:"rgba(16,185,129,0.08)",borderRadius:8,padding:10,border:`1px solid ${C.g}`,marginBottom:8}}>
-        <div style={{fontSize:12,fontWeight:700,color:C.g,marginBottom:6}}>✅ 符合篩選</div>
-        {rec.matched_filters.map((f,i)=><div key={i} style={{fontSize:11,color:C.t,padding:"3px 0"}}>✓ {f}</div>)}
-      </div>}
-
-      {/* Recommendation Footer */}
-      <div style={{borderTop:`1px solid ${C.bd}`,paddingTop:8,fontSize:12}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-          <span style={{color:C.d}}>預測勝方</span>
-          <span style={{fontWeight:700,color:rec.predicted_winner==="away"?C.g:rec.predicted_winner==="home"?C.acc:C.t}}>
-            {rec.predicted_winner_zh||(rec.predicted_winner==="away"?awayZh:rec.predicted_winner==="home"?homeZh:"—")}
-          </span>
-        </div>
-        {stars&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-          <span style={{color:C.d}}>信心度</span>
-          <span>{stars} <span style={{color:C.d,fontSize:11}}>({conf==="high"?"高":conf==="medium"?"中":"低"})</span></span>
-        </div>}
-        {rec.min_combined_odds_needed&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-          <span style={{color:C.d}}>建議最低合計賠率</span>
-          <span style={{...mono,color:C.acc,fontWeight:700}}>{rec.min_combined_odds_needed.toFixed(2)}</span>
-        </div>}
-        <div style={{display:"flex",justifyContent:"space-between",marginTop:6,paddingTop:6,borderTop:`1px solid ${C.bd}`}}>
-          <span style={{color:C.d}}>優勢統計</span>
-          <span>
-            <span style={{color:C.g,fontWeight:700}}>{awayZh} {m.away_edges||0}</span>
-            <span style={{color:C.m}}> vs </span>
-            <span style={{color:C.acc,fontWeight:700}}>{homeZh} {m.home_edges||0}</span>
-          </span>
-        </div>
-        {rec.note&&<div style={{fontSize:11,color:C.d,marginTop:6,fontStyle:"italic"}}>💬 {rec.note}</div>}
+      {/* Footer summary */}
+      <div style={{borderTop:`1px solid ${C.bd}`,paddingTop:8,marginTop:8,fontSize:12,display:"flex",justifyContent:"space-between"}}>
+        <span style={{color:C.d}}>整體優勢</span>
+        <span>
+          <span style={{color:C.g,fontWeight:700}}>{awayZh} {m.away_edges||0}</span>
+          <span style={{color:C.m}}> vs </span>
+          <span style={{color:C.acc,fontWeight:700}}>{homeZh} {m.home_edges||0}</span>
+        </span>
       </div>
     </div>
   </div>;
 }
 
+// ─── Bet Type Selector (used by sub pages 2 & 3) ───
+function BetTypeSelector({value,onChange,countMap}){
+  return<div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+    {BET_TYPES.map(b=>{
+      const cnt=countMap?.[b.key];
+      const sel=value===b.key;
+      return<button key={b.key} onClick={()=>onChange(b.key)} style={{padding:"6px 12px",borderRadius:16,fontSize:12,cursor:"pointer",fontWeight:600,border:sel?`2px solid ${C.acc}`:`1px solid ${C.bd}`,background:sel?C.accD:"transparent",color:sel?C.acc:C.d,outline:"none"}}>
+        {b.short}{cnt!=null?`: ${cnt}`:""}
+      </button>;
+    })}
+  </div>;
+}
+
+// ─── Main Analysis View ───
 function AnalysisView(){
   const[data,setData]=useState(()=>load("mlb-analysis",null));
   const[sub,setSub]=useState("matchups");
   const[input,setInput]=useState("");
   const[err,setErr]=useState("");
+  const[indBt,setIndBt]=useState("ml");
+  const[filterBt,setFilterBt]=useState("ml");
 
   const loadJson=()=>{
     try{
@@ -1223,27 +1311,31 @@ function AnalysisView(){
   };
   const clearData=()=>{if(confirm("確定清除已載入的分析資料？")){setData(null);save("mlb-analysis",null)}};
 
-  // Identify reverse metrics from correlations (pct < 50%)
-  const reverseSet=useMemo(()=>{
-    const s=new Set();
-    if(data?.correlations){
-      Object.entries(data.correlations).forEach(([k,c])=>{if(c.pct<50)s.add(k)});
-    }
-    return s;
-  },[data]);
-
-  // Sort matchups: Top 10% first, then by edge gap descending
+  // Sort matchups: any_top_10_pct first, then by edge gap descending
   const sortedMatchups=useMemo(()=>{
-    if(!data?.matchups)return[];
-    return[...data.matchups].sort((a,b)=>{
-      const at=a.recommendation?.is_top_10_pct?1:0;
-      const bt=b.recommendation?.is_top_10_pct?1:0;
+    const list=data?.today_matchups||data?.matchups||[];
+    return[...list].sort((a,b)=>{
+      const at=a.any_top_10_pct?1:0;
+      const bt=b.any_top_10_pct?1:0;
       if(at!==bt)return bt-at;
       const da=Math.abs((a.away_edges||0)-(a.home_edges||0));
       const db=Math.abs((b.away_edges||0)-(b.home_edges||0));
       return db-da;
     });
   },[data]);
+
+  // Build profitable filter counts per bet type
+  const filterCounts=useMemo(()=>{
+    const m={};
+    if(data?.baseline?.bet_types){
+      Object.entries(data.baseline.bet_types).forEach(([k,v])=>{m[k]=(v.profitable_filters||[]).length});
+    }
+    return m;
+  },[data]);
+
+  const baseline=data?.baseline;
+  const btData=baseline?.bet_types?.[indBt];
+  const filterBtData=baseline?.bet_types?.[filterBt];
 
   return<div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -1264,21 +1356,45 @@ function AnalysisView(){
     {data&&<>
       <div style={{fontSize:11,color:C.d,marginBottom:12,padding:"8px 12px",background:C.card,borderRadius:8,border:`1px solid ${C.bd}`}}>
         資料日期：<span style={{color:C.t}}>{data.date||"—"}</span>
-        {data.season_range&&<> · 賽季：<span style={{color:C.t}}>{data.season_range}</span></>}
-        · 樣本：<span style={{color:C.t}}>{data.total_games_analyzed?.toLocaleString()||data.total_season_games||"—"}</span> 場
+        {baseline?.season_range&&<> · 賽季：<span style={{color:C.t}}>{baseline.season_range}</span></>}
+        · 樣本：<span style={{color:C.t}}>{baseline?.total_games_analyzed?.toLocaleString()||data.current_season_games||"—"}</span> 場
       </div>
 
       <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
         <Pill sel={sub==="matchups"} onClick={()=>setSub("matchups")}>今日分析</Pill>
-        <Pill sel={sub==="correlations"} onClick={()=>setSub("correlations")}>指標驗證</Pill>
+        <Pill sel={sub==="indicators"} onClick={()=>setSub("indicators")}>指標驗證</Pill>
         <Pill sel={sub==="filters"} onClick={()=>setSub("filters")}>可獲利篩選</Pill>
       </div>
 
-      {sub==="correlations"&&data.correlations&&<CorrelationsTable correlations={data.correlations}/>}
-      {sub==="filters"&&<ProfitableFilters filters={data.profitable_filters} generatedAt={data.generated_at} totalGames={data.total_games_analyzed} seasonRange={data.season_range}/>}
       {sub==="matchups"&&<div>
         {sortedMatchups.length===0?<div style={{textAlign:"center",padding:40,color:C.d}}>無今日比賽資料</div>:
-        sortedMatchups.map((m,i)=><MatchupCardV2 key={i} m={m} reverseSet={reverseSet}/>)}
+        sortedMatchups.map((m,i)=><MatchupCardV3 key={i} m={m}/>)}
+      </div>}
+
+      {sub==="indicators"&&<div>
+        <div style={{fontSize:11,color:C.d,marginBottom:10,padding:"8px 12px",background:C.card,borderRadius:8,border:`1px solid ${C.bd}`}}>
+          深綠 ≥56% 強信號　·　淺綠 54-56% 有效　·　灰 52-54% 微弱　·　黃 50-52% 持平　·　紅 {"<"}50% 反向
+        </div>
+        <BetTypeSelector value={indBt} onChange={setIndBt}/>
+        {btData?<IndicatorRanking ranking={btData.indicator_ranking} btKey={indBt}/>:<div style={{textAlign:"center",padding:30,color:C.d,fontSize:12}}>該盤口無資料</div>}
+      </div>}
+
+      {sub==="filters"&&<div>
+        <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.acc,marginBottom:8}}>💡 使用方法</div>
+          <div style={{fontSize:12,color:C.d,lineHeight:1.6}}>
+            1. 每天跑 daily 後，檢視「今日分析」找符合這些篩選的場次<br/>
+            2. 兩腳合計賠率必須超過「損益平衡賠率」才有正期望值<br/>
+            3. Top% 10 樣本少可靠度最高，Top% 30 則較寬鬆
+          </div>
+        </div>
+        <BetTypeSelector value={filterBt} onChange={setFilterBt} countMap={filterCounts}/>
+        {filterBtData?<ProfitableFiltersTable filters={filterBtData.profitable_filters}/>:<div style={{textAlign:"center",padding:30,color:C.d,fontSize:12}}>該盤口無資料</div>}
+        <div style={{fontSize:11,color:C.m,padding:"12px 4px",textAlign:"center",lineHeight:1.6}}>
+          📊 數據樣本：{baseline?.total_games_analyzed?.toLocaleString()||"—"} 場{baseline?.season_range?` (${baseline.season_range})`:""}<br/>
+          🔄 上次更新：{data.generated_at||"—"}<br/>
+          ⚠️ 樣本 {"<"} 1,000 的篩選可靠度較低，台彩大小分賠率通常低於損益平衡，實戰以 ML 和讓分 1.5 為主
+        </div>
       </div>}
     </>}
   </div>;

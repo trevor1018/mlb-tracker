@@ -6,9 +6,15 @@ MLB 投注分析工具 — 統計相關性回測 + 牛棚追蹤 + 每日分析
   python mlb_analyzer.py rebuild <season>            # 從既有 box cache 重新解析 (不打 API)
   python mlb_analyzer.py rebuild range <s> <e>       # 多季重新解析
   python mlb_analyzer.py correlate <season>          # 回測單一賽季
-  python mlb_analyzer.py correlate range <s> <e>     # 回測多季合併
-  python mlb_analyzer.py today                       # 產出今日分析 JSON (用當季數據)
-  python mlb_analyzer.py daily                       # 抓當季最新+回測+今日分析(每日例行)
+  python mlb_analyzer.py correlate range <s> <e>     # 回測多季合併 (自動存 baseline)
+  python mlb_analyzer.py daily [date]                # 每日例行: 抓最新+產生分析 JSON
+  python mlb_analyzer.py today [date]                # 不抓新資料, 只重新產生分析
+
+日期參數 (可選):
+  daily                → 今天
+  daily 4.11           → 2026-04-11
+  daily 4/11           → 2026-04-11
+  daily 2025-09-28     → 歷史日期
 """
 import json, re, sys, os, time
 from datetime import datetime, timedelta
@@ -44,7 +50,90 @@ BULLPEN_WINDOW = 3     # 牛棚疲勞追蹤天數
 FIP_CONSTANT = 3.10    # 近似 cFIP
 HOME_ADV_BONUS = 0.15  # 主場優勢加成 (z-score 單位，約對應 1-2% 勝率)
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
+BASELINE_FILE = "baseline_10y.json"
+ANALYSIS_OUTPUT = "mlb_analysis.json"
 API_BASE = "https://statsapi.mlb.com/api/v1"
+
+# ═══════════════════════════════════════════
+# 盤口定義 — 支援多種 bet type 並行回測
+# ═══════════════════════════════════════════
+# 每種盤口有獨立的結果分析、bucket threshold、profitable filters
+# type: 'directional' (ML, 讓分) 用「差距」; 'total' (大小分) 用「加總」
+BET_TYPES = [
+    # (key, name, type, line, outcome_fn)
+    ('ml',         '不讓分',      'directional', 0,   lambda g: g.winner_side),
+    ('spread_1.5', '讓分 1.5',   'directional', 1.5,
+        lambda g: 'home' if (g.home_score - g.away_score) >= 2 else 'away'),
+    ('spread_2.5', '讓分 2.5',   'directional', 2.5,
+        lambda g: 'home' if (g.home_score - g.away_score) >= 3 else 'away'),
+    ('total_7.5',  '大小分 7.5', 'total',       7.5,
+        lambda g: 'over' if (g.home_score + g.away_score) > 7.5 else 'under'),
+    ('total_8.5',  '大小分 8.5', 'total',       8.5,
+        lambda g: 'over' if (g.home_score + g.away_score) > 8.5 else 'under'),
+    ('total_9.5',  '大小分 9.5', 'total',       9.5,
+        lambda g: 'over' if (g.home_score + g.away_score) > 9.5 else 'under'),
+]
+
+# 複合指標定義 (directional - ML 與 讓分用)
+# 格式: (name, [(stat_key, weight, source)], use_home_adv)
+# source: "team" 用球隊累積, "sp" 用今日先發投手
+COMPOSITES_DEF = [
+    # === 純球隊複合 ===
+    ("ops+era", [("ops", 1, "team"), ("era", -1, "team")], False),
+    ("ops+fip", [("ops", 1, "team"), ("fip", -1, "team")], False),
+    ("ops+whip", [("ops", 1, "team"), ("whip", -1, "team")], False),
+    ("run_diff+fip", [("run_diff_per_game", 1, "team"), ("fip", -1, "team")], False),
+    ("pyth+ops+fip", [("pyth_pct", 1, "team"), ("ops", 1, "team"), ("fip", -1, "team")], False),
+    ("slg+era", [("slg", 1, "team"), ("era", -1, "team")], False),
+    ("obp+whip", [("obp", 1, "team"), ("whip", -1, "team")], False),
+    # === 加入主場優勢 ===
+    ("ops+era+home", [("ops", 1, "team"), ("era", -1, "team")], True),
+    ("run_diff+fip+home", [("run_diff_per_game", 1, "team"), ("fip", -1, "team")], True),
+    ("pyth+ops+fip+home", [("pyth_pct", 1, "team"), ("ops", 1, "team"), ("fip", -1, "team")], True),
+    # === 用今日先發投手 ===
+    ("ops+sp_era", [("ops", 1, "team"), ("sp_era", -1, "sp")], False),
+    ("ops+sp_fip", [("ops", 1, "team"), ("sp_fip", -1, "sp")], False),
+    ("ops+sp_whip", [("ops", 1, "team"), ("sp_whip", -1, "sp")], False),
+    ("run_diff+sp_fip", [("run_diff_per_game", 1, "team"), ("sp_fip", -1, "sp")], False),
+    ("pyth+ops+sp_fip", [("pyth_pct", 1, "team"), ("ops", 1, "team"), ("sp_fip", -1, "sp")], False),
+    # === SP + 主場優勢 (完整組合) ===
+    ("ops+sp_era+home", [("ops", 1, "team"), ("sp_era", -1, "sp")], True),
+    ("ops+sp_fip+home", [("ops", 1, "team"), ("sp_fip", -1, "sp")], True),
+    ("pyth+ops+sp_fip+home", [("pyth_pct", 1, "team"), ("ops", 1, "team"), ("sp_fip", -1, "sp")], True),
+    ("run_diff+sp_fip+home", [("run_diff_per_game", 1, "team"), ("sp_fip", -1, "sp")], True),
+]
+
+# 總和型複合指標 (total - 大小分用)
+# 加總兩隊的值，正權重 = 高值 → 偏大分, 負權重 = 高值 → 偏小分
+# 例：ops 加總越高 → 越可能大分 (weight=+1)
+#     k9 加總越高 → 越可能小分 (weight=-1)
+TOTAL_COMPOSITES_DEF = [
+    # 純打擊
+    ("runs_pg",            [("runs_per_game", 1, "team")]),
+    ("ops",                [("ops", 1, "team")]),
+    ("slg",                [("slg", 1, "team")]),
+    ("hr_pg",              [("hr_per_game", 1, "team")]),
+    # 純投球 (團隊)
+    ("era",                [("era", 1, "team")]),
+    ("fip",                [("fip", 1, "team")]),
+    ("whip",               [("whip", 1, "team")]),
+    ("k9_inv",             [("k9", -1, "team")]),
+    # 打擊+投球組合
+    ("runs+era",           [("runs_per_game", 1, "team"), ("era", 1, "team")]),
+    ("ops+era",            [("ops", 1, "team"), ("era", 1, "team")]),
+    ("ops+fip",            [("ops", 1, "team"), ("fip", 1, "team")]),
+    ("ops+whip",           [("ops", 1, "team"), ("whip", 1, "team")]),
+    ("runs+fip",           [("runs_per_game", 1, "team"), ("fip", 1, "team")]),
+    ("runs-k9",            [("runs_per_game", 1, "team"), ("k9", -1, "team")]),
+    ("ops-k9",             [("ops", 1, "team"), ("k9", -1, "team")]),
+    # 投手+打擊 使用今日先發
+    ("ops+sp_era",         [("ops", 1, "team"), ("sp_era", 1, "sp")]),
+    ("ops+sp_fip",         [("ops", 1, "team"), ("sp_fip", 1, "sp")]),
+    ("runs+sp_era",        [("runs_per_game", 1, "team"), ("sp_era", 1, "sp")]),
+    ("runs+sp_fip",        [("runs_per_game", 1, "team"), ("sp_fip", 1, "sp")]),
+    ("ops-sp_k9",          [("ops", 1, "team"), ("sp_k9", -1, "sp")]),
+    ("ops+sp_whip",        [("ops", 1, "team"), ("sp_whip", 1, "sp")]),
+]
 
 TEAM_ZH = {
     "Arizona Diamondbacks": "響尾蛇", "Atlanta Braves": "勇士",
@@ -94,6 +183,26 @@ def progress_done(label):
     """完成進度條後換行"""
     sys.stdout.write("\n")
     sys.stdout.flush()
+
+
+def parse_date_arg(arg):
+    """解析日期參數，支援多種格式:
+    4.11, 4/11, 4-11       → 當年 4 月 11 日
+    2026-04-11, 2026.04.11 → 完整日期
+    """
+    if not arg:
+        return None
+    s = arg.strip().replace('.', '-').replace('/', '-')
+    parts = s.split('-')
+
+    if len(parts) == 2:  # 月-日 (補當年)
+        month, day = int(parts[0]), int(parts[1])
+        return f"{CURRENT_SEASON}-{month:02d}-{day:02d}"
+    elif len(parts) == 3:  # 年-月-日
+        year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    else:
+        raise ValueError(f"無法解析日期: {arg}")
 
 
 # ═══════════════════════════════════════════
@@ -785,7 +894,7 @@ def run_correlation_analysis(games):
 
         # 只有雙方球隊都打了足夠場次才納入
         if away_snap['games'] >= MIN_GAMES and home_snap['games'] >= MIN_GAMES:
-            matchups.append({
+            m = {
                 'date': g.date,
                 'season': game_season,
                 'away': g.away_name,
@@ -795,7 +904,13 @@ def run_correlation_analysis(games):
                 'away_sp_snap': away_sp_snap,
                 'home_sp_snap': home_sp_snap,
                 'winner_side': g.winner_side,
-            })
+                'total_runs': g.away_score + g.home_score,
+                'score_diff': g.home_score - g.away_score,  # home 視角
+            }
+            # 預先計算每個 bet type 的 outcome
+            for bt_key, _, _, _, outcome_fn in BET_TYPES:
+                m[f'out_{bt_key}'] = outcome_fn(g)
+            matchups.append(m)
 
         # 更新球隊累積（在記錄 matchup 之後！）
         trackers[g.away_name].add_game(g.date, g.away_stats, g.winner_side == "away")
@@ -820,170 +935,43 @@ def run_correlation_analysis(games):
         return {}, trackers
 
     # 要測試的指標
+    # (name, getter, direction_for_directional, total_direction)
+    # total_direction: "positive" 高者偏大分, "negative" 高者偏小分, "neutral" 不用於大小分
     single_stats = [
-        # (指標名, 取值函數, 方向: "higher"=高的好 / "lower"=低的好)
-        ("win_pct", lambda s: s['win_pct'], "higher"),
-        ("run_diff_pg", lambda s: s['run_diff_per_game'], "higher"),
-        ("pyth_pct", lambda s: s['pyth_pct'], "higher"),
-        ("ops", lambda s: s['ops'], "higher"),
-        ("slg", lambda s: s['slg'], "higher"),
-        ("obp", lambda s: s['obp'], "higher"),
-        ("avg", lambda s: s['avg'], "higher"),
-        ("runs_pg", lambda s: s['runs_per_game'], "higher"),
-        ("hr_pg", lambda s: s['hr_per_game'], "higher"),
-        ("bb_rate", lambda s: s['bb_rate'], "higher"),
-        ("so_rate", lambda s: s['so_rate'], "lower"),
-        ("era", lambda s: s['era'], "lower"),
-        ("whip", lambda s: s['whip'], "lower"),
-        ("fip", lambda s: s['fip'], "lower"),
-        ("k9", lambda s: s['k9'], "higher"),
-        ("bb9", lambda s: s['bb9'], "lower"),
-        ("k_bb_ratio", lambda s: s['k_bb_ratio'], "higher"),
-        ("ra_pg", lambda s: s['ra_per_game'], "lower"),
-        ("bp_fatigue", lambda s: s['bp_fatigue'], "lower"),
-        ("home_adv", None, "home"),
+        ("win_pct",     lambda s: s['win_pct'],            "higher", "neutral"),
+        ("run_diff_pg", lambda s: s['run_diff_per_game'],  "higher", "neutral"),
+        ("pyth_pct",    lambda s: s['pyth_pct'],           "higher", "neutral"),
+        ("ops",         lambda s: s['ops'],                "higher", "positive"),
+        ("slg",         lambda s: s['slg'],                "higher", "positive"),
+        ("obp",         lambda s: s['obp'],                "higher", "positive"),
+        ("avg",         lambda s: s['avg'],                "higher", "positive"),
+        ("runs_pg",     lambda s: s['runs_per_game'],      "higher", "positive"),
+        ("hr_pg",       lambda s: s['hr_per_game'],        "higher", "positive"),
+        ("bb_rate",     lambda s: s['bb_rate'],            "higher", "positive"),
+        ("so_rate",     lambda s: s['so_rate'],            "lower",  "negative"),
+        ("era",         lambda s: s['era'],                "lower",  "positive"),
+        ("whip",        lambda s: s['whip'],               "lower",  "positive"),
+        ("fip",         lambda s: s['fip'],                "lower",  "positive"),
+        ("k9",          lambda s: s['k9'],                 "higher", "negative"),
+        ("bb9",         lambda s: s['bb9'],                "lower",  "positive"),
+        ("k_bb_ratio",  lambda s: s['k_bb_ratio'],         "higher", "negative"),
+        ("ra_pg",       lambda s: s['ra_per_game'],        "lower",  "positive"),
+        ("bp_fatigue",  lambda s: s['bp_fatigue'],         "lower",  "positive"),
+        ("home_adv",    None,                               "home",   "neutral"),
     ]
 
     # 投手相關指標 (今日先發投手 — 個別累積)
     sp_stats = [
-        ("sp_era", lambda s: s.get('sp_era', 0), "lower"),
-        ("sp_whip", lambda s: s.get('sp_whip', 0), "lower"),
-        ("sp_fip", lambda s: s.get('sp_fip', 0), "lower"),
-        ("sp_k9", lambda s: s.get('sp_k9', 0), "higher"),
-        ("sp_bb9", lambda s: s.get('sp_bb9', 0), "lower"),
-        ("sp_k_bb", lambda s: s.get('sp_k_bb', 0), "higher"),
-        ("sp_hr9", lambda s: s.get('sp_hr9', 0), "lower"),
+        ("sp_era",    lambda s: s.get('sp_era', 0),    "lower",  "positive"),
+        ("sp_whip",   lambda s: s.get('sp_whip', 0),   "lower",  "positive"),
+        ("sp_fip",    lambda s: s.get('sp_fip', 0),    "lower",  "positive"),
+        ("sp_k9",     lambda s: s.get('sp_k9', 0),     "higher", "negative"),
+        ("sp_bb9",    lambda s: s.get('sp_bb9', 0),    "lower",  "positive"),
+        ("sp_k_bb",   lambda s: s.get('sp_k_bb', 0),   "higher", "negative"),
+        ("sp_hr9",    lambda s: s.get('sp_hr9', 0),    "lower",  "positive"),
     ]
 
-    results = {}
-
-    print(f"{'指標':<16s} | 正確 | 總數 | 命中率  | 方向     | 顯著性")
-    print("-" * 72)
-
-    def test_indicator(stat_name, getter, direction, snap_key='snap'):
-        """測試單一指標的命中率"""
-        correct = 0
-        total = 0
-
-        for m in matchups:
-            if stat_name == "home_adv":
-                predicted_winner = "home"
-            else:
-                if snap_key == 'snap':
-                    a_snap = m['away_snap']
-                    h_snap = m['home_snap']
-                else:  # sp_snap
-                    a_snap = m['away_sp_snap']
-                    h_snap = m['home_sp_snap']
-
-                if a_snap is None or h_snap is None:
-                    continue
-
-                # 對 SP 指標檢查最低先發場數
-                if snap_key == 'sp_snap':
-                    if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
-                        continue
-
-                away_val = getter(a_snap)
-                home_val = getter(h_snap)
-
-                if away_val == home_val:
-                    continue
-
-                if direction == "higher":
-                    predicted_winner = "away" if away_val > home_val else "home"
-                else:
-                    predicted_winner = "away" if away_val < home_val else "home"
-
-            total += 1
-            if predicted_winner == m['winner_side']:
-                correct += 1
-        return correct, total
-
-    for stat_name, getter, direction in single_stats:
-        correct, total = test_indicator(stat_name, getter, direction, 'snap')
-
-        if total > 0:
-            pct = correct / total * 100
-            p = correct / total
-            se = sqrt(0.5 * 0.5 / total)
-            z = (p - 0.5) / se if se > 0 else 0
-            significant = "⭐" if abs(z) > 1.96 else ""
-            direction_label = {"higher": "高者勝", "lower": "低者勝", "home": "主場"}[direction]
-
-            results[stat_name] = {
-                'correct': correct, 'total': total,
-                'pct': round(pct, 1), 'z_score': round(z, 2),
-                'significant': abs(z) > 1.96,
-                'direction': direction_label,
-            }
-            print(f"{stat_name:<16s} | {correct:5d} | {total:5d} | {pct:5.1f}%  | {direction_label:<8s} | {significant}")
-
-    # === 投手指標 (今日先發 vs 對手) ===
-    if has_starter_data:
-        print(f"\n{'='*72}")
-        print(f"投手指標（今日先發投手累積）")
-        print(f"{'='*72}")
-        print(f"{'指標':<16s} | 正確 | 總數 | 命中率  | 方向     | 顯著性")
-        print("-" * 72)
-
-        for stat_name, getter, direction in sp_stats:
-            correct, total = test_indicator(stat_name, getter, direction, 'sp_snap')
-
-            if total > 0:
-                pct = correct / total * 100
-                se = sqrt(0.5 * 0.5 / total)
-                z = (pct/100 - 0.5) / se if se > 0 else 0
-                significant = "⭐" if abs(z) > 1.96 else ""
-                direction_label = "低者勝" if direction == "lower" else "高者勝"
-
-                results[stat_name] = {
-                    'correct': correct, 'total': total,
-                    'pct': round(pct, 1), 'z_score': round(z, 2),
-                    'significant': abs(z) > 1.96,
-                    'direction': direction_label,
-                }
-                print(f"{stat_name:<16s} | {correct:5d} | {total:5d} | {pct:5.1f}%  | {direction_label:<8s} | {significant}")
-
-    # === 複合指標 ===
-    print(f"\n{'='*72}")
-    print(f"複合指標")
-    print(f"{'='*72}")
-    print(f"{'指標':<30s} | 正確 | 總數 | 命中率  | 顯著性")
-    print("-" * 65)
-
-    # 複合指標：(name, [(stat_key, weight, source)], use_home_adv)
-    # source: "team" 用球隊累積，"sp" 用今日先發投手
-    composites = [
-        # === 純球隊複合 ===
-        ("ops+era", [("ops", 1, "team"), ("era", -1, "team")], False),
-        ("ops+fip", [("ops", 1, "team"), ("fip", -1, "team")], False),
-        ("ops+whip", [("ops", 1, "team"), ("whip", -1, "team")], False),
-        ("run_diff+fip", [("run_diff_per_game", 1, "team"), ("fip", -1, "team")], False),
-        ("pyth+ops+fip", [("pyth_pct", 1, "team"), ("ops", 1, "team"), ("fip", -1, "team")], False),
-        ("slg+era", [("slg", 1, "team"), ("era", -1, "team")], False),
-        ("obp+whip", [("obp", 1, "team"), ("whip", -1, "team")], False),
-
-        # === 加入主場優勢 ===
-        ("ops+era+home", [("ops", 1, "team"), ("era", -1, "team")], True),
-        ("run_diff+fip+home", [("run_diff_per_game", 1, "team"), ("fip", -1, "team")], True),
-        ("pyth+ops+fip+home", [("pyth_pct", 1, "team"), ("ops", 1, "team"), ("fip", -1, "team")], True),
-
-        # === 用今日先發投手 (替代球隊投手) ===
-        ("ops+sp_era", [("ops", 1, "team"), ("sp_era", -1, "sp")], False),
-        ("ops+sp_fip", [("ops", 1, "team"), ("sp_fip", -1, "sp")], False),
-        ("ops+sp_whip", [("ops", 1, "team"), ("sp_whip", -1, "sp")], False),
-        ("run_diff+sp_fip", [("run_diff_per_game", 1, "team"), ("sp_fip", -1, "sp")], False),
-        ("pyth+ops+sp_fip", [("pyth_pct", 1, "team"), ("ops", 1, "team"), ("sp_fip", -1, "sp")], False),
-
-        # === SP + 主場優勢 (組合最完整) ===
-        ("ops+sp_era+home", [("ops", 1, "team"), ("sp_era", -1, "sp")], True),
-        ("ops+sp_fip+home", [("ops", 1, "team"), ("sp_fip", -1, "sp")], True),
-        ("pyth+ops+sp_fip+home", [("pyth_pct", 1, "team"), ("ops", 1, "team"), ("sp_fip", -1, "sp")], True),
-        ("run_diff+sp_fip+home", [("run_diff_per_game", 1, "team"), ("sp_fip", -1, "sp")], True),
-    ]
-
-    # 先算各指標的均值和標準差 (用於 z-score 正規化) - 球隊與SP分開
+    # 先算各指標的均值和標準差 (必須在此處先算，後面測試需要用)
     all_values = {}
     for m in matchups:
         for snap_key in ['away_snap', 'home_snap']:
@@ -1006,83 +994,305 @@ def run_correlation_analysis(games):
         variance = sum((x - mean) ** 2 for x in vals) / len(vals) if len(vals) > 1 else 1
         stat_stds[k] = sqrt(variance) if variance > 0 else 1
 
-    def get_snap(m, source, side):
-        if source == "team":
-            return m[f'{side}_snap']
-        else:
-            return m.get(f'{side}_sp_snap')
+    # results 結構：results[bet_type][indicator_name] = {correct, total, pct, ...}
+    results = {bt[0]: {} for bt in BET_TYPES}
 
-    for comp_name, components, use_home_adv in composites:
+    def test_directional(matchups, stat_name, getter, direction, source, bet_type):
+        """測試 directional 指標 (ML, 讓分) 對某 bet type 的命中率"""
         correct = 0
         total = 0
+        out_key = f'out_{bet_type}'
+        for m in matchups:
+            if stat_name == "home_adv":
+                predicted = "home"
+            else:
+                if source == 'team':
+                    a_snap = m['away_snap']
+                    h_snap = m['home_snap']
+                else:
+                    a_snap = m['away_sp_snap']
+                    h_snap = m['home_sp_snap']
+                    if a_snap is None or h_snap is None:
+                        continue
+                    if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
+                        continue
+
+                a = getter(a_snap)
+                h = getter(h_snap)
+                if a == h:
+                    continue
+                if direction == "higher":
+                    predicted = "away" if a > h else "home"
+                else:
+                    predicted = "away" if a < h else "home"
+
+            total += 1
+            if predicted == m[out_key]:
+                correct += 1
+        return correct, total
+
+    # 指標名 -> snap 內的 key (用於查 stat_means)
+    STAT_KEY_MAP = {
+        "ops": "ops", "slg": "slg", "obp": "obp", "avg": "avg",
+        "runs_pg": "runs_per_game", "hr_pg": "hr_per_game",
+        "bb_rate": "bb_rate", "so_rate": "so_rate",
+        "era": "era", "whip": "whip", "fip": "fip",
+        "k9": "k9", "bb9": "bb9", "k_bb_ratio": "k_bb_ratio",
+        "ra_pg": "ra_per_game", "bp_fatigue": "bp_fatigue",
+        "win_pct": "win_pct", "run_diff_pg": "run_diff_per_game", "pyth_pct": "pyth_pct",
+        "sp_era": "sp_era", "sp_whip": "sp_whip", "sp_fip": "sp_fip",
+        "sp_k9": "sp_k9", "sp_bb9": "sp_bb9", "sp_k_bb": "sp_k_bb", "sp_hr9": "sp_hr9",
+    }
+
+    def test_total(matchups, stat_name, getter, total_direction, source, bet_type):
+        """測試 total 指標對大小分的命中率 (用 baseline 加總均值預測)"""
+        if total_direction == "neutral":
+            return 0, 0
+        stat_key = STAT_KEY_MAP.get(stat_name, stat_name)
+        mean_single = stat_means.get((source, stat_key), 0)
+        mean_combined = mean_single * 2
+
+        correct = 0
+        total = 0
+        out_key = f'out_{bet_type}'
 
         for m in matchups:
-            score = 0
-            valid = True
-            for stat_key, weight, source in components:
-                a_snap = get_snap(m, source, 'away')
-                h_snap = get_snap(m, source, 'home')
+            if source == 'team':
+                a_snap = m['away_snap']
+                h_snap = m['home_snap']
+            else:
+                a_snap = m.get('away_sp_snap')
+                h_snap = m.get('home_sp_snap')
                 if a_snap is None or h_snap is None:
-                    valid = False
-                    break
-
-                # SP 指標檢查最低先發場數
-                if source == "sp":
-                    if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
-                        valid = False
-                        break
-
-                a_val = a_snap.get(stat_key)
-                h_val = h_snap.get(stat_key)
-                if a_val is None or h_val is None:
-                    valid = False
-                    break
-
-                std = stat_stds.get((source, stat_key), 1) or 1
-                mean = stat_means.get((source, stat_key), 0)
-                a_z = (a_val - mean) / std
-                h_z = (h_val - mean) / std
-                score += (h_z - a_z) * weight  # 正 = 主場優勢
-
-            if not valid:
+                    continue
+                if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
+                    continue
+            try:
+                a = getter(a_snap)
+                h = getter(h_snap)
+            except (KeyError, TypeError):
                 continue
-
-            # 加入主場優勢
-            if use_home_adv:
-                score += HOME_ADV_BONUS
-
-            predicted = "home" if score > 0 else "away"
+            combined = a + h
+            if total_direction == "positive":
+                predicted = "over" if combined > mean_combined else "under"
+            else:
+                predicted = "under" if combined > mean_combined else "over"
             total += 1
-            if predicted == m['winner_side']:
+            if predicted == m[out_key]:
                 correct += 1
+        return correct, total
 
-        if total > 0:
-            pct = correct / total * 100
-            se = sqrt(0.5 * 0.5 / total)
-            z = (correct / total - 0.5) / se if se > 0 else 0
-            sig = "⭐" if abs(z) > 1.96 else ""
+    def add_result(bet_type, stat_name, correct, total, direction_label):
+        if total == 0:
+            return
+        pct = correct / total * 100
+        se = sqrt(0.5 * 0.5 / total)
+        z = (correct / total - 0.5) / se if se > 0 else 0
+        results[bet_type][stat_name] = {
+            'correct': correct, 'total': total,
+            'pct': round(pct, 1), 'z_score': round(z, 2),
+            'significant': abs(z) > 1.96,
+            'direction': direction_label,
+        }
 
-            results[f"composite:{comp_name}"] = {
-                'correct': correct, 'total': total,
-                'pct': round(pct, 1), 'z_score': round(z, 2),
-                'significant': abs(z) > 1.96,
-                'components': comp_name,
-            }
+    # === 為每個 bet type 跑一次所有指標 ===
+    for bt_key, bt_name, bt_type, bt_line, _ in BET_TYPES:
+        print(f"\n{'='*72}")
+        print(f"【{bt_name}】單一指標回測")
+        print(f"{'='*72}")
+        print(f"{'指標':<16s} | 正確 | 總數 | 命中率  | 方向     | 顯著性")
+        print("-" * 72)
 
-            print(f"{comp_name:<30s} | {correct:5d} | {total:5d} | {pct:5.1f}%  | {sig}")
+        if bt_type == 'directional':
+            # 球隊指標
+            for stat_name, getter, direction, _ in single_stats:
+                c, t = test_directional(matchups, stat_name, getter, direction, 'team', bt_key)
+                label = {"higher": "高者勝", "lower": "低者勝", "home": "主場"}[direction]
+                add_result(bt_key, stat_name, c, t, label)
+                if t > 0:
+                    r = results[bt_key][stat_name]
+                    sig = "⭐" if r['significant'] else ""
+                    print(f"{stat_name:<16s} | {c:5d} | {t:5d} | {r['pct']:5.1f}%  | {label:<8s} | {sig}")
 
-    # 排名
-    print(f"\n{'='*72}")
-    print(f"指標排名（依命中率排序）")
-    print(f"{'='*72}")
-    ranked = sorted(results.items(), key=lambda x: -x[1]['pct'])
-    for i, (name, r) in enumerate(ranked, 1):
-        sig = "⭐" if r.get('significant') else ""
-        print(f"  {i:2d}. {name:<30s}  {r['pct']:5.1f}%  ({r['correct']}/{r['total']})  {sig}")
+            # 投手指標
+            if has_starter_data:
+                print(f"  -- 先發投手 --")
+                for stat_name, getter, direction, _ in sp_stats:
+                    c, t = test_directional(matchups, stat_name, getter, direction, 'sp', bt_key)
+                    label = "低者勝" if direction == "lower" else "高者勝"
+                    add_result(bt_key, stat_name, c, t, label)
+                    if t > 0:
+                        r = results[bt_key][stat_name]
+                        sig = "⭐" if r['significant'] else ""
+                        print(f"{stat_name:<16s} | {c:5d} | {t:5d} | {r['pct']:5.1f}%  | {label:<8s} | {sig}")
 
-    # === 分層回測 (核心功能) ===
-    bucket_results = run_bucket_analysis(matchups, single_stats, sp_stats, composites, stat_means, stat_stds)
-    results['_buckets'] = bucket_results
+        else:  # total
+            for stat_name, getter, _, total_dir in single_stats:
+                if total_dir == "neutral":
+                    continue
+                c, t = test_total(matchups, stat_name, getter, total_dir, 'team', bt_key)
+                label = "加總高偏大" if total_dir == "positive" else "加總高偏小"
+                add_result(bt_key, stat_name, c, t, label)
+                if t > 0:
+                    r = results[bt_key][stat_name]
+                    sig = "⭐" if r['significant'] else ""
+                    print(f"{stat_name:<16s} | {c:5d} | {t:5d} | {r['pct']:5.1f}%  | {label:<8s} | {sig}")
+
+            if has_starter_data:
+                print(f"  -- 先發投手 --")
+                for stat_name, getter, _, total_dir in sp_stats:
+                    if total_dir == "neutral":
+                        continue
+                    c, t = test_total(matchups, stat_name, getter, total_dir, 'sp', bt_key)
+                    label = "加總高偏大" if total_dir == "positive" else "加總高偏小"
+                    add_result(bt_key, stat_name, c, t, label)
+                    if t > 0:
+                        r = results[bt_key][stat_name]
+                        sig = "⭐" if r['significant'] else ""
+                        print(f"{stat_name:<16s} | {c:5d} | {t:5d} | {r['pct']:5.1f}%  | {label:<8s} | {sig}")
+
+    # === 複合指標 (directional: ML, 讓分) ===
+    def compute_directional_composite(m, components, use_home_adv):
+        score = 0
+        for stat_key, weight, source in components:
+            if source == "team":
+                a_snap = m['away_snap']
+                h_snap = m['home_snap']
+            else:
+                a_snap = m.get('away_sp_snap')
+                h_snap = m.get('home_sp_snap')
+                if a_snap is None or h_snap is None:
+                    return None
+                if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
+                    return None
+            a_val = a_snap.get(stat_key)
+            h_val = h_snap.get(stat_key)
+            if a_val is None or h_val is None:
+                return None
+            std = stat_stds.get((source, stat_key), 1) or 1
+            mean = stat_means.get((source, stat_key), 0)
+            a_z = (a_val - mean) / std
+            h_z = (h_val - mean) / std
+            score += (h_z - a_z) * weight
+        if use_home_adv:
+            score += HOME_ADV_BONUS
+        return score
+
+    def compute_total_composite(m, components):
+        """加總型複合 (大小分用)。回傳 z-score 差距 (相對於樣本均值)"""
+        score = 0
+        for stat_key, weight, source in components:
+            if source == "team":
+                a_snap = m['away_snap']
+                h_snap = m['home_snap']
+            else:
+                a_snap = m.get('away_sp_snap')
+                h_snap = m.get('home_sp_snap')
+                if a_snap is None or h_snap is None:
+                    return None
+                if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
+                    return None
+            a_val = a_snap.get(stat_key)
+            h_val = h_snap.get(stat_key)
+            if a_val is None or h_val is None:
+                return None
+            combined = a_val + h_val
+            mean = stat_means.get((source, stat_key), 0) * 2  # 加總平均
+            std = (stat_stds.get((source, stat_key), 1) or 1) * sqrt(2)  # 獨立變量加總的 std
+            z = (combined - mean) / std
+            score += z * weight
+        return score
+
+    for bt_key, bt_name, bt_type, bt_line, _ in BET_TYPES:
+        print(f"\n{'='*72}")
+        print(f"【{bt_name}】複合指標回測")
+        print(f"{'='*72}")
+        print(f"{'指標':<30s} | 正確 | 總數 | 命中率  | 顯著性")
+        print("-" * 65)
+
+        out_key = f'out_{bt_key}'
+
+        if bt_type == 'directional':
+            for comp_name, components, use_home_adv in COMPOSITES_DEF:
+                # 讓分類盤口跳過 +home 變體 (10年回測證實主場加成對讓分是負效益)
+                if use_home_adv and bt_key != 'ml':
+                    continue
+
+                correct = 0
+                total = 0
+                for m in matchups:
+                    score = compute_directional_composite(m, components, use_home_adv)
+                    if score is None:
+                        continue
+                    predicted = "home" if score > 0 else "away"
+                    total += 1
+                    if predicted == m[out_key]:
+                        correct += 1
+
+                if total > 0:
+                    comp_stat_name = f"composite:{comp_name}"
+                    add_result(bt_key, comp_stat_name, correct, total, "複合")
+                    r = results[bt_key][comp_stat_name]
+                    sig = "⭐" if r['significant'] else ""
+                    print(f"{comp_name:<30s} | {correct:5d} | {total:5d} | {r['pct']:5.1f}%  | {sig}")
+        else:  # total
+            for comp_name, components in TOTAL_COMPOSITES_DEF:
+                correct = 0
+                total = 0
+                for m in matchups:
+                    score = compute_total_composite(m, components)
+                    if score is None:
+                        continue
+                    predicted = "over" if score > 0 else "under"
+                    total += 1
+                    if predicted == m[out_key]:
+                        correct += 1
+
+                if total > 0:
+                    comp_stat_name = f"composite:{comp_name}"
+                    add_result(bt_key, comp_stat_name, correct, total, "加總複合")
+                    r = results[bt_key][comp_stat_name]
+                    sig = "⭐" if r['significant'] else ""
+                    print(f"{comp_name:<30s} | {correct:5d} | {total:5d} | {r['pct']:5.1f}%  | {sig}")
+
+    # 排名 (各 bet type 分開顯示 top 10)
+    for bt_key, bt_name, bt_type, bt_line, _ in BET_TYPES:
+        print(f"\n{'='*72}")
+        print(f"【{bt_name}】指標排名 Top 15")
+        print(f"{'='*72}")
+        ranked = sorted(results[bt_key].items(), key=lambda x: -x[1]['pct'])
+        for i, (name, r) in enumerate(ranked[:15], 1):
+            sig = "⭐" if r.get('significant') else ""
+            print(f"  {i:2d}. {name:<32s}  {r['pct']:5.1f}%  ({r['correct']}/{r['total']})  {sig}")
+
+    # === 分層回測 (每個 bet type 各跑一次) ===
+    bucket_thresholds_all = {}  # {bet_type: {indicator: thresholds}}
+    profitable_filters_all = {}  # {bet_type: [filters]}
+
+    for bt_key, bt_name, bt_type, bt_line, _ in BET_TYPES:
+        print(f"\n{'='*72}")
+        print(f"【{bt_name}】分層回測")
+        print(f"{'='*72}")
+        b_thresh, b_profit = run_bucket_analysis_for_bet_type(
+            matchups, single_stats, sp_stats, bt_key, bt_type,
+            stat_means, stat_stds
+        )
+        bucket_thresholds_all[bt_key] = b_thresh
+        profitable_filters_all[bt_key] = b_profit
+
+    # === 自動存 baseline (多季資料時) ===
+    seasons_in_data = sorted(set(int(m['date'][:4]) for m in matchups))
+    if len(seasons_in_data) >= 2:
+        save_baseline({
+            'season_range': f"{seasons_in_data[0]}-{seasons_in_data[-1]}",
+            'seasons': seasons_in_data,
+            'total_games_analyzed': len(matchups),
+            'results': results,
+            'stat_means': stat_means,
+            'stat_stds': stat_stds,
+            'bucket_thresholds': bucket_thresholds_all,
+            'profitable_filters': profitable_filters_all,
+        })
 
     return results, trackers
 
@@ -1090,99 +1300,192 @@ def run_correlation_analysis(games):
 # ═══════════════════════════════════════════
 # 分層回測：找出真正能下注的場次
 # ═══════════════════════════════════════════
-def run_bucket_analysis(matchups, single_stats, sp_stats, composites, stat_means, stat_stds):
-    """
-    對每個指標做分層分析:
-    - 按「指標差距大小」排序所有場次
-    - 分成 5 桶 (Top 20%, 20-40%, ...)
-    - 找出命中率 > 58% 的場次組合 (才有正 EV)
-    """
-    print(f"\n{'='*72}")
-    print(f"分層回測 — 找出真正能下注的場次")
-    print(f"{'='*72}")
-    print(f"目標: 找出命中率 ≥ 58% 的場次篩選條件 (才能在台彩串2關正 ROI)\n")
+def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_key, bet_type,
+                                      stat_means, stat_stds):
+    """對單一 bet type 做分層回測"""
+    STAT_KEY_MAP = {
+        "ops": "ops", "slg": "slg", "obp": "obp", "avg": "avg",
+        "runs_pg": "runs_per_game", "hr_pg": "hr_per_game",
+        "bb_rate": "bb_rate", "so_rate": "so_rate",
+        "era": "era", "whip": "whip", "fip": "fip",
+        "k9": "k9", "bb9": "bb9", "k_bb_ratio": "k_bb_ratio",
+        "ra_pg": "ra_per_game", "bp_fatigue": "bp_fatigue",
+        "win_pct": "win_pct", "run_diff_pg": "run_diff_per_game", "pyth_pct": "pyth_pct",
+        "sp_era": "sp_era", "sp_whip": "sp_whip", "sp_fip": "sp_fip",
+        "sp_k9": "sp_k9", "sp_bb9": "sp_bb9", "sp_k_bb": "sp_k_bb", "sp_hr9": "sp_hr9",
+    }
+    out_key = f'out_{bet_type_key}'
+    print(f"目標: 找出命中率 ≥ 58% 的場次篩選條件\n")
 
     bucket_targets = []
 
-    # 單一球隊指標
-    for stat_name, getter, direction in single_stats:
-        if stat_name == "home_adv":
-            continue
+    # 依 bet type 建立 diff_func
+    # diff_func 回傳 (signed_score, predicted_outcome)
+    # - directional: score > 0 → home, < 0 → away
+    # - total: score > 0 → over, < 0 → under
 
-        def make_diff_func(g, d):
-            def diff_func(m):
-                a = g(m['away_snap'])
-                h = g(m['home_snap'])
-                return (h - a) if d == "higher" else (a - h)
-            return diff_func
+    if bet_type == 'directional':
+        # 單一球隊指標
+        for stat_name, getter, direction, _ in single_stats:
+            if stat_name == "home_adv":
+                continue
+            def make_dir_fn(g, d):
+                def fn(m):
+                    a = g(m['away_snap']); h = g(m['home_snap'])
+                    diff = (h - a) if d == "higher" else (a - h)
+                    if diff == 0:
+                        return None, None
+                    return diff, ("home" if diff > 0 else "away")
+                return fn
+            bucket_targets.append((stat_name, make_dir_fn(getter, direction)))
 
-        bucket_targets.append((stat_name, make_diff_func(getter, direction)))
+        # 單一 SP 指標
+        for stat_name, getter, direction, _ in sp_stats:
+            def make_sp_fn(g, d):
+                def fn(m):
+                    a_snap = m.get('away_sp_snap'); h_snap = m.get('home_sp_snap')
+                    if a_snap is None or h_snap is None:
+                        return None, None
+                    if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
+                        return None, None
+                    a = g(a_snap); h = g(h_snap)
+                    diff = (h - a) if d == "higher" else (a - h)
+                    if diff == 0:
+                        return None, None
+                    return diff, ("home" if diff > 0 else "away")
+                return fn
+            bucket_targets.append((stat_name, make_sp_fn(getter, direction)))
 
-    # 單一 SP 指標
-    for stat_name, getter, direction in sp_stats:
-        def make_sp_diff_func(g, d):
-            def diff_func(m):
-                a_snap = m.get('away_sp_snap')
-                h_snap = m.get('home_sp_snap')
-                if a_snap is None or h_snap is None:
-                    return None
-                if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
-                    return None
-                a = g(a_snap)
-                h = g(h_snap)
-                return (h - a) if d == "higher" else (a - h)
-            return diff_func
+        # 複合指標 (directional)
+        for comp_name, components, use_home_adv in COMPOSITES_DEF:
+            # 讓分類盤口跳過 +home 變體
+            if use_home_adv and bet_type_key != 'ml':
+                continue
+            def make_comp_fn(comps, home_bonus):
+                def fn(m):
+                    score = 0
+                    for stat_key, weight, source in comps:
+                        if source == "team":
+                            a_snap = m['away_snap']; h_snap = m['home_snap']
+                        else:
+                            a_snap = m.get('away_sp_snap'); h_snap = m.get('home_sp_snap')
+                            if a_snap is None or h_snap is None:
+                                return None, None
+                            if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
+                                return None, None
+                        a_val = a_snap.get(stat_key); h_val = h_snap.get(stat_key)
+                        if a_val is None or h_val is None:
+                            return None, None
+                        std = stat_stds.get((source, stat_key), 1) or 1
+                        mean = stat_means.get((source, stat_key), 0)
+                        score += ((h_val - mean) / std - (a_val - mean) / std) * weight
+                    if home_bonus:
+                        score += HOME_ADV_BONUS
+                    return score, ("home" if score > 0 else "away")
+                return fn
+            bucket_targets.append((f"comp:{comp_name}", make_comp_fn(components, use_home_adv)))
 
-        bucket_targets.append((stat_name, make_sp_diff_func(getter, direction)))
+    else:  # total
+        # 單一球隊指標 (總和)
+        for stat_name, getter, _, total_dir in single_stats:
+            if total_dir == "neutral":
+                continue
+            stat_key = STAT_KEY_MAP.get(stat_name, stat_name)
+            def make_tot_fn(g, td, sk):
+                mean_single = stat_means.get(('team', sk), 0)
+                std_single = stat_stds.get(('team', sk), 1) or 1
+                def fn(m):
+                    try:
+                        a = g(m['away_snap']); h = g(m['home_snap'])
+                    except (KeyError, TypeError):
+                        return None, None
+                    combined = a + h
+                    mean_c = mean_single * 2
+                    std_c = std_single * sqrt(2)
+                    z = (combined - mean_c) / std_c
+                    # 如果 total_direction == negative, 反向 (高值 → 偏小)
+                    if td == "negative":
+                        z = -z
+                    if z == 0:
+                        return None, None
+                    return z, ("over" if z > 0 else "under")
+                return fn
+            bucket_targets.append((stat_name, make_tot_fn(getter, total_dir, stat_key)))
 
-    # 複合指標
-    for comp_name, components, use_home_adv in composites:
-        def make_composite_func(comps, home_bonus):
-            def diff_func(m):
-                score = 0
-                for stat_key, weight, source in comps:
-                    if source == "team":
-                        a_snap = m['away_snap']
-                        h_snap = m['home_snap']
-                    else:
-                        a_snap = m.get('away_sp_snap')
-                        h_snap = m.get('home_sp_snap')
-                        if a_snap is None or h_snap is None:
-                            return None
-                        if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
-                            return None
-                    a_val = a_snap.get(stat_key)
-                    h_val = h_snap.get(stat_key)
-                    if a_val is None or h_val is None:
-                        return None
-                    std = stat_stds.get((source, stat_key), 1) or 1
-                    mean = stat_means.get((source, stat_key), 0)
-                    a_z = (a_val - mean) / std
-                    h_z = (h_val - mean) / std
-                    score += (h_z - a_z) * weight
-                if home_bonus:
-                    score += HOME_ADV_BONUS
-                return score
-            return diff_func
+        # 單一 SP 指標 (總和)
+        for stat_name, getter, _, total_dir in sp_stats:
+            if total_dir == "neutral":
+                continue
+            stat_key = STAT_KEY_MAP.get(stat_name, stat_name)
+            def make_sp_tot_fn(g, td, sk):
+                mean_single = stat_means.get(('sp', sk), 0)
+                std_single = stat_stds.get(('sp', sk), 1) or 1
+                def fn(m):
+                    a_snap = m.get('away_sp_snap'); h_snap = m.get('home_sp_snap')
+                    if a_snap is None or h_snap is None:
+                        return None, None
+                    if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
+                        return None, None
+                    try:
+                        a = g(a_snap); h = g(h_snap)
+                    except (KeyError, TypeError):
+                        return None, None
+                    combined = a + h
+                    mean_c = mean_single * 2
+                    std_c = std_single * sqrt(2)
+                    z = (combined - mean_c) / std_c
+                    if td == "negative":
+                        z = -z
+                    if z == 0:
+                        return None, None
+                    return z, ("over" if z > 0 else "under")
+                return fn
+            bucket_targets.append((stat_name, make_sp_tot_fn(getter, total_dir, stat_key)))
 
-        bucket_targets.append((f"comp:{comp_name}", make_composite_func(components, use_home_adv)))
+        # 複合指標 (total)
+        for comp_name, components in TOTAL_COMPOSITES_DEF:
+            def make_tot_comp_fn(comps):
+                def fn(m):
+                    score = 0
+                    for stat_key, weight, source in comps:
+                        if source == "team":
+                            a_snap = m['away_snap']; h_snap = m['home_snap']
+                        else:
+                            a_snap = m.get('away_sp_snap'); h_snap = m.get('home_sp_snap')
+                            if a_snap is None or h_snap is None:
+                                return None, None
+                            if a_snap.get('sp_starts', 0) < MIN_STARTS or h_snap.get('sp_starts', 0) < MIN_STARTS:
+                                return None, None
+                        a_val = a_snap.get(stat_key); h_val = h_snap.get(stat_key)
+                        if a_val is None or h_val is None:
+                            return None, None
+                        combined = a_val + h_val
+                        mean_c = stat_means.get((source, stat_key), 0) * 2
+                        std_c = (stat_stds.get((source, stat_key), 1) or 1) * sqrt(2)
+                        z = (combined - mean_c) / std_c
+                        score += z * weight
+                    if score == 0:
+                        return None, None
+                    return score, ("over" if score > 0 else "under")
+                return fn
+            bucket_targets.append((f"comp:{comp_name}", make_tot_comp_fn(components)))
 
     bucket_results = {}
-    profitable_filters = []  # 蒐集 >58% 的篩選條件
+    bucket_thresholds = {}
+    profitable_filters = []
 
     for stat_name, diff_func in bucket_targets:
-        # 計算每場比賽的 signed diff
         scored = []
         for m in matchups:
             try:
-                diff = diff_func(m)
+                result = diff_func(m)
             except (KeyError, TypeError):
                 continue
-            if diff is None or diff == 0:
+            if result is None or result[0] is None:
                 continue
-            predicted = "home" if diff > 0 else "away"
-            won = (predicted == m['winner_side'])
-            scored.append((abs(diff), won))
+            score, predicted = result
+            won = (predicted == m[out_key])
+            scored.append((abs(score), won))
 
         if len(scored) < 50:
             continue
@@ -1210,7 +1513,8 @@ def run_bucket_analysis(matchups, single_stats, sp_stats, composites, stat_means
 
         bucket_results[stat_name] = buckets
 
-        # 收集 >58% 的子集 (累積前 N%)
+        # 記錄各門檻的分數值與命中率
+        thresh = {'sample_size': n}
         for top_pct in [10, 20, 30]:
             cutoff = int(n * top_pct / 100)
             if cutoff < 30:
@@ -1218,8 +1522,12 @@ def run_bucket_analysis(matchups, single_stats, sp_stats, composites, stat_means
             top_subset = scored[:cutoff]
             wins = sum(1 for _, w in top_subset if w)
             pct = wins / cutoff * 100
+            threshold_val = scored[cutoff - 1][0] if cutoff > 0 else 0  # 最後一個入選的 abs score
+            thresh[f'top_{top_pct}_threshold'] = round(threshold_val, 4)
+            thresh[f'top_{top_pct}_hit_rate'] = round(pct, 1)
+            thresh[f'top_{top_pct}_sample'] = cutoff
+
             if pct >= 58:
-                # 串2關 ROI 估算
                 parlay_rate = (pct / 100) ** 2
                 profitable_filters.append({
                     'stat': stat_name,
@@ -1228,7 +1536,10 @@ def run_bucket_analysis(matchups, single_stats, sp_stats, composites, stat_means
                     'single_pct': round(pct, 1),
                     'parlay_pct': round(parlay_rate * 100, 1),
                     'breakeven_combined_odds': round(1 / parlay_rate, 2),
+                    'threshold': round(threshold_val, 4),
                 })
+
+        bucket_thresholds[stat_name] = thresh
 
     # 印出 top 指標的分層結果
     top_stats_for_print = sorted(
@@ -1284,95 +1595,489 @@ def run_bucket_analysis(matchups, single_stats, sp_stats, composites, stat_means
         print(f"  目前數據顯示沒有任何單一篩選能正 ROI")
         print(f"  建議: 收集更多季數據後再分析")
 
-    return bucket_results
+    return bucket_thresholds, profitable_filters
 
 
 # ═══════════════════════════════════════════
-# 第三步：今日比賽分析
+# Baseline 儲存/載入 (10 年回測基準)
 # ═══════════════════════════════════════════
-def generate_today_analysis(games, correlations, trackers):
-    today = datetime.now().strftime("%Y-%m-%d")
-    print(f"\n=== 今日比賽分析 ({today}) ===")
+def save_baseline(data):
+    """儲存 10 年回測 baseline 到 cache/baseline_10y.json (per bet type 結構)"""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    path = os.path.join(CACHE_DIR, BASELINE_FILE)
 
-    sched = api_get(f"/schedule?date={today}&sportId=1&hydrate=probablePitcher,linescore,team")
-    if not sched or not sched.get('dates'):
-        print("今天沒有比賽或尚未公布")
-        return
+    # 為每個 bet type 產生排名
+    bet_types_data = {}
+    for bt_key, bt_name, bt_type, bt_line, _ in BET_TYPES:
+        bt_results = data['results'].get(bt_key, {})
+        ranking = []
+        for name, r in sorted(bt_results.items(), key=lambda x: -x[1].get('pct', 0)):
+            entry = {
+                'name': name,
+                'pct': r.get('pct'),
+                'correct': r.get('correct'),
+                'total': r.get('total'),
+                'z_score': r.get('z_score'),
+                'significant': r.get('significant'),
+                'direction': r.get('direction'),
+            }
+            # 類別標記
+            if name.startswith('composite:'):
+                entry['category'] = 'composite'
+            elif name.startswith('sp_'):
+                entry['category'] = 'starter'
+            elif name == 'home_adv':
+                entry['category'] = 'situational'
+            elif name == 'bp_fatigue':
+                entry['category'] = 'bullpen'
+                entry['warning'] = '10 年大樣本驗證為無效 (≈50%)，僅作參考'
+            else:
+                entry['category'] = 'team'
+            ranking.append(entry)
 
-    today_matchups = []
-    for game in sched['dates'][0].get('games', []):
-        away_team = game['teams']['away']['team']['name']
-        home_team = game['teams']['home']['team']['name']
+        bet_types_data[bt_key] = {
+            'name': bt_name,
+            'type': bt_type,
+            'line': bt_line,
+            'indicator_ranking': ranking,
+            'bucket_thresholds': data['bucket_thresholds'].get(bt_key, {}),
+            'profitable_filters': data['profitable_filters'].get(bt_key, []),
+        }
 
-        away_sp = game['teams']['away'].get('probablePitcher', {}).get('fullName', 'TBD')
-        home_sp = game['teams']['home'].get('probablePitcher', {}).get('fullName', 'TBD')
+    # 序列化 tuple keys → "source:key"
+    serialized_means = {f"{k[0]}:{k[1]}": v for k, v in data['stat_means'].items()}
+    serialized_stds = {f"{k[0]}:{k[1]}": v for k, v in data['stat_stds'].items()}
 
-        away_snap = trackers[away_team].snapshot(today) if away_team in trackers else None
-        home_snap = trackers[home_team].snapshot(today) if home_team in trackers else None
+    baseline = {
+        'generated_at': datetime.now().isoformat(),
+        'season_range': data['season_range'],
+        'seasons': data['seasons'],
+        'total_games_analyzed': data['total_games_analyzed'],
+        'bet_types': bet_types_data,
+        'stat_means': serialized_means,
+        'stat_stds': serialized_stds,
+    }
 
-        if not away_snap or not home_snap:
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(baseline, f, ensure_ascii=False, indent=2)
+
+    print(f"\n💾 10 年 baseline 已存入: {path}")
+    for bt_key, bt_data in bet_types_data.items():
+        n_filters = len(bt_data['profitable_filters'])
+        print(f"   {bt_data['name']:<12s}: {len(bt_data['indicator_ranking'])} 指標, {n_filters} 個正 EV 篩選")
+def load_baseline():
+    """載入 10 年 baseline"""
+    path = os.path.join(CACHE_DIR, BASELINE_FILE)
+    if not os.path.exists(path):
+        return None
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    # 還原 tuple keys
+    data['stat_means'] = {tuple(k.split(':', 1)): v for k, v in data['stat_means'].items()}
+    data['stat_stds'] = {tuple(k.split(':', 1)): v for k, v in data['stat_stds'].items()}
+    return data
+
+
+# ═══════════════════════════════════════════
+# 當季 trackers 建立 (用於 daily)
+# ═══════════════════════════════════════════
+def build_current_trackers(games, cutoff_date=None):
+    """從比賽建立 team + pitcher trackers
+
+    cutoff_date: 只納入此日期「之前」的比賽 (YYYY-MM-DD)
+                 None = 納入所有傳入的比賽
+    """
+    team_trackers = {}
+    pitcher_trackers = {}
+
+    games.sort(key=lambda x: (x.date, x.game_pk))
+
+    for g in games:
+        # 只納入 cutoff_date 前的比賽 (避免用未來資料)
+        if cutoff_date and g.date >= cutoff_date:
             continue
 
-        # 比較關鍵指標
-        comparisons = {}
-        key_stats = ['ops', 'slg', 'obp', 'era', 'whip', 'fip', 'k9',
-                     'run_diff_per_game', 'pyth_pct', 'bp_fatigue']
-        for stat in key_stats:
-            a = away_snap.get(stat, 0)
-            h = home_snap.get(stat, 0)
-            # 判斷誰有優勢
-            better_higher = stat in ['ops', 'slg', 'obp', 'k9', 'run_diff_per_game', 'pyth_pct']
-            if better_higher:
-                edge = "away" if a > h else "home" if h > a else "even"
-            else:
-                edge = "away" if a < h else "home" if h < a else "even"
-            comparisons[stat] = {
-                'away': round(a, 3), 'home': round(h, 3), 'edge': edge
+        for name in [g.away_name, g.home_name]:
+            if name not in team_trackers:
+                team_trackers[name] = TeamCumulative()
+
+        team_trackers[g.away_name].add_game(g.date, g.away_stats, g.winner_side == "away")
+        team_trackers[g.home_name].add_game(g.date, g.home_stats, g.winner_side == "home")
+
+        if g.away_starter.pitcher_id > 0:
+            pid = g.away_starter.pitcher_id
+            if pid not in pitcher_trackers:
+                pitcher_trackers[pid] = PitcherCumulative(pitcher_id=pid, name=g.away_starter.name)
+            pitcher_trackers[pid].add_start(g.away_starter)
+        if g.home_starter.pitcher_id > 0:
+            pid = g.home_starter.pitcher_id
+            if pid not in pitcher_trackers:
+                pitcher_trackers[pid] = PitcherCumulative(pitcher_id=pid, name=g.home_starter.name)
+            pitcher_trackers[pid].add_start(g.home_starter)
+
+    return team_trackers, pitcher_trackers
+
+
+# ═══════════════════════════════════════════
+# 第三步：產出今日分析 JSON (使用 10 年 baseline)
+# ═══════════════════════════════════════════
+def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
+                                           away_sp_snap, home_sp_snap, baseline):
+    """根據 bet_type 算複合指標分數 + bucket 位置"""
+    means = baseline['stat_means']
+    stds = baseline['stat_stds']
+    bt_data = baseline['bet_types'].get(bt_key, {})
+    thresholds = bt_data.get('bucket_thresholds', {})
+
+    scores = {}
+
+    if bt_type == 'directional':
+        composites = COMPOSITES_DEF
+        for comp_name, components, use_home_adv in composites:
+            # 讓分類盤口跳過 +home 變體
+            if use_home_adv and bt_key != 'ml':
+                continue
+            score = 0
+            valid = True
+            for stat_key, weight, source in components:
+                if source == "team":
+                    a_val = away_snap.get(stat_key)
+                    h_val = home_snap.get(stat_key)
+                else:
+                    if away_sp_snap is None or home_sp_snap is None:
+                        valid = False; break
+                    if away_sp_snap.get('sp_starts', 0) < MIN_STARTS or home_sp_snap.get('sp_starts', 0) < MIN_STARTS:
+                        valid = False; break
+                    a_val = away_sp_snap.get(stat_key)
+                    h_val = home_sp_snap.get(stat_key)
+                if a_val is None or h_val is None:
+                    valid = False; break
+                mean = means.get((source, stat_key), 0)
+                std = stds.get((source, stat_key), 1) or 1
+                a_z = (a_val - mean) / std
+                h_z = (h_val - mean) / std
+                score += (h_z - a_z) * weight
+            if not valid:
+                continue
+            if use_home_adv:
+                score += HOME_ADV_BONUS
+
+            full_name = f"comp:{comp_name}"
+            t = thresholds.get(full_name, {})
+            abs_score = abs(score)
+            bucket = None
+            if t.get('top_10_threshold') is not None and abs_score >= t['top_10_threshold']:
+                bucket = "Top 10%"
+            elif t.get('top_20_threshold') is not None and abs_score >= t['top_20_threshold']:
+                bucket = "Top 20%"
+            elif t.get('top_30_threshold') is not None and abs_score >= t['top_30_threshold']:
+                bucket = "Top 30%"
+
+            scores[full_name] = {
+                'value': round(score, 3),
+                'predicts': 'home' if score > 0 else 'away',
+                'bucket': bucket,
+                'baseline_top_10_hit_rate': t.get('top_10_hit_rate'),
             }
 
-        # 計算優勢數
-        away_edges = sum(1 for v in comparisons.values() if v['edge'] == 'away')
-        home_edges = sum(1 for v in comparisons.values() if v['edge'] == 'home')
+    else:  # total
+        composites = TOTAL_COMPOSITES_DEF
+        for comp_name, components in composites:
+            score = 0
+            valid = True
+            for stat_key, weight, source in components:
+                if source == "team":
+                    a_val = away_snap.get(stat_key)
+                    h_val = home_snap.get(stat_key)
+                else:
+                    if away_sp_snap is None or home_sp_snap is None:
+                        valid = False; break
+                    if away_sp_snap.get('sp_starts', 0) < MIN_STARTS or home_sp_snap.get('sp_starts', 0) < MIN_STARTS:
+                        valid = False; break
+                    a_val = away_sp_snap.get(stat_key)
+                    h_val = home_sp_snap.get(stat_key)
+                if a_val is None or h_val is None:
+                    valid = False; break
+                combined = a_val + h_val
+                mean_c = means.get((source, stat_key), 0) * 2
+                std_c = (stds.get((source, stat_key), 1) or 1) * sqrt(2)
+                z = (combined - mean_c) / std_c
+                score += z * weight
+            if not valid:
+                continue
 
-        away_zh = TEAM_ZH.get(away_team, away_team)
-        home_zh = TEAM_ZH.get(home_team, home_team)
+            full_name = f"comp:{comp_name}"
+            t = thresholds.get(full_name, {})
+            abs_score = abs(score)
+            bucket = None
+            if t.get('top_10_threshold') is not None and abs_score >= t['top_10_threshold']:
+                bucket = "Top 10%"
+            elif t.get('top_20_threshold') is not None and abs_score >= t['top_20_threshold']:
+                bucket = "Top 20%"
+            elif t.get('top_30_threshold') is not None and abs_score >= t['top_30_threshold']:
+                bucket = "Top 30%"
 
-        today_matchups.append({
-            'away': away_team, 'away_zh': away_zh,
-            'home': home_team, 'home_zh': home_zh,
-            'away_sp': away_sp, 'home_sp': home_sp,
-            'away_record': f"{away_snap['wins']}-{away_snap['losses']}",
-            'home_record': f"{home_snap['wins']}-{home_snap['losses']}",
-            'comparisons': comparisons,
-            'away_edges': away_edges,
-            'home_edges': home_edges,
-            'edge_summary': "away" if away_edges > home_edges else "home" if home_edges > away_edges else "even",
-        })
+            scores[full_name] = {
+                'value': round(score, 3),
+                'predicts': 'over' if score > 0 else 'under',
+                'bucket': bucket,
+                'baseline_top_10_hit_rate': t.get('top_10_hit_rate'),
+            }
+
+    return scores
+
+
+def generate_daily_analysis(games, target_date=None):
+    """daily 主流程：用當季數據 + 10 年 baseline 產出指定日期的比賽分析 JSON
+
+    target_date: 'YYYY-MM-DD' 或 None (預設今天)
+    """
+    today = target_date if target_date else datetime.now().strftime("%Y-%m-%d")
+    print(f"\n=== 比賽分析 ({today}) ===")
+
+    # 載入 10 年 baseline
+    baseline = load_baseline()
+    if baseline is None:
+        print("❌ 找不到 10 年 baseline")
+        print("   請先執行: python mlb_analyzer.py correlate range 2015 2025")
+        return None
+
+    print(f"  使用 baseline: {baseline['season_range']} ({baseline['total_games_analyzed']} 場)")
+
+    # 建立當季 trackers (只用 target_date 前的比賽, 避免用未來資料)
+    team_trackers, pitcher_trackers = build_current_trackers(games, cutoff_date=today)
+    print(f"  使用 {today} 前的資料 | 球隊: {len(team_trackers)}, 投手: {len(pitcher_trackers)}")
+
+    # 抓今日賽程
+    sched = api_get(f"/schedule?date={today}&sportId=1&hydrate=probablePitcher,team")
+    if not sched or not sched.get('dates'):
+        print("  ⚠️ 今天沒有比賽或尚未公布")
+        today_matchups = []
+    else:
+        today_matchups = []
+        for game in sched['dates'][0].get('games', []):
+            away_team = game['teams']['away']['team']['name']
+            home_team = game['teams']['home']['team']['name']
+
+            if away_team not in team_trackers or home_team not in team_trackers:
+                continue
+
+            away_snap = team_trackers[away_team].snapshot(today)
+            home_snap = team_trackers[home_team].snapshot(today)
+
+            if away_snap['games'] < MIN_GAMES or home_snap['games'] < MIN_GAMES:
+                continue
+
+            # 今日先發投手
+            away_sp_info = game['teams']['away'].get('probablePitcher', {}) or {}
+            home_sp_info = game['teams']['home'].get('probablePitcher', {}) or {}
+            away_sp_id = away_sp_info.get('id')
+            home_sp_id = home_sp_info.get('id')
+            away_sp_name = away_sp_info.get('fullName', 'TBD')
+            home_sp_name = home_sp_info.get('fullName', 'TBD')
+
+            away_sp_snap = pitcher_trackers[away_sp_id].snapshot() if away_sp_id in pitcher_trackers else None
+            home_sp_snap = pitcher_trackers[home_sp_id].snapshot() if home_sp_id in pitcher_trackers else None
+
+            # 球隊指標比較 (當季累積值)
+            team_comparisons = {}
+            team_key_stats = [
+                ('ops', 'higher'), ('slg', 'higher'), ('obp', 'higher'), ('avg', 'higher'),
+                ('era', 'lower'), ('whip', 'lower'), ('fip', 'lower'),
+                ('k9', 'higher'), ('bb9', 'lower'),
+                ('run_diff_per_game', 'higher'), ('pyth_pct', 'higher'),
+                ('runs_per_game', 'higher'), ('ra_per_game', 'lower'),
+                ('bp_fatigue', 'lower'),  # 參考用, 有警告
+            ]
+            for stat, direction in team_key_stats:
+                a = away_snap.get(stat, 0)
+                h = home_snap.get(stat, 0)
+                if direction == 'higher':
+                    edge = 'away' if a > h else 'home' if h > a else 'even'
+                else:
+                    edge = 'away' if a < h else 'home' if h < a else 'even'
+                team_comparisons[stat] = {
+                    'away': round(a, 3) if isinstance(a, float) else a,
+                    'home': round(h, 3) if isinstance(h, float) else h,
+                    'edge': edge,
+                }
+
+            # SP 指標比較 (今日先發累積值)
+            sp_comparisons = {}
+            if away_sp_snap and home_sp_snap:
+                sp_key_stats = [
+                    ('sp_era', 'lower'), ('sp_whip', 'lower'), ('sp_fip', 'lower'),
+                    ('sp_k9', 'higher'), ('sp_bb9', 'lower'), ('sp_k_bb', 'higher'),
+                ]
+                for stat, direction in sp_key_stats:
+                    a = away_sp_snap.get(stat, 0)
+                    h = home_sp_snap.get(stat, 0)
+                    if direction == 'higher':
+                        edge = 'away' if a > h else 'home' if h > a else 'even'
+                    else:
+                        edge = 'away' if a < h else 'home' if h < a else 'even'
+                    sp_comparisons[stat] = {
+                        'away': round(a, 3),
+                        'home': round(h, 3),
+                        'edge': edge,
+                    }
+                sp_comparisons['sp_starts'] = {
+                    'away': away_sp_snap.get('sp_starts', 0),
+                    'home': home_sp_snap.get('sp_starts', 0),
+                    'edge': 'even',
+                }
+
+            # 對每個 bet type 計算複合分數 + 推薦
+            bet_type_analysis = {}
+            any_top_10 = False
+
+            for bt_key, bt_name, bt_type, bt_line, _ in BET_TYPES:
+                bt_data = baseline['bet_types'].get(bt_key, {})
+                scores = compute_composite_scores_for_bet_type(
+                    bt_key, bt_type, away_snap, home_snap,
+                    away_sp_snap, home_sp_snap, baseline
+                )
+
+                # 符合 profitable filter 的檢查
+                matched_filters = []
+                for f in bt_data.get('profitable_filters', []):
+                    stat_name = f['stat']
+                    top_pct = f['top_pct']
+                    score_data = scores.get(stat_name)
+                    if score_data and score_data.get('bucket'):
+                        bucket_pct = int(score_data['bucket'].replace('Top ', '').replace('%', ''))
+                        if bucket_pct <= top_pct:
+                            matched_filters.append({
+                                'stat': stat_name,
+                                'top_pct': top_pct,
+                                'baseline_hit_rate': f['single_pct'],
+                                'min_odds_needed': f['breakeven_combined_odds'],
+                            })
+
+                is_top_10_pct = any(f['top_pct'] == 10 for f in matched_filters)
+                if is_top_10_pct:
+                    any_top_10 = True
+
+                # 投票方向
+                if bt_type == 'directional':
+                    home_votes = sum(1 for s in scores.values() if s['predicts'] == 'home')
+                    away_votes = sum(1 for s in scores.values() if s['predicts'] == 'away')
+                    if home_votes > away_votes:
+                        predicted = 'home'
+                    elif away_votes > home_votes:
+                        predicted = 'away'
+                    else:
+                        predicted = 'even'
+                    vote_info = {'home': home_votes, 'away': away_votes}
+                else:
+                    over_votes = sum(1 for s in scores.values() if s['predicts'] == 'over')
+                    under_votes = sum(1 for s in scores.values() if s['predicts'] == 'under')
+                    if over_votes > under_votes:
+                        predicted = 'over'
+                    elif under_votes > over_votes:
+                        predicted = 'under'
+                    else:
+                        predicted = 'even'
+                    vote_info = {'over': over_votes, 'under': under_votes}
+
+                # 信心度
+                if is_top_10_pct and len(matched_filters) >= 2:
+                    confidence = 'high'
+                elif is_top_10_pct or any(f['top_pct'] <= 20 for f in matched_filters):
+                    confidence = 'medium'
+                else:
+                    confidence = 'low'
+
+                min_odds_needed = min((f['min_odds_needed'] for f in matched_filters), default=None)
+
+                bet_type_analysis[bt_key] = {
+                    'name': bt_name,
+                    'line': bt_line,
+                    'composite_scores': scores,
+                    'matched_filters': matched_filters,
+                    'is_top_10_pct': is_top_10_pct,
+                    'predicted': predicted,
+                    'votes': vote_info,
+                    'confidence': confidence,
+                    'min_combined_odds_needed': min_odds_needed,
+                }
+
+            # 計算優勢數 (for display only)
+            all_comparisons = {**team_comparisons, **sp_comparisons}
+            away_edges = sum(1 for v in all_comparisons.values() if v['edge'] == 'away')
+            home_edges = sum(1 for v in all_comparisons.values() if v['edge'] == 'home')
+
+            away_zh = TEAM_ZH.get(away_team, away_team)
+            home_zh = TEAM_ZH.get(home_team, home_team)
+
+            today_matchups.append({
+                'away': away_team, 'away_zh': away_zh,
+                'home': home_team, 'home_zh': home_zh,
+                'away_sp': away_sp_name, 'home_sp': home_sp_name,
+                'away_record': f"{away_snap['wins']}-{away_snap['losses']}",
+                'home_record': f"{home_snap['wins']}-{home_snap['losses']}",
+                'team_comparisons': team_comparisons,
+                'sp_comparisons': sp_comparisons,
+                'away_edges': away_edges,
+                'home_edges': home_edges,
+                'any_top_10_pct': any_top_10,
+                'bet_types': bet_type_analysis,
+            })
+
+        # 排序: 有任一 bet type 屬於 Top 10% 的優先
+        today_matchups.sort(key=lambda m: (
+            0 if m['any_top_10_pct'] else 1,
+            -abs(m['away_edges'] - m['home_edges'])
+        ))
 
     # 輸出 JSON
+    current_games_count = sum(1 for g in games if int(g.date[:4]) == CURRENT_SEASON)
     output = {
         'generated_at': datetime.now().isoformat(),
         'date': today,
-        'total_season_games': len(games),
-        'correlations': correlations,
-        'matchups': today_matchups,
+        'current_season': CURRENT_SEASON,
+        'current_season_games': current_games_count,
+        'baseline': {
+            'season_range': baseline['season_range'],
+            'total_games_analyzed': baseline['total_games_analyzed'],
+            'bet_types': {
+                bt_key: {
+                    'name': bt_data['name'],
+                    'type': bt_data['type'],
+                    'line': bt_data['line'],
+                    'indicator_ranking': bt_data['indicator_ranking'],
+                    'profitable_filters': bt_data['profitable_filters'],
+                }
+                for bt_key, bt_data in baseline['bet_types'].items()
+            },
+        },
+        'today_matchups': today_matchups,
     }
 
-    out_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mlb_analysis.json")
+    out_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ANALYSIS_OUTPUT)
     with open(out_file, 'w', encoding='utf-8') as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
     # 印出摘要
+    print(f"\n  共 {len(today_matchups)} 場符合條件")
     for m in today_matchups:
-        away_zh = m['away_zh']
-        home_zh = m['home_zh']
-        print(f"\n  {away_zh} ({m['away_record']}) @ {home_zh} ({m['home_record']})")
-        print(f"  先發: {m['away_sp']} vs {m['home_sp']}")
-        print(f"  指標優勢: {away_zh} {m['away_edges']}項 vs {home_zh} {m['home_edges']}項")
-
-        for stat, comp in m['comparisons'].items():
-            arrow = "◀" if comp['edge'] == 'away' else "▶" if comp['edge'] == 'home' else "="
-            print(f"    {stat:<18s}  {comp['away']:.3f}  {arrow}  {comp['home']:.3f}")
+        marker = " ⭐" if m['any_top_10_pct'] else ""
+        print(f"\n  {m['away_zh']} ({m['away_record']}) @ {m['home_zh']} ({m['home_record']}){marker}")
+        print(f"    先發: {m['away_sp']} vs {m['home_sp']}")
+        for bt_key, bt_rec in m['bet_types'].items():
+            if bt_rec['predicted'] == 'even':
+                continue
+            pred_display = bt_rec['predicted']
+            if bt_rec['predicted'] in ('home', 'away'):
+                pred_display = m['home_zh'] if bt_rec['predicted'] == 'home' else m['away_zh']
+            elif bt_rec['predicted'] == 'over':
+                pred_display = '大'
+            elif bt_rec['predicted'] == 'under':
+                pred_display = '小'
+            top10_mark = " ⭐" if bt_rec['is_top_10_pct'] else ""
+            print(f"    [{bt_rec['name']}] → {pred_display} (信心 {bt_rec['confidence']}){top10_mark}")
+            for f in bt_rec['matched_filters'][:2]:
+                print(f"       • {f['stat']} Top {f['top_pct']}% (歷史 {f['baseline_hit_rate']}%, 最低賠率 {f['min_odds_needed']})")
 
     print(f"\n分析已存入: {out_file}")
     return output
@@ -1449,20 +2154,25 @@ def main():
         if games:
             run_correlation_analysis(games)
 
-    # today - 用當季數據產生今日分析
+    # today - 用既有當季數據產生指定日期分析 (不打 API 抓新資料)
+    # 用法: today                → 今天
+    #       today 4.11           → 2026-04-11
+    #       today 2025-09-28     → 歷史日期
     elif cmd == "today":
+        target = parse_date_arg(sys.argv[2]) if len(sys.argv) >= 3 else None
         games = load_cached_games(CURRENT_SEASON)
         if games:
-            correlations, trackers = run_correlation_analysis(games)
-            generate_today_analysis(games, correlations, trackers)
+            generate_daily_analysis(games, target_date=target)
 
-    # daily - 每日例行: 抓當季最新+回測+今日分析
+    # daily - 每日例行: 抓當季最新 + 產出指定日期分析 JSON (用 10 年 baseline)
+    # 用法: daily                → 今天
+    #       daily 4.11           → 2026-04-11
     elif cmd == "daily":
+        target = parse_date_arg(sys.argv[2]) if len(sys.argv) >= 3 else None
         fetch_season_games(CURRENT_SEASON)
         games = load_cached_games(CURRENT_SEASON)
         if games:
-            correlations, trackers = run_correlation_analysis(games)
-            generate_today_analysis(games, correlations, trackers)
+            generate_daily_analysis(games, target_date=target)
 
     else:
         print(f"未知指令: {cmd}")
