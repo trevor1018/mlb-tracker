@@ -1407,16 +1407,18 @@ function findLegOdds(leg,gamesOdds){
 }
 
 // ─── Recommend Panel ───
-function RecommendPanel({matchups,uid}){
+function RecommendPanel({matchups,uid,state,setState}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
-  const[numBets,setNumBets]=useState(()=>String(load("reco-numBets","3")));
-  const[legsPerBet,setLegsPerBet]=useState(()=>String(load("reco-legs","2")));
-  const[result,setResult]=useState(()=>load("reco-result",null));
+  const numBets=state.numBets;
+  const legsPerBet=state.legsPerBet;
+  const result=state.result;
+  const oddsData=state.oddsData;
+  const oddsTime=state.oddsTime;
+  const setNumBets=v=>setState(s=>({...s,numBets:v}));
+  const setLegsPerBet=v=>setState(s=>({...s,legsPerBet:v}));
   const[apiKey,setApiKey]=useState(()=>load("odds-api-key","")||"");
-  const[oddsData,setOddsData]=useState(()=>load("reco-odds-data",null));
   const[oddsLoading,setOddsLoading]=useState(false);
   const[oddsError,setOddsError]=useState("");
-  const[oddsTime,setOddsTime]=useState(()=>load("reco-odds-time",null));
   const[showKeyInput,setShowKeyInput]=useState(false);
 
   // Sync API key from Firestore on mount (cross-device)
@@ -1441,8 +1443,7 @@ function RecommendPanel({matchups,uid}){
     const r=generateRecommendations(matchups,nb,lp);
     r.numBets=nb;
     r.legsPerBet=lp;
-    setResult(r);
-    save("reco-result",r);
+    setState(s=>({...s,result:r,numBets:String(nb),legsPerBet:String(lp)}));
     save("reco-numBets",String(nb));
     save("reco-legs",String(lp));
   };
@@ -1472,10 +1473,7 @@ function RecommendPanel({matchups,uid}){
       }
       const json=await res.json();
       const t=new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei"});
-      setOddsData(json);
-      setOddsTime(t);
-      save("reco-odds-data",json);
-      save("reco-odds-time",t);
+      setState(s=>({...s,oddsData:json,oddsTime:t}));
     }catch(e){setOddsError("抓取失敗："+e.message)}
     setOddsLoading(false);
   };
@@ -1646,7 +1644,7 @@ function BetTypeSelector({value,onChange,countMap}){
 }
 
 // ─── Main Analysis View ───
-function AnalysisView({uid}){
+function AnalysisView({uid,recoState,setRecoState}){
   const[data,setData]=useState(()=>load("mlb-analysis",null));
   const[sub,setSub]=useState("matchups");
   const[input,setInput]=useState("");
@@ -1790,7 +1788,7 @@ function AnalysisView({uid}){
         </div>
       </div>}
 
-      {sub==="recommend"&&<RecommendPanel matchups={sortedMatchups} uid={uid}/>}
+      {sub==="recommend"&&<RecommendPanel matchups={sortedMatchups} uid={uid} state={recoState} setState={setRecoState}/>}
     </>}
   </div>;
 }
@@ -1802,6 +1800,15 @@ function App(){
   const[user,setUser]=useState(undefined); // undefined=loading, null=logged out
   const[tab,setTab]=useState("add");
   const[migrated,setMigrated]=useState(false);
+
+  // Recommend state lifted to App so it survives tab switching
+  const[recoState,setRecoState]=useState({
+    numBets:String(load("reco-numBets","3")),
+    legsPerBet:String(load("reco-legs","2")),
+    result:null,
+    oddsData:null,
+    oddsTime:null
+  });
 
   // Auth listener
   useEffect(()=>{
@@ -1925,7 +1932,7 @@ function App(){
       {tab==="hist"&&<HistView bets={bets} updateBet={upBet} deleteBet={delBet}/>}
       {tab==="results"&&<ResultsView games={games} addGames={addGames} updateGame={upGame} deleteGame={delGame}/>}
       {tab==="stats"&&<StatsView bets={bets} games={games}/>}
-      {tab==="analysis"&&<AnalysisView uid={uid}/>}
+      {tab==="analysis"&&<AnalysisView uid={uid} recoState={recoState} setRecoState={setRecoState}/>}
     </div>
     <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.sf,borderTop:`1px solid ${C.bd}`,display:"flex",zIndex:10}}>
       {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"10px 0 8px",background:"none",border:"none",cursor:"pointer",color:tab===t.id?C.acc:C.d,display:"flex",flexDirection:"column",alignItems:"center",gap:2,borderTop:tab===t.id?`2px solid ${C.acc}`:"2px solid transparent",outline:"none"}}>
