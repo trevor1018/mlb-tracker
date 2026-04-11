@@ -1357,18 +1357,90 @@ function generateRecommendations(matchups,numBets,legsPerBet){
   return{parlays,totalAvailable:bestPerMatchup.length};
 }
 
+// ─── Odds API (the-odds-api.com) ───
+function findLegOdds(leg,gamesOdds){
+  if(!gamesOdds||!gamesOdds.length)return null;
+  const m=leg.matchup;
+  const bt=leg.bt;
+  const btKey=leg.btKey;
+
+  // Match game by exact English team names
+  const game=gamesOdds.find(g=>g.home_team===m.home&&g.away_team===m.away);
+  if(!game)return null;
+
+  // Determine which market + outcome to look for
+  let marketKey,matchName,matchPoint=null;
+  if(btKey==="ml"){
+    marketKey="h2h";
+    matchName=bt.predicted==="home"?m.home:m.away;
+  }else if(btKey.startsWith("spread_")){
+    marketKey="spreads";
+    matchPoint=parseFloat(btKey.split("_")[1]);
+    matchName=bt.predicted==="home"?m.home:m.away;
+  }else if(btKey.startsWith("total_")){
+    marketKey="totals";
+    matchPoint=parseFloat(btKey.split("_")[1]);
+    matchName=bt.predicted==="over"?"Over":"Under";
+  }else return null;
+
+  // Collect all matching prices from all bookmakers
+  const prices=[];
+  for(const book of game.bookmakers||[]){
+    const market=book.markets?.find(mk=>mk.key===marketKey);
+    if(!market)continue;
+    for(const oc of market.outcomes||[]){
+      if(oc.name!==matchName)continue;
+      if(matchPoint!==null&&Math.abs((oc.point??999)-matchPoint)>0.01&&Math.abs(Math.abs(oc.point??999)-matchPoint)>0.01)continue;
+      prices.push({book:book.key,price:oc.price});
+    }
+  }
+  if(!prices.length)return null;
+
+  const avg=prices.reduce((a,p)=>a+p.price,0)/prices.length;
+  const best=Math.max(...prices.map(p=>p.price));
+  return{avg,best,count:prices.length,commence:game.commence_time};
+}
+
 // ─── Recommend Panel ───
 function RecommendPanel({matchups}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
   const[numBets,setNumBets]=useState(()=>Number(load("reco-numBets",3))||3);
   const[legsPerBet,setLegsPerBet]=useState(()=>Number(load("reco-legs",2))||2);
   const[result,setResult]=useState(null);
+  const[apiKey,setApiKey]=useState(()=>load("odds-api-key","")||"");
+  const[oddsData,setOddsData]=useState(null);
+  const[oddsLoading,setOddsLoading]=useState(false);
+  const[oddsError,setOddsError]=useState("");
+  const[oddsTime,setOddsTime]=useState(null);
+  const[showKeyInput,setShowKeyInput]=useState(false);
 
   const generate=()=>{
     const r=generateRecommendations(matchups,numBets,legsPerBet);
     setResult(r);
     save("reco-numBets",numBets);
     save("reco-legs",legsPerBet);
+  };
+
+  const saveApiKey=(k)=>{
+    setApiKey(k);
+    save("odds-api-key",k);
+  };
+
+  const fetchOdds=async()=>{
+    if(!apiKey.trim()){setOddsError("請先輸入 API key");setShowKeyInput(true);return}
+    setOddsLoading(true);setOddsError("");
+    try{
+      const url=`https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/?apiKey=${apiKey.trim()}&regions=us&markets=h2h,spreads,totals&oddsFormat=decimal`;
+      const res=await fetch(url);
+      if(!res.ok){
+        const text=await res.text();
+        throw new Error(`HTTP ${res.status}: ${text.slice(0,100)}`);
+      }
+      const json=await res.json();
+      setOddsData(json);
+      setOddsTime(new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei"}));
+    }catch(e){setOddsError("抓取失敗："+e.message)}
+    setOddsLoading(false);
   };
 
   const btLabelMap={};
@@ -1399,6 +1471,23 @@ function RecommendPanel({matchups}){
       </button>
     </div>
 
+    {/* International Odds Section */}
+    <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.b}}>🌏 國際盤賠率 (the-odds-api.com)</div>
+        <button onClick={()=>setShowKeyInput(!showKeyInput)} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:11}}>{apiKey?"已設定 ✓":"設定 API Key"}</button>
+      </div>
+      {showKeyInput&&<div style={{marginBottom:10}}>
+        <Inp value={apiKey} onChange={saveApiKey} placeholder="貼上 the-odds-api.com 的 API key" mono/>
+        <div style={{fontSize:10,color:C.m,marginTop:4}}>Key 只存在本機瀏覽器，不會上傳到雲端</div>
+      </div>}
+      <button onClick={fetchOdds} disabled={oddsLoading||!apiKey} style={{width:"100%",padding:10,borderRadius:8,border:`1px solid ${C.b}`,background:oddsLoading||!apiKey?"transparent":"rgba(59,130,246,0.1)",color:oddsLoading||!apiKey?C.m:C.b,fontSize:13,fontWeight:600,cursor:oddsLoading||!apiKey?"default":"pointer",outline:"none"}}>
+        {oddsLoading?"抓取中...":"抓取國際盤賠率"}
+      </button>
+      {oddsError&&<div style={{fontSize:11,color:C.r,marginTop:6}}>{oddsError}</div>}
+      {oddsData&&<div style={{fontSize:11,color:C.g,marginTop:6}}>✓ 已抓取 {oddsData.length} 場比賽賠率 · {oddsTime}</div>}
+    </div>
+
     {/* Results */}
     {result&&<div>
       {result.parlays.length===0?<div style={{textAlign:"center",padding:30,color:C.d,fontSize:12}}>
@@ -1410,6 +1499,17 @@ function RecommendPanel({matchups}){
         {result.parlays.map((parlay,pi)=>{
           const avgScore=parlay.legs.reduce((a,l)=>a+l.score,0)/parlay.legs.length;
           const allTop10=parlay.legs.every(l=>l.bt.is_top_10_pct);
+
+          // Compute parlay combined odds from fetched data
+          const legOdds=parlay.legs.map(l=>findLegOdds(l,oddsData));
+          const allMatched=legOdds.every(o=>o!==null);
+          let combinedAvg=null,combinedBest=null;
+          if(oddsData&&allMatched){
+            combinedAvg=legOdds.reduce((a,o)=>a*o.avg,1);
+            combinedBest=legOdds.reduce((a,o)=>a*o.best,1);
+          }
+          const positiveEV=combinedAvg!=null&&combinedAvg>parlay.combinedMinOdds;
+
           return<div key={pi} style={{background:allTop10?"rgba(16,185,129,0.06)":C.card,borderRadius:10,padding:14,border:`${allTop10?2:1}px solid ${allTop10?C.g:C.acc}`,marginBottom:10}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
               <div style={{fontSize:14,fontWeight:700,color:allTop10?C.g:C.acc}}>
@@ -1425,6 +1525,7 @@ function RecommendPanel({matchups}){
               const homeZh=m.home_zh||m.home;
               const predictedZh=formatPrediction(bt.predicted,awayZh,homeZh);
               const btShort=btLabelMap[leg.btKey]||leg.btKey;
+              const odds=legOdds[li];
               return<div key={li} style={{background:C.bg,borderRadius:8,padding:"10px 12px",border:`1px solid ${C.bd}`,marginBottom:6}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -1446,30 +1547,49 @@ function RecommendPanel({matchups}){
                   最佳篩選歷史命中 <span style={{color:C.g,fontWeight:700}}>{leg.bestHitRate.toFixed(1)}%</span>
                   {leg.bestMinOdds&&<> · 該腳最低賠率 <span style={{color:C.acc}}>{leg.bestMinOdds.toFixed(2)}</span></>}
                 </div>}
+                {oddsData&&<div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.bd}`,fontSize:11,...mono}}>
+                  {odds?<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{color:C.b}}>🌏 國際盤</span>
+                    <span>
+                      <span style={{color:C.d}}>均值 </span><span style={{color:C.t,fontWeight:700}}>{odds.avg.toFixed(2)}</span>
+                      <span style={{color:C.m}}> · </span>
+                      <span style={{color:C.d}}>最佳 </span><span style={{color:C.g,fontWeight:700}}>{odds.best.toFixed(2)}</span>
+                      <span style={{color:C.m,marginLeft:4}}>({odds.count}家)</span>
+                    </span>
+                  </div>:<div style={{color:C.m}}>🌏 國際盤：此盤口無對應 (通常是因為主盤口線與 {btShort} 不同)</div>}
+                </div>}
               </div>;
             })}
 
             {/* Parlay summary */}
-            <div style={{borderTop:`1px solid ${C.bd}`,paddingTop:8,marginTop:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:12,color:C.d}}>合計最低賠率</span>
-              <span style={{fontSize:15,fontWeight:700,...mono,color:C.acc}}>{parlay.combinedMinOdds.toFixed(2)}</span>
-            </div>
-            <div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>
-              合計賠率 {">"} {parlay.combinedMinOdds.toFixed(2)} 才有正期望值
+            <div style={{borderTop:`1px solid ${C.bd}`,paddingTop:8,marginTop:6}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:12,color:C.d}}>合計最低賠率 (損益平衡)</span>
+                <span style={{fontSize:15,fontWeight:700,...mono,color:C.acc}}>{parlay.combinedMinOdds.toFixed(2)}</span>
+              </div>
+              {oddsData&&allMatched&&<>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+                  <span style={{fontSize:12,color:C.b}}>🌏 國際盤合計 (均值)</span>
+                  <span style={{fontSize:15,fontWeight:700,...mono,color:positiveEV?C.g:C.r}}>{combinedAvg.toFixed(2)} {positiveEV?"✓":"✗"}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:2}}>
+                  <span style={{fontSize:11,color:C.d}}>國際盤合計 (最佳)</span>
+                  <span style={{fontSize:13,fontWeight:600,...mono,color:combinedBest>parlay.combinedMinOdds?C.g:C.r}}>{combinedBest.toFixed(2)}</span>
+                </div>
+                <div style={{fontSize:10,color:positiveEV?C.g:C.r,marginTop:4,textAlign:"right",fontWeight:600}}>
+                  {positiveEV?`正 EV · 國際盤比損益平衡高 ${((combinedAvg/parlay.combinedMinOdds-1)*100).toFixed(1)}%`:`負 EV · 國際盤比損益平衡低 ${((1-combinedAvg/parlay.combinedMinOdds)*100).toFixed(1)}%`}
+                </div>
+              </>}
+              {oddsData&&!allMatched&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>
+                部分腳位無國際盤對應 · 以損益平衡為參考
+              </div>}
+              {!oddsData&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>
+                合計賠率 {">"} {parlay.combinedMinOdds.toFixed(2)} 才有正期望值
+              </div>}
             </div>
           </div>;
         })}
 
-        {/* Odds API note */}
-        <div style={{background:C.card,borderRadius:10,padding:12,border:`1px dashed ${C.bd}`,marginTop:12}}>
-          <div style={{fontSize:12,fontWeight:700,color:C.acc,marginBottom:6}}>💡 賠率驗證建議</div>
-          <div style={{fontSize:11,color:C.d,lineHeight:1.6}}>
-            上面的「合計最低賠率」是歷史回測的損益平衡點。實戰時建議比對國際盤真實賠率：<br/>
-            · <span style={{color:C.t}}>the-odds-api.com</span>（免費 500 req/月，含 MLB h2h/spreads/totals）<br/>
-            · <span style={{color:C.t}}>sportsbook-api.com</span>、<span style={{color:C.t}}>oddsportal.com</span><br/>
-            若國際盤 × 台彩賠率加總 {">"} 合計最低賠率，代表有正 EV 空間。
-          </div>
-        </div>
       </>}
     </div>}
   </div>;
