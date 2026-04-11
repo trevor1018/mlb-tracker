@@ -1349,8 +1349,13 @@ function generateRecommendations(matchups,numBets,legsPerBet){
   for(let i=0;i<numBets;i++){
     const legs=selected.slice(i*legsPerBet,(i+1)*legsPerBet);
     if(legs.length===legsPerBet){
-      // Calculate combined min odds (multiply)
-      const combinedMinOdds=legs.reduce((acc,l)=>acc*(l.bestMinOdds||1),1);
+      // Correct combined breakeven:
+      //   Each leg's bestMinOdds is a 2-leg parlay breakeven (= 1/p^2)
+      //   For an N-leg parlay of mixed filters:
+      //     combined_hit = product(p_i) = product(1/sqrt(mo_i)) = 1/sqrt(product(mo_i))
+      //     combined_breakeven = sqrt(product(mo_i))
+      const product=legs.reduce((acc,l)=>acc*(l.bestMinOdds||4),1);
+      const combinedMinOdds=Math.sqrt(product);
       parlays.push({legs,combinedMinOdds});
     }
   }
