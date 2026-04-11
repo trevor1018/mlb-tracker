@@ -45,7 +45,7 @@ EXCLUDED_SEASONS = {2020}  # COVID 縮短賽季，預設跳過
 CURRENT_SEASON = 2026
 
 MIN_GAMES = 5          # 球隊至少打幾場才納入分析
-MIN_STARTS = 3         # 投手至少先發幾場才納入分析
+MIN_STARTS = 2         # 投手至少先發幾場才納入分析 (從 3 降到 2 以覆蓋開季)
 BULLPEN_WINDOW = 3     # 牛棚疲勞追蹤天數
 FIP_CONSTANT = 3.10    # 近似 cFIP
 HOME_ADV_BONUS = 0.15  # 主場優勢加成 (z-score 單位，約對應 1-2% 勝率)
@@ -108,17 +108,23 @@ COMPOSITES_DEF = [
 # 例：ops 加總越高 → 越可能大分 (weight=+1)
 #     k9 加總越高 → 越可能小分 (weight=-1)
 TOTAL_COMPOSITES_DEF = [
-    # 純打擊
+    # === 純打擊 ===
     ("runs_pg",            [("runs_per_game", 1, "team")]),
     ("ops",                [("ops", 1, "team")]),
     ("slg",                [("slg", 1, "team")]),
     ("hr_pg",              [("hr_per_game", 1, "team")]),
-    # 純投球 (團隊)
+    # === 純投球 (團隊) ===
     ("era",                [("era", 1, "team")]),
     ("fip",                [("fip", 1, "team")]),
     ("whip",               [("whip", 1, "team")]),
     ("k9_inv",             [("k9", -1, "team")]),
-    # 打擊+投球組合
+    # === 純投球 (今日先發) — 避免被 team OPS 抵消 ===
+    ("sp_era_only",        [("sp_era", 1, "sp")]),
+    ("sp_fip_only",        [("sp_fip", 1, "sp")]),
+    ("sp_whip_only",       [("sp_whip", 1, "sp")]),
+    ("sp_hr9_only",        [("sp_hr9", 1, "sp")]),
+    ("sp_k9_inv",          [("sp_k9", -1, "sp")]),
+    # === 打擊+投球組合 (團隊) ===
     ("runs+era",           [("runs_per_game", 1, "team"), ("era", 1, "team")]),
     ("ops+era",            [("ops", 1, "team"), ("era", 1, "team")]),
     ("ops+fip",            [("ops", 1, "team"), ("fip", 1, "team")]),
@@ -126,13 +132,17 @@ TOTAL_COMPOSITES_DEF = [
     ("runs+fip",           [("runs_per_game", 1, "team"), ("fip", 1, "team")]),
     ("runs-k9",            [("runs_per_game", 1, "team"), ("k9", -1, "team")]),
     ("ops-k9",             [("ops", 1, "team"), ("k9", -1, "team")]),
-    # 投手+打擊 使用今日先發
+    # === 打擊+先發投手組合 ===
     ("ops+sp_era",         [("ops", 1, "team"), ("sp_era", 1, "sp")]),
     ("ops+sp_fip",         [("ops", 1, "team"), ("sp_fip", 1, "sp")]),
     ("runs+sp_era",        [("runs_per_game", 1, "team"), ("sp_era", 1, "sp")]),
     ("runs+sp_fip",        [("runs_per_game", 1, "team"), ("sp_fip", 1, "sp")]),
     ("ops-sp_k9",          [("ops", 1, "team"), ("sp_k9", -1, "sp")]),
     ("ops+sp_whip",        [("ops", 1, "team"), ("sp_whip", 1, "sp")]),
+    # === 先發投手加權 (2x) — 讓極端 SP 值的信號更強 ===
+    ("ops+2sp_fip",        [("ops", 1, "team"), ("sp_fip", 2, "sp")]),
+    ("runs+2sp_era",       [("runs_per_game", 1, "team"), ("sp_era", 2, "sp")]),
+    ("2sp_fip+sp_era",     [("sp_fip", 2, "sp"), ("sp_era", 1, "sp")]),
 ]
 
 TEAM_ZH = {
@@ -1958,34 +1968,74 @@ def generate_daily_analysis(games, target_date=None):
                 if is_top_10_pct:
                     any_top_10 = True
 
-                # 投票方向
+                # === 加權投票（用 z-score 總和，而非純計數）===
+                # 只用 Top 10%/20% 強訊號投票，減少弱訊號雜訊
+                strong_scores = [
+                    s for s in scores.values()
+                    if s.get('bucket') in ('Top 10%', 'Top 20%')
+                ]
+                if not strong_scores:
+                    strong_scores = list(scores.values())
+
                 if bt_type == 'directional':
-                    home_votes = sum(1 for s in scores.values() if s['predicts'] == 'home')
-                    away_votes = sum(1 for s in scores.values() if s['predicts'] == 'away')
-                    if home_votes > away_votes:
+                    home_z_sum = sum(s['value'] for s in strong_scores if s['value'] > 0)
+                    away_z_sum = sum(-s['value'] for s in strong_scores if s['value'] < 0)
+                    home_count = sum(1 for s in strong_scores if s['predicts'] == 'home')
+                    away_count = sum(1 for s in strong_scores if s['predicts'] == 'away')
+
+                    if home_z_sum > away_z_sum:
                         predicted = 'home'
-                    elif away_votes > home_votes:
+                    elif away_z_sum > home_z_sum:
                         predicted = 'away'
                     else:
                         predicted = 'even'
-                    vote_info = {'home': home_votes, 'away': away_votes}
+                    vote_info = {
+                        'home_count': home_count, 'away_count': away_count,
+                        'home_z_sum': round(home_z_sum, 2),
+                        'away_z_sum': round(away_z_sum, 2),
+                    }
+                    total_z = home_z_sum + away_z_sum
+                    minority_z = min(home_z_sum, away_z_sum)
                 else:
-                    over_votes = sum(1 for s in scores.values() if s['predicts'] == 'over')
-                    under_votes = sum(1 for s in scores.values() if s['predicts'] == 'under')
-                    if over_votes > under_votes:
+                    over_z_sum = sum(s['value'] for s in strong_scores if s['value'] > 0)
+                    under_z_sum = sum(-s['value'] for s in strong_scores if s['value'] < 0)
+                    over_count = sum(1 for s in strong_scores if s['predicts'] == 'over')
+                    under_count = sum(1 for s in strong_scores if s['predicts'] == 'under')
+
+                    if over_z_sum > under_z_sum:
                         predicted = 'over'
-                    elif under_votes > over_votes:
+                    elif under_z_sum > over_z_sum:
                         predicted = 'under'
                     else:
                         predicted = 'even'
-                    vote_info = {'over': over_votes, 'under': under_votes}
+                    vote_info = {
+                        'over_count': over_count, 'under_count': under_count,
+                        'over_z_sum': round(over_z_sum, 2),
+                        'under_z_sum': round(under_z_sum, 2),
+                    }
+                    total_z = over_z_sum + under_z_sum
+                    minority_z = min(over_z_sum, under_z_sum)
 
-                # 信心度
-                if is_top_10_pct and len(matched_filters) >= 2:
+                # === 訊號衝突偵測 ===
+                # 弱勢方 z-sum 佔總 z-sum 的比例
+                minority_ratio = minority_z / total_z if total_z > 0 else 0
+                signal_conflict = minority_ratio >= 0.35  # 35%+ = 輕度衝突
+                severe_conflict = minority_ratio >= 0.45  # 45%+ = 嚴重衝突
+                vote_info['minority_ratio'] = round(minority_ratio, 2)
+                vote_info['conflict'] = severe_conflict
+
+                # === 信心度計算（考慮訊號衝突）===
+                if is_top_10_pct and len(matched_filters) >= 2 and not signal_conflict:
                     confidence = 'high'
-                elif is_top_10_pct or any(f['top_pct'] <= 20 for f in matched_filters):
+                elif is_top_10_pct and not severe_conflict:
+                    confidence = 'medium'
+                elif any(f['top_pct'] <= 20 for f in matched_filters) and not severe_conflict:
                     confidence = 'medium'
                 else:
+                    confidence = 'low'
+
+                # 嚴重衝突時直接降到 low
+                if severe_conflict:
                     confidence = 'low'
 
                 min_odds_needed = min((f['min_odds_needed'] for f in matched_filters), default=None)
@@ -1999,6 +2049,7 @@ def generate_daily_analysis(games, target_date=None):
                     'predicted': predicted,
                     'votes': vote_info,
                     'confidence': confidence,
+                    'signal_conflict': signal_conflict,
                     'min_combined_odds_needed': min_odds_needed,
                 }
 

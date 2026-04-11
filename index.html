@@ -1104,7 +1104,9 @@ function BetTypePanel({btKey,bt,awayZh,homeZh}){
   if(!bt)return<div style={{padding:20,textAlign:"center",color:C.d,fontSize:12}}>該盤口無資料</div>;
 
   const isTop10=bt.is_top_10_pct;
-  const conf=bt.confidence||"";
+  const isConflict=bt.signal_conflict===true;
+  // Force confidence to "low" when signal_conflict
+  const conf=isConflict?"low":(bt.confidence||"");
   const stars=confidenceStars(conf);
   const predictedZh=formatPrediction(bt.predicted,awayZh,homeZh);
   const votes=bt.votes||{};
@@ -1120,8 +1122,13 @@ function BetTypePanel({btKey,bt,awayZh,homeZh}){
   const voteEntries=Object.entries(votes);
 
   return<div style={{padding:"10px 0"}}>
+    {/* Signal conflict warning */}
+    {isConflict&&<div style={{background:"rgba(251,191,36,0.12)",border:"1px solid #fbbf24",borderRadius:6,padding:"6px 10px",marginBottom:10,fontSize:12,fontWeight:700,color:"#fbbf24",display:"flex",alignItems:"center",gap:6}}>
+      ⚠️ 訊號衝突 (大/小各有強訊號)
+    </div>}
+
     {/* Top 10% banner */}
-    {isTop10&&<div style={{background:"rgba(16,185,129,0.12)",border:`1px solid ${C.g}`,borderRadius:6,padding:"6px 10px",marginBottom:10,fontSize:12,fontWeight:700,color:C.g,display:"flex",alignItems:"center",gap:6}}>
+    {isTop10&&!isConflict&&<div style={{background:"rgba(16,185,129,0.12)",border:`1px solid ${C.g}`,borderRadius:6,padding:"6px 10px",marginBottom:10,fontSize:12,fontWeight:700,color:C.g,display:"flex",alignItems:"center",gap:6}}>
       ⭐ Top 10% 高信心場次
     </div>}
 
@@ -1138,14 +1145,15 @@ function BetTypePanel({btKey,bt,awayZh,homeZh}){
     </div>
 
     {/* Vote breakdown */}
-    {voteEntries.length>0&&<div style={{background:C.bg,borderRadius:6,padding:"8px 10px",border:`1px solid ${C.bd}`,marginBottom:10}}>
+    {voteEntries.filter(([k])=>k!=="conflict").length>0&&<div style={{background:C.bg,borderRadius:6,padding:"8px 10px",border:`1px solid ${C.bd}`,marginBottom:10}}>
       <div style={{fontSize:10,color:C.d,marginBottom:4}}>複合分數投票</div>
-      <div style={{display:"flex",gap:10,fontSize:12,...mono,justifyContent:"center"}}>
-        {voteEntries.map(([k,v])=>{
+      <div style={{display:"flex",gap:10,fontSize:12,...mono,justifyContent:"center",flexWrap:"wrap"}}>
+        {voteEntries.filter(([k])=>k!=="conflict").map(([k,v])=>{
           const lbl=k==="home"?homeZh:k==="away"?awayZh:k==="over"?"大":k==="under"?"小":k;
           const isPredicted=k===bt.predicted;
-          return<span key={k} style={{color:isPredicted?C.g:C.d,fontWeight:isPredicted?700:400}}>{lbl} {v}</span>;
+          return<span key={k} style={{color:isPredicted&&!isConflict?C.g:C.d,fontWeight:isPredicted&&!isConflict?700:400}}>{lbl} {v}</span>;
         })}
+        {votes.conflict>0&&<span style={{color:"#fbbf24",fontWeight:600}}>衝突 {votes.conflict}</span>}
       </div>
     </div>}
 
@@ -1259,9 +1267,13 @@ function MatchupCardV3({m}){
           {availableBts.map(b=>{
             const bt=betTypes[b.key];
             const top=bt?.is_top_10_pct;
+            const conflict=bt?.signal_conflict===true;
             const sel=selBt===b.key;
-            return<button key={b.key} onClick={()=>setSelBt(b.key)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,cursor:"pointer",fontWeight:600,border:sel?`2px solid ${top?C.g:C.acc}`:`1px solid ${C.bd}`,background:sel?(top?"rgba(16,185,129,0.12)":C.accD):"transparent",color:sel?(top?C.g:C.acc):C.d,outline:"none"}}>
-              {b.short}{top?" ⭐":""}
+            const borderCol=conflict?"#fbbf24":(top?C.g:C.acc);
+            const bgCol=conflict?"rgba(251,191,36,0.12)":(top?"rgba(16,185,129,0.12)":C.accD);
+            const textCol=conflict?"#fbbf24":(top?C.g:C.acc);
+            return<button key={b.key} onClick={()=>setSelBt(b.key)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,cursor:"pointer",fontWeight:600,border:sel?`2px solid ${borderCol}`:`1px solid ${C.bd}`,background:sel?bgCol:"transparent",color:sel?textCol:C.d,outline:"none"}}>
+              {b.short}{conflict?" ⚠️":(top?" ⭐":"")}
             </button>;
           })}
         </div>
@@ -1285,6 +1297,8 @@ function MatchupCardV3({m}){
 function scorePick(matchup,btKey){
   const bt=matchup.bet_types?.[btKey];
   if(!bt||!bt.predicted||bt.predicted==="even")return null;
+  // Skip conflicted signals — they're effectively low confidence
+  if(bt.signal_conflict===true)return null;
 
   let score=0;
   // Top 10% is the biggest signal
