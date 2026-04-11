@@ -1339,41 +1339,47 @@ function scorePick(matchup,btKey){
 }
 
 function generateRecommendations(matchups,numBets,legsPerBet){
-  // For each matchup, find its best-scoring bet type
-  const bestPerMatchup=[];
+  // Score every (matchup, bet_type) combination
+  const allPicks=[];
   matchups.forEach(m=>{
     const btKeys=Object.keys(m.bet_types||{});
-    let best=null;
     btKeys.forEach(k=>{
       const p=scorePick(m,k);
-      if(p&&(!best||p.score>best.score))best=p;
+      if(p&&p.score>0)allPicks.push(p);
     });
-    if(best&&best.score>0)bestPerMatchup.push(best);
   });
 
   // Sort by score descending
-  bestPerMatchup.sort((a,b)=>b.score-a.score);
+  allPicks.sort((a,b)=>b.score-a.score);
 
-  // Take top N*K picks
-  const needed=numBets*legsPerBet;
-  const selected=bestPerMatchup.slice(0,needed);
+  const matchupId=(m)=>`${m.away}@${m.home}`;
+  const usedPicks=new Set(); // matchupId + "::" + btKey
 
-  // Group into parlays sequentially (best K → parlay 1, next K → parlay 2...)
+  // Build parlays greedily.
+  // - Each (matchup, btKey) can be used at most once across all parlays.
+  // - Within a single parlay, no two legs from the same matchup (台彩串關規則).
   const parlays=[];
   for(let i=0;i<numBets;i++){
-    const legs=selected.slice(i*legsPerBet,(i+1)*legsPerBet);
+    const legs=[];
+    const usedMatchupsInParlay=new Set();
+    for(const pick of allPicks){
+      if(legs.length>=legsPerBet)break;
+      const mid=matchupId(pick.matchup);
+      const pid=mid+"::"+pick.btKey;
+      if(usedPicks.has(pid))continue;
+      if(usedMatchupsInParlay.has(mid))continue;
+      legs.push(pick);
+      usedPicks.add(pid);
+      usedMatchupsInParlay.add(mid);
+    }
     if(legs.length===legsPerBet){
-      // Correct combined breakeven:
-      //   Each leg's bestMinOdds is a 2-leg parlay breakeven (= 1/p^2)
-      //   For an N-leg parlay of mixed filters:
-      //     combined_hit = product(p_i) = product(1/sqrt(mo_i)) = 1/sqrt(product(mo_i))
-      //     combined_breakeven = sqrt(product(mo_i))
+      // Combined breakeven: sqrt(product of per-leg breakevens)
       const product=legs.reduce((acc,l)=>acc*(l.bestMinOdds||4),1);
       const combinedMinOdds=Math.sqrt(product);
       parlays.push({legs,combinedMinOdds});
     }
   }
-  return{parlays,totalAvailable:bestPerMatchup.length};
+  return{parlays,totalAvailable:allPicks.length};
 }
 
 // ─── Odds API (the-odds-api.com) ───
