@@ -1402,7 +1402,7 @@ function findLegOdds(leg,gamesOdds){
 }
 
 // ─── Recommend Panel ───
-function RecommendPanel({matchups}){
+function RecommendPanel({matchups,uid}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
   const[numBets,setNumBets]=useState(()=>Number(load("reco-numBets",3))||3);
   const[legsPerBet,setLegsPerBet]=useState(()=>Number(load("reco-legs",2))||2);
@@ -1414,6 +1414,22 @@ function RecommendPanel({matchups}){
   const[oddsTime,setOddsTime]=useState(null);
   const[showKeyInput,setShowKeyInput]=useState(false);
 
+  // Sync API key from Firestore on mount (cross-device)
+  useEffect(()=>{
+    if(!uid)return;
+    const ref=db.collection("users").doc(uid).collection("meta").doc("oddsApiKey");
+    const unsub=ref.onSnapshot(snap=>{
+      if(snap.exists){
+        const k=snap.data().key;
+        if(k&&k!==apiKey){
+          setApiKey(k);
+          save("odds-api-key",k);
+        }
+      }
+    },err=>console.error("Odds key sync error:",err));
+    return()=>unsub();
+  },[uid]);
+
   const generate=()=>{
     const r=generateRecommendations(matchups,numBets,legsPerBet);
     setResult(r);
@@ -1421,9 +1437,17 @@ function RecommendPanel({matchups}){
     save("reco-legs",legsPerBet);
   };
 
-  const saveApiKey=(k)=>{
+  const saveApiKey=async(k)=>{
     setApiKey(k);
     save("odds-api-key",k);
+    if(uid){
+      try{
+        await db.collection("users").doc(uid).collection("meta").doc("oddsApiKey").set({
+          key:k,
+          updatedAt:new Date().toISOString()
+        });
+      }catch(e){console.error("Save odds key error:",e)}
+    }
   };
 
   const fetchOdds=async()=>{
@@ -1753,7 +1777,7 @@ function AnalysisView({uid}){
         </div>
       </div>}
 
-      {sub==="recommend"&&<RecommendPanel matchups={sortedMatchups}/>}
+      {sub==="recommend"&&<RecommendPanel matchups={sortedMatchups} uid={uid}/>}
     </>}
   </div>;
 }
