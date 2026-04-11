@@ -1295,21 +1295,62 @@ function BetTypeSelector({value,onChange,countMap}){
 }
 
 // ─── Main Analysis View ───
-function AnalysisView(){
+function AnalysisView({uid}){
   const[data,setData]=useState(()=>load("mlb-analysis",null));
   const[sub,setSub]=useState("matchups");
   const[input,setInput]=useState("");
   const[err,setErr]=useState("");
   const[indBt,setIndBt]=useState("ml");
   const[filterBt,setFilterBt]=useState("ml");
+  const[saving,setSaving]=useState(false);
 
-  const loadJson=()=>{
+  // Subscribe to Firestore for realtime sync across devices
+  useEffect(()=>{
+    if(!uid)return;
+    const ref=db.collection("users").doc(uid).collection("meta").doc("analysis");
+    const unsub=ref.onSnapshot(snap=>{
+      if(snap.exists){
+        const json=snap.data().json;
+        if(json){
+          try{
+            const parsed=JSON.parse(json);
+            setData(parsed);
+            save("mlb-analysis",parsed);
+          }catch(e){console.error("Failed to parse analysis JSON from Firestore:",e)}
+        }
+      }else{
+        // Doc was deleted on another device → clear local
+        setData(null);
+        save("mlb-analysis",null);
+      }
+    },err=>console.error("Analysis listen error:",err));
+    return()=>unsub();
+  },[uid]);
+
+  const loadJson=async()=>{
     try{
       const parsed=JSON.parse(input);
-      setData(parsed);save("mlb-analysis",parsed);setInput("");setErr("");
-    }catch(e){setErr("JSON 格式錯誤："+e.message)}
+      setSaving(true);
+      setData(parsed);
+      save("mlb-analysis",parsed);
+      if(uid){
+        await db.collection("users").doc(uid).collection("meta").doc("analysis").set({
+          json:input,
+          updatedAt:new Date().toISOString()
+        });
+      }
+      setInput("");setErr("");
+    }catch(e){setErr("JSON 格式錯誤或儲存失敗："+e.message)}
+    setSaving(false);
   };
-  const clearData=()=>{if(confirm("確定清除已載入的分析資料？")){setData(null);save("mlb-analysis",null)}};
+  const clearData=async()=>{
+    if(!confirm("確定清除已載入的分析資料？所有裝置都會同步清除。"))return;
+    setData(null);save("mlb-analysis",null);
+    if(uid){
+      try{await db.collection("users").doc(uid).collection("meta").doc("analysis").delete()}
+      catch(e){console.error("Clear analysis error:",e)}
+    }
+  };
 
   // Sort matchups: any_top_10_pct first, then by edge gap descending
   const sortedMatchups=useMemo(()=>{
@@ -1350,7 +1391,7 @@ function AnalysisView(){
       </div>
       <textarea value={input} onChange={e=>setInput(e.target.value)} placeholder="貼上 mlb_analysis.json 內容..." style={{width:"100%",minHeight:120,padding:10,borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,fontSize:12,fontFamily:"'JetBrains Mono',monospace",outline:"none",boxSizing:"border-box",resize:"vertical"}}/>
       {err&&<div style={{fontSize:11,color:C.r,marginTop:6}}>{err}</div>}
-      <button onClick={loadJson} disabled={!input.trim()} style={{width:"100%",padding:10,borderRadius:8,border:"none",fontSize:13,fontWeight:700,background:input.trim()?C.acc:C.m,color:input.trim()?"#000":C.d,cursor:input.trim()?"pointer":"default",outline:"none",marginTop:10}}>載入</button>
+      <button onClick={loadJson} disabled={!input.trim()||saving} style={{width:"100%",padding:10,borderRadius:8,border:"none",fontSize:13,fontWeight:700,background:input.trim()&&!saving?C.acc:C.m,color:input.trim()&&!saving?"#000":C.d,cursor:input.trim()&&!saving?"pointer":"default",outline:"none",marginTop:10}}>{saving?"儲存中...":"載入並同步到雲端"}</button>
     </div>}
 
     {data&&<>
@@ -1530,7 +1571,7 @@ function App(){
       {tab==="hist"&&<HistView bets={bets} updateBet={upBet} deleteBet={delBet}/>}
       {tab==="results"&&<ResultsView games={games} addGames={addGames} updateGame={upGame} deleteGame={delGame}/>}
       {tab==="stats"&&<StatsView bets={bets} games={games}/>}
-      {tab==="analysis"&&<AnalysisView/>}
+      {tab==="analysis"&&<AnalysisView uid={uid}/>}
     </div>
     <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.sf,borderTop:`1px solid ${C.bd}`,display:"flex",zIndex:10}}>
       {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"10px 0 8px",background:"none",border:"none",cursor:"pointer",color:tab===t.id?C.acc:C.d,display:"flex",flexDirection:"column",alignItems:"center",gap:2,borderTop:tab===t.id?`2px solid ${C.acc}`:"2px solid transparent",outline:"none"}}>
