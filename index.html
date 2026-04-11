@@ -1411,12 +1411,12 @@ function RecommendPanel({matchups,uid}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
   const[numBets,setNumBets]=useState(()=>String(load("reco-numBets","3")));
   const[legsPerBet,setLegsPerBet]=useState(()=>String(load("reco-legs","2")));
-  const[result,setResult]=useState(null);
+  const[result,setResult]=useState(()=>load("reco-result",null));
   const[apiKey,setApiKey]=useState(()=>load("odds-api-key","")||"");
-  const[oddsData,setOddsData]=useState(null);
+  const[oddsData,setOddsData]=useState(()=>load("reco-odds-data",null));
   const[oddsLoading,setOddsLoading]=useState(false);
   const[oddsError,setOddsError]=useState("");
-  const[oddsTime,setOddsTime]=useState(null);
+  const[oddsTime,setOddsTime]=useState(()=>load("reco-odds-time",null));
   const[showKeyInput,setShowKeyInput]=useState(false);
 
   // Sync API key from Firestore on mount (cross-device)
@@ -1442,6 +1442,7 @@ function RecommendPanel({matchups,uid}){
     r.numBets=nb;
     r.legsPerBet=lp;
     setResult(r);
+    save("reco-result",r);
     save("reco-numBets",String(nb));
     save("reco-legs",String(lp));
   };
@@ -1470,8 +1471,11 @@ function RecommendPanel({matchups,uid}){
         throw new Error(`HTTP ${res.status}: ${text.slice(0,100)}`);
       }
       const json=await res.json();
+      const t=new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei"});
       setOddsData(json);
-      setOddsTime(new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei"}));
+      setOddsTime(t);
+      save("reco-odds-data",json);
+      save("reco-odds-time",t);
     }catch(e){setOddsError("抓取失敗："+e.message)}
     setOddsLoading(false);
   };
