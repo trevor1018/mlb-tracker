@@ -1409,8 +1409,8 @@ function findLegOdds(leg,gamesOdds){
 // ─── Recommend Panel ───
 function RecommendPanel({matchups,uid}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
-  const[numBets,setNumBets]=useState(()=>Number(load("reco-numBets",3))||3);
-  const[legsPerBet,setLegsPerBet]=useState(()=>Number(load("reco-legs",2))||2);
+  const[numBets,setNumBets]=useState(()=>String(load("reco-numBets","3")));
+  const[legsPerBet,setLegsPerBet]=useState(()=>String(load("reco-legs","2")));
   const[result,setResult]=useState(null);
   const[apiKey,setApiKey]=useState(()=>load("odds-api-key","")||"");
   const[oddsData,setOddsData]=useState(null);
@@ -1436,10 +1436,14 @@ function RecommendPanel({matchups,uid}){
   },[uid]);
 
   const generate=()=>{
-    const r=generateRecommendations(matchups,numBets,legsPerBet);
+    const nb=Math.max(1,Math.min(10,Number(numBets)||1));
+    const lp=Math.max(1,Math.min(5,Number(legsPerBet)||1));
+    const r=generateRecommendations(matchups,nb,lp);
+    r.numBets=nb;
+    r.legsPerBet=lp;
     setResult(r);
-    save("reco-numBets",numBets);
-    save("reco-legs",legsPerBet);
+    save("reco-numBets",String(nb));
+    save("reco-legs",String(lp));
   };
 
   const saveApiKey=async(k)=>{
@@ -1489,10 +1493,10 @@ function RecommendPanel({matchups,uid}){
     <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
         <Field label="今天要下幾單" style={{marginBottom:0}}>
-          <Inp value={numBets} onChange={v=>setNumBets(Math.max(1,Math.min(10,Number(v)||1)))} type="number" mono/>
+          <Inp value={numBets} onChange={setNumBets} type="number" mono placeholder="1-10"/>
         </Field>
         <Field label="每單串幾關" style={{marginBottom:0}}>
-          <Inp value={legsPerBet} onChange={v=>setLegsPerBet(Math.max(1,Math.min(5,Number(v)||1)))} type="number" mono/>
+          <Inp value={legsPerBet} onChange={setLegsPerBet} type="number" mono placeholder="1-5"/>
         </Field>
       </div>
       <button onClick={generate} disabled={!matchups||matchups.length===0} style={{width:"100%",padding:12,borderRadius:8,border:"none",fontSize:14,fontWeight:700,background:matchups&&matchups.length>0?C.acc:C.m,color:matchups&&matchups.length>0?"#000":C.d,cursor:matchups&&matchups.length>0?"pointer":"default",outline:"none"}}>
@@ -1520,10 +1524,10 @@ function RecommendPanel({matchups,uid}){
     {/* Results */}
     {result&&<div>
       {result.parlays.length===0?<div style={{textAlign:"center",padding:30,color:C.d,fontSize:12}}>
-        可用場次不足（需要 {numBets*legsPerBet} 場，目前有 {result.totalAvailable} 場有有效預測）
+        可用場次不足（需要 {result.numBets*result.legsPerBet} 場，目前有 {result.totalAvailable} 場有有效預測）
       </div>:<>
         <div style={{fontSize:11,color:C.d,marginBottom:10}}>
-          從 {result.totalAvailable} 場有效場次中挑出 {numBets*legsPerBet} 場，組成 {numBets} 單 × 串 {legsPerBet} 關
+          從 {result.totalAvailable} 場有效場次中挑出 {result.numBets*result.legsPerBet} 場，組成 {result.numBets} 單 × 串 {result.legsPerBet} 關
         </div>
         {result.parlays.map((parlay,pi)=>{
           const avgScore=parlay.legs.reduce((a,l)=>a+l.score,0)/parlay.legs.length;
