@@ -1299,6 +1299,8 @@ function scorePick(matchup,btKey){
   if(!bt||!bt.predicted||bt.predicted==="even")return null;
   // Skip conflicted signals — they're effectively low confidence
   if(bt.signal_conflict===true)return null;
+  // Skip spread 2.5 — international markets don't offer this line
+  if(btKey==="spread_2.5")return null;
 
   let score=0;
   // Top 10% is the biggest signal
