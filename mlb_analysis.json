@@ -1,0 +1,1224 @@
+{
+  "generated_at": "2026-04-10T15:38:11.298973",
+  "date": "2026-04-10",
+  "total_season_games": 191,
+  "correlations": {
+    "win_pct": {
+      "correct": 45,
+      "total": 97,
+      "pct": 46.4,
+      "z_score": -0.71,
+      "significant": false,
+      "direction": "高者勝"
+    },
+    "run_diff_pg": {
+      "correct": 50,
+      "total": 113,
+      "pct": 44.2,
+      "z_score": -1.22,
+      "significant": false,
+      "direction": "高者勝"
+    },
+    "pyth_pct": {
+      "correct": 50,
+      "total": 114,
+      "pct": 43.9,
+      "z_score": -1.31,
+      "significant": false,
+      "direction": "高者勝"
+    },
+    "ops": {
+      "correct": 47,
+      "total": 114,
+      "pct": 41.2,
+      "z_score": -1.87,
+      "significant": false,
+      "direction": "高者勝"
+    },
+    "slg": {
+      "correct": 47,
+      "total": 113,
+      "pct": 41.6,
+      "z_score": -1.79,
+      "significant": false,
+      "direction": "高者勝"
+    },
+    "obp": {
+      "correct": 44,
+      "total": 114,
+      "pct": 38.6,
+      "z_score": -2.44,
+      "significant": true,
+      "direction": "高者勝"
+    },
+    "avg": {
+      "correct": 43,
+      "total": 113,
+      "pct": 38.1,
+      "z_score": -2.54,
+      "significant": true,
+      "direction": "高者勝"
+    },
+    "runs_pg": {
+      "correct": 42,
+      "total": 111,
+      "pct": 37.8,
+      "z_score": -2.56,
+      "significant": true,
+      "direction": "高者勝"
+    },
+    "hr_pg": {
+      "correct": 46,
+      "total": 108,
+      "pct": 42.6,
+      "z_score": -1.54,
+      "significant": false,
+      "direction": "高者勝"
+    },
+    "bb_rate": {
+      "correct": 55,
+      "total": 114,
+      "pct": 48.2,
+      "z_score": -0.37,
+      "significant": false,
+      "direction": "高者勝"
+    },
+    "so_rate": {
+      "correct": 53,
+      "total": 114,
+      "pct": 46.5,
+      "z_score": -0.75,
+      "significant": false,
+      "direction": "低者勝"
+    },
+    "era": {
+      "correct": 57,
+      "total": 114,
+      "pct": 50.0,
+      "z_score": 0.0,
+      "significant": false,
+      "direction": "低者勝"
+    },
+    "whip": {
+      "correct": 52,
+      "total": 114,
+      "pct": 45.6,
+      "z_score": -0.94,
+      "significant": false,
+      "direction": "低者勝"
+    },
+    "fip": {
+      "correct": 57,
+      "total": 114,
+      "pct": 50.0,
+      "z_score": 0.0,
+      "significant": false,
+      "direction": "低者勝"
+    },
+    "k9": {
+      "correct": 55,
+      "total": 113,
+      "pct": 48.7,
+      "z_score": -0.28,
+      "significant": false,
+      "direction": "高者勝"
+    },
+    "bb9": {
+      "correct": 49,
+      "total": 114,
+      "pct": 43.0,
+      "z_score": -1.5,
+      "significant": false,
+      "direction": "低者勝"
+    },
+    "k_bb_ratio": {
+      "correct": 49,
+      "total": 114,
+      "pct": 43.0,
+      "z_score": -1.5,
+      "significant": false,
+      "direction": "高者勝"
+    },
+    "ra_pg": {
+      "correct": 56,
+      "total": 111,
+      "pct": 50.5,
+      "z_score": 0.09,
+      "significant": false,
+      "direction": "低者勝"
+    },
+    "bp_fatigue": {
+      "correct": 38,
+      "total": 63,
+      "pct": 60.3,
+      "z_score": 1.64,
+      "significant": false,
+      "direction": "低者勝"
+    },
+    "home_adv": {
+      "correct": 62,
+      "total": 114,
+      "pct": 54.4,
+      "z_score": 0.94,
+      "significant": false,
+      "direction": "主場"
+    },
+    "composite:ops+era": {
+      "correct": 51,
+      "total": 114,
+      "pct": 44.7,
+      "z_score": -1.12,
+      "significant": false,
+      "components": "ops+era"
+    },
+    "composite:ops+fip": {
+      "correct": 47,
+      "total": 114,
+      "pct": 41.2,
+      "z_score": -1.87,
+      "significant": false,
+      "components": "ops+fip"
+    },
+    "composite:ops+whip": {
+      "correct": 46,
+      "total": 114,
+      "pct": 40.4,
+      "z_score": -2.06,
+      "significant": true,
+      "components": "ops+whip"
+    },
+    "composite:run_diff+bp_fatigue": {
+      "correct": 52,
+      "total": 114,
+      "pct": 45.6,
+      "z_score": -0.94,
+      "significant": false,
+      "components": "run_diff+bp_fatigue"
+    },
+    "composite:ops+era+bp_fatigue": {
+      "correct": 52,
+      "total": 114,
+      "pct": 45.6,
+      "z_score": -0.94,
+      "significant": false,
+      "components": "ops+era+bp_fatigue"
+    },
+    "composite:pyth+ops+fip": {
+      "correct": 48,
+      "total": 114,
+      "pct": 42.1,
+      "z_score": -1.69,
+      "significant": false,
+      "components": "pyth+ops+fip"
+    },
+    "composite:run_diff+fip": {
+      "correct": 51,
+      "total": 114,
+      "pct": 44.7,
+      "z_score": -1.12,
+      "significant": false,
+      "components": "run_diff+fip"
+    },
+    "composite:slg+era": {
+      "correct": 52,
+      "total": 114,
+      "pct": 45.6,
+      "z_score": -0.94,
+      "significant": false,
+      "components": "slg+era"
+    },
+    "composite:obp+whip": {
+      "correct": 44,
+      "total": 114,
+      "pct": 38.6,
+      "z_score": -2.44,
+      "significant": true,
+      "components": "obp+whip"
+    },
+    "composite:run_diff+ops+era+bp": {
+      "correct": 47,
+      "total": 114,
+      "pct": 41.2,
+      "z_score": -1.87,
+      "significant": false,
+      "components": "run_diff+ops+era+bp"
+    }
+  },
+  "matchups": [
+    {
+      "away": "Pittsburgh Pirates",
+      "away_zh": "海盜",
+      "home": "Chicago Cubs",
+      "home_zh": "小熊",
+      "away_sp": "Carmen Mlodzinski",
+      "home_sp": "Shota Imanaga",
+      "away_record": "7-5",
+      "home_record": "6-7",
+      "comparisons": {
+        "ops": {
+          "away": 0.72,
+          "home": 0.692,
+          "edge": "away"
+        },
+        "slg": {
+          "away": 0.383,
+          "home": 0.379,
+          "edge": "away"
+        },
+        "obp": {
+          "away": 0.338,
+          "home": 0.313,
+          "edge": "away"
+        },
+        "era": {
+          "away": 3.333,
+          "home": 3.664,
+          "edge": "away"
+        },
+        "whip": {
+          "away": 1.296,
+          "home": 1.159,
+          "edge": "home"
+        },
+        "fip": {
+          "away": 3.406,
+          "home": 4.153,
+          "edge": "away"
+        },
+        "k9": {
+          "away": 10.0,
+          "home": 7.646,
+          "edge": "away"
+        },
+        "run_diff_per_game": {
+          "away": 0.5,
+          "home": 0.846,
+          "edge": "home"
+        },
+        "pyth_pct": {
+          "away": 0.559,
+          "home": 0.598,
+          "edge": "home"
+        },
+        "bp_fatigue": {
+          "away": 0.44,
+          "home": 0.587,
+          "edge": "away"
+        }
+      },
+      "away_edges": 7,
+      "home_edges": 3,
+      "edge_summary": "away"
+    },
+    {
+      "away": "Arizona Diamondbacks",
+      "away_zh": "響尾蛇",
+      "home": "Philadelphia Phillies",
+      "home_zh": "費城人",
+      "away_sp": "Michael Soroka",
+      "home_sp": "Jesús Luzardo",
+      "away_record": "7-6",
+      "home_record": "6-6",
+      "comparisons": {
+        "ops": {
+          "away": 0.658,
+          "home": 0.658,
+          "edge": "away"
+        },
+        "slg": {
+          "away": 0.373,
+          "home": 0.351,
+          "edge": "away"
+        },
+        "obp": {
+          "away": 0.284,
+          "home": 0.307,
+          "edge": "home"
+        },
+        "era": {
+          "away": 3.668,
+          "home": 4.206,
+          "edge": "away"
+        },
+        "whip": {
+          "away": 1.223,
+          "home": 1.28,
+          "edge": "away"
+        },
+        "fip": {
+          "away": 4.071,
+          "home": 2.801,
+          "edge": "home"
+        },
+        "k9": {
+          "away": 6.789,
+          "home": 10.093,
+          "edge": "home"
+        },
+        "run_diff_per_game": {
+          "away": -0.538,
+          "home": -1.25,
+          "edge": "away"
+        },
+        "pyth_pct": {
+          "away": 0.437,
+          "home": 0.352,
+          "edge": "away"
+        },
+        "bp_fatigue": {
+          "away": 0.929,
+          "home": 0.293,
+          "edge": "home"
+        }
+      },
+      "away_edges": 6,
+      "home_edges": 4,
+      "edge_summary": "away"
+    },
+    {
+      "away": "Miami Marlins",
+      "away_zh": "馬林魚",
+      "home": "Detroit Tigers",
+      "home_zh": "老虎",
+      "away_sp": "Chris Paddack",
+      "home_sp": "Keider Montero",
+      "away_record": "8-5",
+      "home_record": "4-9",
+      "comparisons": {
+        "ops": {
+          "away": 0.766,
+          "home": 0.675,
+          "edge": "away"
+        },
+        "slg": {
+          "away": 0.419,
+          "home": 0.351,
+          "edge": "away"
+        },
+        "obp": {
+          "away": 0.347,
+          "home": 0.324,
+          "edge": "away"
+        },
+        "era": {
+          "away": 3.569,
+          "home": 4.32,
+          "edge": "away"
+        },
+        "whip": {
+          "away": 1.172,
+          "home": 1.44,
+          "edge": "away"
+        },
+        "fip": {
+          "away": 3.6,
+          "home": 3.811,
+          "edge": "away"
+        },
+        "k9": {
+          "away": 9.466,
+          "home": 8.391,
+          "edge": "away"
+        },
+        "run_diff_per_game": {
+          "away": 1.0,
+          "home": -0.231,
+          "edge": "away"
+        },
+        "pyth_pct": {
+          "away": 0.606,
+          "home": 0.473,
+          "edge": "away"
+        },
+        "bp_fatigue": {
+          "away": 1.0,
+          "home": 0.782,
+          "edge": "home"
+        }
+      },
+      "away_edges": 9,
+      "home_edges": 1,
+      "edge_summary": "away"
+    },
+    {
+      "away": "Los Angeles Angels",
+      "away_zh": "天使",
+      "home": "Cincinnati Reds",
+      "home_zh": "紅人",
+      "away_sp": "Jack Kochanowicz",
+      "home_sp": "Chase Burns",
+      "away_record": "6-7",
+      "home_record": "8-5",
+      "comparisons": {
+        "ops": {
+          "away": 0.642,
+          "home": 0.617,
+          "edge": "away"
+        },
+        "slg": {
+          "away": 0.34,
+          "home": 0.327,
+          "edge": "away"
+        },
+        "obp": {
+          "away": 0.302,
+          "home": 0.29,
+          "edge": "away"
+        },
+        "era": {
+          "away": 3.802,
+          "home": 3.356,
+          "edge": "home"
+        },
+        "whip": {
+          "away": 1.414,
+          "home": 1.288,
+          "edge": "home"
+        },
+        "fip": {
+          "away": 3.453,
+          "home": 3.846,
+          "edge": "away"
+        },
+        "k9": {
+          "away": 9.621,
+          "home": 8.542,
+          "edge": "away"
+        },
+        "run_diff_per_game": {
+          "away": -0.846,
+          "home": -0.692,
+          "edge": "home"
+        },
+        "pyth_pct": {
+          "away": 0.404,
+          "home": 0.398,
+          "edge": "away"
+        },
+        "bp_fatigue": {
+          "away": 0.684,
+          "home": 1.0,
+          "edge": "away"
+        }
+      },
+      "away_edges": 7,
+      "home_edges": 3,
+      "edge_summary": "away"
+    },
+    {
+      "away": "Minnesota Twins",
+      "away_zh": "雙城",
+      "home": "Toronto Blue Jays",
+      "home_zh": "藍鳥",
+      "away_sp": "Simeon Woods Richardson",
+      "home_sp": "Patrick Corbin",
+      "away_record": "7-6",
+      "home_record": "5-8",
+      "comparisons": {
+        "ops": {
+          "away": 0.682,
+          "home": 0.643,
+          "edge": "away"
+        },
+        "slg": {
+          "away": 0.352,
+          "home": 0.342,
+          "edge": "away"
+        },
+        "obp": {
+          "away": 0.329,
+          "home": 0.302,
+          "edge": "away"
+        },
+        "era": {
+          "away": 3.868,
+          "home": 4.223,
+          "edge": "away"
+        },
+        "whip": {
+          "away": 1.386,
+          "home": 1.366,
+          "edge": "home"
+        },
+        "fip": {
+          "away": 3.363,
+          "home": 3.301,
+          "edge": "home"
+        },
+        "k9": {
+          "away": 8.447,
+          "home": 11.388,
+          "edge": "home"
+        },
+        "run_diff_per_game": {
+          "away": 0.385,
+          "home": -1.769,
+          "edge": "away"
+        },
+        "pyth_pct": {
+          "away": 0.543,
+          "home": 0.305,
+          "edge": "away"
+        },
+        "bp_fatigue": {
+          "away": 0.929,
+          "home": 0.587,
+          "edge": "home"
+        }
+      },
+      "away_edges": 6,
+      "home_edges": 4,
+      "edge_summary": "away"
+    },
+    {
+      "away": "Athletics",
+      "away_zh": "運動家",
+      "home": "New York Mets",
+      "home_zh": "大都會",
+      "away_sp": "J.T. Ginn",
+      "home_sp": "Clay Holmes",
+      "away_record": "5-7",
+      "home_record": "7-6",
+      "comparisons": {
+        "ops": {
+          "away": 0.645,
+          "home": 0.683,
+          "edge": "home"
+        },
+        "slg": {
+          "away": 0.353,
+          "home": 0.365,
+          "edge": "home"
+        },
+        "obp": {
+          "away": 0.292,
+          "home": 0.317,
+          "edge": "home"
+        },
+        "era": {
+          "away": 4.755,
+          "home": 3.207,
+          "edge": "home"
+        },
+        "whip": {
+          "away": 1.604,
+          "home": 1.202,
+          "edge": "home"
+        },
+        "fip": {
+          "away": 4.855,
+          "home": 2.976,
+          "edge": "home"
+        },
+        "k9": {
+          "away": 7.896,
+          "home": 8.876,
+          "edge": "home"
+        },
+        "run_diff_per_game": {
+          "away": -1.0,
+          "home": 0.538,
+          "edge": "home"
+        },
+        "pyth_pct": {
+          "away": 0.388,
+          "home": 0.566,
+          "edge": "home"
+        },
+        "bp_fatigue": {
+          "away": 0.88,
+          "home": 0.978,
+          "edge": "away"
+        }
+      },
+      "away_edges": 1,
+      "home_edges": 9,
+      "edge_summary": "home"
+    },
+    {
+      "away": "New York Yankees",
+      "away_zh": "洋基",
+      "home": "Tampa Bay Rays",
+      "home_zh": "光芒",
+      "away_sp": "Luis Gil",
+      "home_sp": "Steven Matz",
+      "away_record": "8-4",
+      "home_record": "5-7",
+      "comparisons": {
+        "ops": {
+          "away": 0.656,
+          "home": 0.706,
+          "edge": "home"
+        },
+        "slg": {
+          "away": 0.34,
+          "home": 0.379,
+          "edge": "home"
+        },
+        "obp": {
+          "away": 0.315,
+          "home": 0.326,
+          "edge": "home"
+        },
+        "era": {
+          "away": 2.348,
+          "home": 4.956,
+          "edge": "away"
+        },
+        "whip": {
+          "away": 1.034,
+          "home": 1.244,
+          "edge": "away"
+        },
+        "fip": {
+          "away": 2.029,
+          "home": 4.306,
+          "edge": "away"
+        },
+        "k9": {
+          "away": 9.559,
+          "home": 7.775,
+          "edge": "away"
+        },
+        "run_diff_per_game": {
+          "away": 2.083,
+          "home": -1.167,
+          "edge": "away"
+        },
+        "pyth_pct": {
+          "away": 0.776,
+          "home": 0.389,
+          "edge": "away"
+        },
+        "bp_fatigue": {
+          "away": 0.782,
+          "home": 0.684,
+          "edge": "home"
+        }
+      },
+      "away_edges": 6,
+      "home_edges": 4,
+      "edge_summary": "away"
+    },
+    {
+      "away": "San Francisco Giants",
+      "away_zh": "巨人",
+      "home": "Baltimore Orioles",
+      "home_zh": "金鶯",
+      "away_sp": "Landen Roupp",
+      "home_sp": "Shane Baz",
+      "away_record": "5-8",
+      "home_record": "6-6",
+      "comparisons": {
+        "ops": {
+          "away": 0.618,
+          "home": 0.692,
+          "edge": "home"
+        },
+        "slg": {
+          "away": 0.335,
+          "home": 0.362,
+          "edge": "home"
+        },
+        "obp": {
+          "away": 0.283,
+          "home": 0.33,
+          "edge": "home"
+        },
+        "era": {
+          "away": 4.034,
+          "home": 4.016,
+          "edge": "home"
+        },
+        "whip": {
+          "away": 1.336,
+          "home": 1.386,
+          "edge": "away"
+        },
+        "fip": {
+          "away": 3.479,
+          "home": 3.518,
+          "edge": "away"
+        },
+        "k9": {
+          "away": 8.922,
+          "home": 9.228,
+          "edge": "home"
+        },
+        "run_diff_per_game": {
+          "away": -1.231,
+          "home": -0.333,
+          "edge": "home"
+        },
+        "pyth_pct": {
+          "away": 0.341,
+          "home": 0.458,
+          "edge": "home"
+        },
+        "bp_fatigue": {
+          "away": 0.489,
+          "home": 0.587,
+          "edge": "away"
+        }
+      },
+      "away_edges": 3,
+      "home_edges": 7,
+      "edge_summary": "home"
+    },
+    {
+      "away": "Cleveland Guardians",
+      "away_zh": "守護者",
+      "home": "Atlanta Braves",
+      "home_zh": "勇士",
+      "away_sp": "Slade Cecconi",
+      "home_sp": "Bryce Elder",
+      "away_record": "9-5",
+      "home_record": "8-5",
+      "comparisons": {
+        "ops": {
+          "away": 0.682,
+          "home": 0.75,
+          "edge": "home"
+        },
+        "slg": {
+          "away": 0.372,
+          "home": 0.424,
+          "edge": "home"
+        },
+        "obp": {
+          "away": 0.31,
+          "home": 0.326,
+          "edge": "home"
+        },
+        "era": {
+          "away": 3.266,
+          "home": 2.035,
+          "edge": "home"
+        },
+        "whip": {
+          "away": 1.169,
+          "home": 0.913,
+          "edge": "home"
+        },
+        "fip": {
+          "away": 3.979,
+          "home": 3.057,
+          "edge": "home"
+        },
+        "k9": {
+          "away": 11.105,
+          "home": 8.296,
+          "edge": "away"
+        },
+        "run_diff_per_game": {
+          "away": 0.286,
+          "home": 2.615,
+          "edge": "home"
+        },
+        "pyth_pct": {
+          "away": 0.54,
+          "home": 0.81,
+          "edge": "home"
+        },
+        "bp_fatigue": {
+          "away": 0.489,
+          "home": 0.342,
+          "edge": "home"
+        }
+      },
+      "away_edges": 1,
+      "home_edges": 9,
+      "edge_summary": "home"
+    },
+    {
+      "away": "Chicago White Sox",
+      "away_zh": "白襪",
+      "home": "Kansas City Royals",
+      "home_zh": "皇家",
+      "away_sp": "Davis Martin",
+      "home_sp": "Kris Bubic",
+      "away_record": "6-8",
+      "home_record": "6-8",
+      "comparisons": {
+        "ops": {
+          "away": 0.609,
+          "home": 0.685,
+          "edge": "home"
+        },
+        "slg": {
+          "away": 0.313,
+          "home": 0.358,
+          "edge": "home"
+        },
+        "obp": {
+          "away": 0.296,
+          "home": 0.328,
+          "edge": "home"
+        },
+        "era": {
+          "away": 4.829,
+          "home": 4.182,
+          "edge": "home"
+        },
+        "whip": {
+          "away": 1.455,
+          "home": 1.386,
+          "edge": "home"
+        },
+        "fip": {
+          "away": 4.043,
+          "home": 4.078,
+          "edge": "away"
+        },
+        "k9": {
+          "away": 8.634,
+          "home": 9.245,
+          "edge": "home"
+        },
+        "run_diff_per_game": {
+          "away": -1.857,
+          "home": -0.571,
+          "edge": "home"
+        },
+        "pyth_pct": {
+          "away": 0.296,
+          "home": 0.43,
+          "edge": "home"
+        },
+        "bp_fatigue": {
+          "away": 1.0,
+          "home": 1.0,
+          "edge": "even"
+        }
+      },
+      "away_edges": 1,
+      "home_edges": 8,
+      "edge_summary": "home"
+    },
+    {
+      "away": "Washington Nationals",
+      "away_zh": "國民",
+      "home": "Milwaukee Brewers",
+      "home_zh": "釀酒人",
+      "away_sp": "Jake Irvin",
+      "home_sp": "Chad Patrick",
+      "away_record": "4-8",
+      "home_record": "8-5",
+      "comparisons": {
+        "ops": {
+          "away": 0.77,
+          "home": 0.729,
+          "edge": "away"
+        },
+        "slg": {
+          "away": 0.431,
+          "home": 0.383,
+          "edge": "away"
+        },
+        "obp": {
+          "away": 0.339,
+          "home": 0.346,
+          "edge": "home"
+        },
+        "era": {
+          "away": 6.056,
+          "home": 3.982,
+          "edge": "home"
+        },
+        "whip": {
+          "away": 1.654,
+          "home": 1.398,
+          "edge": "home"
+        },
+        "fip": {
+          "away": 5.979,
+          "home": 4.091,
+          "edge": "home"
+        },
+        "k9": {
+          "away": 7.738,
+          "home": 10.593,
+          "edge": "home"
+        },
+        "run_diff_per_game": {
+          "away": -0.583,
+          "home": 1.385,
+          "edge": "home"
+        },
+        "pyth_pct": {
+          "away": 0.453,
+          "home": 0.64,
+          "edge": "home"
+        },
+        "bp_fatigue": {
+          "away": 0.88,
+          "home": 0.782,
+          "edge": "home"
+        }
+      },
+      "away_edges": 2,
+      "home_edges": 8,
+      "edge_summary": "home"
+    },
+    {
+      "away": "Boston Red Sox",
+      "away_zh": "紅襪",
+      "home": "St. Louis Cardinals",
+      "home_zh": "紅雀",
+      "away_sp": "Connelly Early",
+      "home_sp": "Dustin May",
+      "away_record": "4-8",
+      "home_record": "7-5",
+      "comparisons": {
+        "ops": {
+          "away": 0.666,
+          "home": 0.685,
+          "edge": "home"
+        },
+        "slg": {
+          "away": 0.356,
+          "home": 0.361,
+          "edge": "home"
+        },
+        "obp": {
+          "away": 0.31,
+          "home": 0.324,
+          "edge": "home"
+        },
+        "era": {
+          "away": 4.187,
+          "home": 4.954,
+          "edge": "away"
+        },
+        "whip": {
+          "away": 1.348,
+          "home": 1.523,
+          "edge": "away"
+        },
+        "fip": {
+          "away": 4.078,
+          "home": 4.751,
+          "edge": "away"
+        },
+        "k9": {
+          "away": 8.715,
+          "home": 6.11,
+          "edge": "away"
+        },
+        "run_diff_per_game": {
+          "away": -0.917,
+          "home": -0.25,
+          "edge": "home"
+        },
+        "pyth_pct": {
+          "away": 0.39,
+          "home": 0.475,
+          "edge": "home"
+        },
+        "bp_fatigue": {
+          "away": 0.391,
+          "home": 0.44,
+          "edge": "away"
+        }
+      },
+      "away_edges": 5,
+      "home_edges": 5,
+      "edge_summary": "even"
+    },
+    {
+      "away": "Colorado Rockies",
+      "away_zh": "洛磯",
+      "home": "San Diego Padres",
+      "home_zh": "教士",
+      "away_sp": "Tomoyuki Sugano",
+      "home_sp": "Walker Buehler",
+      "away_record": "6-7",
+      "home_record": "7-6",
+      "comparisons": {
+        "ops": {
+          "away": 0.693,
+          "home": 0.621,
+          "edge": "away"
+        },
+        "slg": {
+          "away": 0.386,
+          "home": 0.336,
+          "edge": "away"
+        },
+        "obp": {
+          "away": 0.307,
+          "home": 0.285,
+          "edge": "away"
+        },
+        "era": {
+          "away": 3.615,
+          "home": 3.508,
+          "edge": "home"
+        },
+        "whip": {
+          "away": 1.282,
+          "home": 1.271,
+          "edge": "home"
+        },
+        "fip": {
+          "away": 3.784,
+          "home": 2.897,
+          "edge": "home"
+        },
+        "k9": {
+          "away": 7.692,
+          "home": 9.305,
+          "edge": "home"
+        },
+        "run_diff_per_game": {
+          "away": 0.462,
+          "home": 0.154,
+          "edge": "away"
+        },
+        "pyth_pct": {
+          "away": 0.556,
+          "home": 0.519,
+          "edge": "away"
+        },
+        "bp_fatigue": {
+          "away": 1.0,
+          "home": 1.0,
+          "edge": "even"
+        }
+      },
+      "away_edges": 5,
+      "home_edges": 4,
+      "edge_summary": "away"
+    },
+    {
+      "away": "Houston Astros",
+      "away_zh": "太空人",
+      "home": "Seattle Mariners",
+      "home_zh": "水手",
+      "away_sp": "Tatsuya Imai",
+      "home_sp": "Emerson Hancock",
+      "away_record": "6-7",
+      "home_record": "4-9",
+      "comparisons": {
+        "ops": {
+          "away": 0.825,
+          "home": 0.581,
+          "edge": "away"
+        },
+        "slg": {
+          "away": 0.453,
+          "home": 0.301,
+          "edge": "away"
+        },
+        "obp": {
+          "away": 0.371,
+          "home": 0.28,
+          "edge": "away"
+        },
+        "era": {
+          "away": 6.053,
+          "home": 2.623,
+          "edge": "home"
+        },
+        "whip": {
+          "away": 1.628,
+          "home": 0.951,
+          "edge": "home"
+        },
+        "fip": {
+          "away": 4.976,
+          "home": 2.62,
+          "edge": "home"
+        },
+        "k9": {
+          "away": 10.274,
+          "home": 9.18,
+          "edge": "away"
+        },
+        "run_diff_per_game": {
+          "away": 0.077,
+          "home": -0.154,
+          "edge": "away"
+        },
+        "pyth_pct": {
+          "away": 0.506,
+          "home": 0.476,
+          "edge": "away"
+        },
+        "bp_fatigue": {
+          "away": 1.0,
+          "home": 0.44,
+          "edge": "home"
+        }
+      },
+      "away_edges": 6,
+      "home_edges": 4,
+      "edge_summary": "away"
+    },
+    {
+      "away": "Texas Rangers",
+      "away_zh": "遊騎兵",
+      "home": "Los Angeles Dodgers",
+      "home_zh": "道奇",
+      "away_sp": "Kumar Rocker",
+      "home_sp": "Tyler Glasnow",
+      "away_record": "7-5",
+      "home_record": "9-3",
+      "comparisons": {
+        "ops": {
+          "away": 0.666,
+          "home": 0.84,
+          "edge": "home"
+        },
+        "slg": {
+          "away": 0.374,
+          "home": 0.48,
+          "edge": "home"
+        },
+        "obp": {
+          "away": 0.292,
+          "home": 0.361,
+          "edge": "home"
+        },
+        "era": {
+          "away": 2.944,
+          "home": 3.364,
+          "edge": "away"
+        },
+        "whip": {
+          "away": 1.084,
+          "home": 1.131,
+          "edge": "away"
+        },
+        "fip": {
+          "away": 3.081,
+          "home": 3.455,
+          "edge": "away"
+        },
+        "k9": {
+          "away": 10.009,
+          "home": 7.822,
+          "edge": "away"
+        },
+        "run_diff_per_game": {
+          "away": 0.417,
+          "home": 2.833,
+          "edge": "home"
+        },
+        "pyth_pct": {
+          "away": 0.56,
+          "home": 0.77,
+          "edge": "home"
+        },
+        "bp_fatigue": {
+          "away": 0.587,
+          "home": 0.293,
+          "edge": "home"
+        }
+      },
+      "away_edges": 4,
+      "home_edges": 6,
+      "edge_summary": "home"
+    }
+  ]
+}
