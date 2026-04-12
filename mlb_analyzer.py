@@ -8,7 +8,9 @@ MLB 投注分析工具 — 統計相關性回測 + 牛棚追蹤 + 每日分析
   python mlb_analyzer.py correlate <season>          # 回測單一賽季
   python mlb_analyzer.py correlate range <s> <e>     # 回測多季合併 (自動存 baseline)
   python mlb_analyzer.py daily [date]                # 每日例行: 抓最新+產生分析 JSON
+  python mlb_analyzer.py daily [date] --top5         # 同上, 只顯示 Top 5% 場次
   python mlb_analyzer.py today [date]                # 不抓新資料, 只重新產生分析
+  python mlb_analyzer.py today [date] --top5         # 同上, 只顯示 Top 5%
 
 日期參數 (可選):
   daily                → 今天
@@ -1525,9 +1527,9 @@ def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_
 
         # 記錄各門檻的分數值與命中率
         thresh = {'sample_size': n}
-        for top_pct in [10, 20, 30]:
+        for top_pct in [5, 10, 20, 30]:
             cutoff = int(n * top_pct / 100)
-            if cutoff < 30:
+            if cutoff < 20:
                 continue
             top_subset = scored[:cutoff]
             wins = sum(1 for _, w in top_subset if w)
@@ -1776,7 +1778,9 @@ def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
             t = thresholds.get(full_name, {})
             abs_score = abs(score)
             bucket = None
-            if t.get('top_10_threshold') is not None and abs_score >= t['top_10_threshold']:
+            if t.get('top_5_threshold') is not None and abs_score >= t['top_5_threshold']:
+                bucket = "Top 5%"
+            elif t.get('top_10_threshold') is not None and abs_score >= t['top_10_threshold']:
                 bucket = "Top 10%"
             elif t.get('top_20_threshold') is not None and abs_score >= t['top_20_threshold']:
                 bucket = "Top 20%"
@@ -1820,7 +1824,9 @@ def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
             t = thresholds.get(full_name, {})
             abs_score = abs(score)
             bucket = None
-            if t.get('top_10_threshold') is not None and abs_score >= t['top_10_threshold']:
+            if t.get('top_5_threshold') is not None and abs_score >= t['top_5_threshold']:
+                bucket = "Top 5%"
+            elif t.get('top_10_threshold') is not None and abs_score >= t['top_10_threshold']:
                 bucket = "Top 10%"
             elif t.get('top_20_threshold') is not None and abs_score >= t['top_20_threshold']:
                 bucket = "Top 20%"
@@ -1837,13 +1843,15 @@ def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
     return scores
 
 
-def generate_daily_analysis(games, target_date=None):
+def generate_daily_analysis(games, target_date=None, top5_only=False):
     """daily 主流程：用當季數據 + 10 年 baseline 產出指定日期的比賽分析 JSON
 
     target_date: 'YYYY-MM-DD' 或 None (預設今天)
+    top5_only: True = 只輸出符合 Top 5% 篩選的場次 (開季減噪用)
     """
     today = target_date if target_date else datetime.now().strftime("%Y-%m-%d")
-    print(f"\n=== 比賽分析 ({today}) ===")
+    mode = "Top 5% 嚴選模式" if top5_only else "標準模式"
+    print(f"\n=== 比賽分析 ({today}) [{mode}] ===")
 
     # 載入 10 年 baseline
     baseline = load_baseline()
@@ -1937,6 +1945,29 @@ def generate_daily_analysis(games, target_date=None):
                     'edge': 'even',
                 }
 
+            # 預先合併大小分的 profitable_filters (同一組 z-score 共享篩選)
+            total_bt_keys = [k for k, _, t, _, _ in BET_TYPES if t == 'total']
+            total_filters_union = {}  # {(stat, top_pct): filter_dict}
+            for tk in total_bt_keys:
+                for f in baseline['bet_types'].get(tk, {}).get('profitable_filters', []):
+                    key = (f['stat'], f['top_pct'])
+                    if key not in total_filters_union or f['single_pct'] > total_filters_union[key]['single_pct']:
+                        total_filters_union[key] = f
+
+            # 同樣合併 bucket_thresholds (取各盤口中最寬鬆的門檻)
+            total_thresholds_merged = {}
+            for tk in total_bt_keys:
+                bt_thresh = baseline['bet_types'].get(tk, {}).get('bucket_thresholds', {})
+                for stat_name, thresh in bt_thresh.items():
+                    if stat_name not in total_thresholds_merged:
+                        total_thresholds_merged[stat_name] = dict(thresh)
+                    else:
+                        existing = total_thresholds_merged[stat_name]
+                        for pct_key in ['top_5_threshold', 'top_10_threshold', 'top_20_threshold', 'top_30_threshold']:
+                            if pct_key in thresh:
+                                if pct_key not in existing or thresh[pct_key] < existing[pct_key]:
+                                    existing[pct_key] = thresh[pct_key]  # 取較寬鬆的門檻
+
             # 對每個 bet type 計算複合分數 + 推薦
             bet_type_analysis = {}
             any_top_10 = False
@@ -1948,9 +1979,29 @@ def generate_daily_analysis(games, target_date=None):
                     away_sp_snap, home_sp_snap, baseline
                 )
 
+                # 大小分盤口: 用共享的 filters 和 thresholds
+                if bt_type == 'total':
+                    filters_to_check = list(total_filters_union.values())
+                    # 用共享門檻重新判定 bucket (覆蓋 compute_composite 的結果)
+                    for score_name, score_data in scores.items():
+                        t = total_thresholds_merged.get(score_name, {})
+                        abs_score = abs(score_data['value'])
+                        if t.get('top_5_threshold') is not None and abs_score >= t['top_5_threshold']:
+                            score_data['bucket'] = "Top 5%"
+                        elif t.get('top_10_threshold') is not None and abs_score >= t['top_10_threshold']:
+                            score_data['bucket'] = "Top 10%"
+                        elif t.get('top_20_threshold') is not None and abs_score >= t['top_20_threshold']:
+                            score_data['bucket'] = "Top 20%"
+                        elif t.get('top_30_threshold') is not None and abs_score >= t['top_30_threshold']:
+                            score_data['bucket'] = "Top 30%"
+                        else:
+                            score_data['bucket'] = None
+                else:
+                    filters_to_check = bt_data.get('profitable_filters', [])
+
                 # 符合 profitable filter 的檢查
                 matched_filters = []
-                for f in bt_data.get('profitable_filters', []):
+                for f in filters_to_check:
                     stat_name = f['stat']
                     top_pct = f['top_pct']
                     score_data = scores.get(stat_name)
@@ -1964,7 +2015,8 @@ def generate_daily_analysis(games, target_date=None):
                                 'min_odds_needed': f['breakeven_combined_odds'],
                             })
 
-                is_top_10_pct = any(f['top_pct'] == 10 for f in matched_filters)
+                is_top_5_pct = any(f['top_pct'] == 5 for f in matched_filters)
+                is_top_10_pct = any(f['top_pct'] <= 10 for f in matched_filters)
                 if is_top_10_pct:
                     any_top_10 = True
 
@@ -2045,6 +2097,7 @@ def generate_daily_analysis(games, target_date=None):
                     'line': bt_line,
                     'composite_scores': scores,
                     'matched_filters': matched_filters,
+                    'is_top_5_pct': is_top_5_pct,
                     'is_top_10_pct': is_top_10_pct,
                     'predicted': predicted,
                     'votes': vote_info,
@@ -2061,7 +2114,10 @@ def generate_daily_analysis(games, target_date=None):
             away_zh = TEAM_ZH.get(away_team, away_team)
             home_zh = TEAM_ZH.get(home_team, home_team)
 
-            today_matchups.append({
+            any_top_10 = any(bt.get('is_top_10_pct') for bt in bet_type_analysis.values())
+            any_top_5 = any(bt.get('is_top_5_pct') for bt in bet_type_analysis.values())
+
+            matchup_data = {
                 'away': away_team, 'away_zh': away_zh,
                 'home': home_team, 'home_zh': home_zh,
                 'away_sp': away_sp_name, 'home_sp': home_sp_name,
@@ -2071,13 +2127,20 @@ def generate_daily_analysis(games, target_date=None):
                 'sp_comparisons': sp_comparisons,
                 'away_edges': away_edges,
                 'home_edges': home_edges,
+                'any_top_5_pct': any_top_5,
                 'any_top_10_pct': any_top_10,
                 'bet_types': bet_type_analysis,
-            })
+            }
 
-        # 排序: 有任一 bet type 屬於 Top 10% 的優先
+            # --top5 模式: 只保留有任一盤口符合 Top 5% 的場次
+            if top5_only and not any_top_5:
+                continue
+
+            today_matchups.append(matchup_data)
+
+        # 排序: Top 5% > Top 10% > 其餘
         today_matchups.sort(key=lambda m: (
-            0 if m['any_top_10_pct'] else 1,
+            0 if m['any_top_5_pct'] else (1 if m['any_top_10_pct'] else 2),
             -abs(m['away_edges'] - m['home_edges'])
         ))
 
@@ -2088,6 +2151,7 @@ def generate_daily_analysis(games, target_date=None):
         'date': today,
         'current_season': CURRENT_SEASON,
         'current_season_games': current_games_count,
+        'top5_mode': top5_only,
         'baseline': {
             'season_range': baseline['season_range'],
             'total_games_analyzed': baseline['total_games_analyzed'],
@@ -2206,24 +2270,23 @@ def main():
             run_correlation_analysis(games)
 
     # today - 用既有當季數據產生指定日期分析 (不打 API 抓新資料)
-    # 用法: today                → 今天
-    #       today 4.11           → 2026-04-11
-    #       today 2025-09-28     → 歷史日期
     elif cmd == "today":
-        target = parse_date_arg(sys.argv[2]) if len(sys.argv) >= 3 else None
+        args = [a for a in sys.argv[2:] if not a.startswith('--')]
+        top5 = '--top5' in sys.argv
+        target = parse_date_arg(args[0]) if args else None
         games = load_cached_games(CURRENT_SEASON)
         if games:
-            generate_daily_analysis(games, target_date=target)
+            generate_daily_analysis(games, target_date=target, top5_only=top5)
 
-    # daily - 每日例行: 抓當季最新 + 產出指定日期分析 JSON (用 10 年 baseline)
-    # 用法: daily                → 今天
-    #       daily 4.11           → 2026-04-11
+    # daily - 每日例行: 抓當季最新 + 產出指定日期分析 JSON
     elif cmd == "daily":
-        target = parse_date_arg(sys.argv[2]) if len(sys.argv) >= 3 else None
+        args = [a for a in sys.argv[2:] if not a.startswith('--')]
+        top5 = '--top5' in sys.argv
+        target = parse_date_arg(args[0]) if args else None
         fetch_season_games(CURRENT_SEASON)
         games = load_cached_games(CURRENT_SEASON)
         if games:
-            generate_daily_analysis(games, target_date=target)
+            generate_daily_analysis(games, target_date=target, top5_only=top5)
 
     else:
         print(f"未知指令: {cmd}")

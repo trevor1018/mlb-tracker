@@ -1717,6 +1717,8 @@ function AnalysisView({uid,recoState,setRecoState}){
   const clearData=async()=>{
     if(!confirm("確定清除已載入的分析資料？所有裝置都會同步清除。"))return;
     setData(null);save("mlb-analysis",null);
+    setRecoState({numBets:"3",legsPerBet:"2",result:null,oddsData:null,oddsTime:null});
+    save("reco-numBets","3");save("reco-legs","2");
     if(uid){
       try{await db.collection("users").doc(uid).collection("meta").doc("analysis").delete()}
       catch(e){console.error("Clear analysis error:",e)}
