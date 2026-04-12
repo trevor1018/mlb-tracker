@@ -1103,6 +1103,7 @@ function BetTypePanel({btKey,bt,awayZh,homeZh}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
   if(!bt)return<div style={{padding:20,textAlign:"center",color:C.d,fontSize:12}}>該盤口無資料</div>;
 
+  const isTop5=bt.is_top_5_pct;
   const isTop10=bt.is_top_10_pct;
   const isConflict=bt.signal_conflict===true;
   // Force confidence to "low" when signal_conflict
@@ -1127,8 +1128,11 @@ function BetTypePanel({btKey,bt,awayZh,homeZh}){
       ⚠️ 訊號衝突 (大/小各有強訊號)
     </div>}
 
-    {/* Top 10% banner */}
-    {isTop10&&!isConflict&&<div style={{background:"rgba(16,185,129,0.12)",border:`1px solid ${C.g}`,borderRadius:6,padding:"6px 10px",marginBottom:10,fontSize:12,fontWeight:700,color:C.g,display:"flex",alignItems:"center",gap:6}}>
+    {/* Top 5% / Top 10% banner */}
+    {isTop5&&!isConflict&&<div style={{background:"rgba(245,158,11,0.15)",border:`1px solid ${C.acc}`,borderRadius:6,padding:"6px 10px",marginBottom:10,fontSize:12,fontWeight:700,color:C.acc,display:"flex",alignItems:"center",gap:6}}>
+      🔥 超高信心 — 符合 Top 5% 篩選條件
+    </div>}
+    {isTop10&&!isTop5&&!isConflict&&<div style={{background:"rgba(16,185,129,0.12)",border:`1px solid ${C.g}`,borderRadius:6,padding:"6px 10px",marginBottom:10,fontSize:12,fontWeight:700,color:C.g,display:"flex",alignItems:"center",gap:6}}>
       ⭐ Top 10% 高信心場次
     </div>}
 
@@ -1136,7 +1140,7 @@ function BetTypePanel({btKey,bt,awayZh,homeZh}){
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
       <div style={{background:C.bg,borderRadius:6,padding:"8px 10px",textAlign:"center",border:`1px solid ${C.bd}`}}>
         <div style={{fontSize:10,color:C.d,marginBottom:2}}>預測</div>
-        <div style={{fontSize:15,fontWeight:700,color:isTop10?C.g:C.t}}>{predictedZh}</div>
+        <div style={{fontSize:15,fontWeight:700,color:isTop5?C.acc:isTop10?C.g:C.t}}>{predictedZh}</div>
       </div>
       <div style={{background:C.bg,borderRadius:6,padding:"8px 10px",textAlign:"center",border:`1px solid ${C.bd}`}}>
         <div style={{fontSize:10,color:C.d,marginBottom:2}}>信心度</div>
@@ -1180,7 +1184,7 @@ function BetTypePanel({btKey,bt,awayZh,homeZh}){
       <div style={{fontSize:11,fontWeight:700,color:C.acc,marginBottom:6}}>🧮 主要複合分數</div>
       {topScores.map(([k,c])=>{
         const bucket=c.bucket;
-        const bucketStars=bucket==="Top 10%"?"⭐⭐⭐":bucket==="Top 20%"?"⭐⭐":bucket==="Top 30%"?"⭐":"";
+        const bucketStars=bucket==="Top 5%"?"🔥⭐⭐⭐":bucket==="Top 10%"?"⭐⭐⭐":bucket==="Top 20%"?"⭐⭐":bucket==="Top 30%"?"⭐":"";
         const predicts=c.predicts;
         const predictsZh=formatPrediction(predicts,awayZh,homeZh);
         const valColor=c.value>=0?C.acc:C.b;
@@ -1203,6 +1207,7 @@ function MatchupCardV3({m}){
   const teamComps=m.team_comparisons||{};
   const spComps=m.sp_comparisons||{};
   const betTypes=m.bet_types||{};
+  const isTop5=m.any_top_5_pct||Object.values(betTypes).some(bt=>bt.is_top_5_pct);
   const isTop10=m.any_top_10_pct;
 
   // Default to first bet type that exists; prefer ml
@@ -1210,17 +1215,21 @@ function MatchupCardV3({m}){
   const defaultBt=availableBts.find(b=>b.key==="ml")?.key||availableBts[0]?.key;
   const[selBt,setSelBt]=useState(defaultBt);
 
+  const borderCol=isTop5?C.acc:isTop10?C.g:C.bd;
   const cardStyle={
-    background:isTop10?"rgba(16,185,129,0.06)":C.card,
+    background:isTop5?"rgba(245,158,11,0.06)":isTop10?"rgba(16,185,129,0.06)":C.card,
     borderRadius:10,
     padding:0,
-    border:`${isTop10?2:1}px solid ${isTop10?C.g:C.bd}`,
+    border:`${(isTop5||isTop10)?2:1}px solid ${borderCol}`,
     marginBottom:10,
     overflow:"hidden"
   };
 
   return<div style={cardStyle}>
-    {isTop10&&<div style={{background:C.g,color:"#000",padding:"6px 14px",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+    {isTop5&&<div style={{background:C.acc,color:"#000",padding:"6px 14px",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+      🔥 超高信心 — 符合 Top 5% 篩選條件
+    </div>}
+    {isTop10&&!isTop5&&<div style={{background:C.g,color:"#000",padding:"6px 14px",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
       ⭐ 符合 Top 10% 高信心篩選
     </div>}
 
@@ -1266,14 +1275,16 @@ function MatchupCardV3({m}){
         <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"}}>
           {availableBts.map(b=>{
             const bt=betTypes[b.key];
-            const top=bt?.is_top_10_pct;
+            const top5=bt?.is_top_5_pct;
+            const top10=bt?.is_top_10_pct;
             const conflict=bt?.signal_conflict===true;
             const sel=selBt===b.key;
-            const borderCol=conflict?"#fbbf24":(top?C.g:C.acc);
-            const bgCol=conflict?"rgba(251,191,36,0.12)":(top?"rgba(16,185,129,0.12)":C.accD);
-            const textCol=conflict?"#fbbf24":(top?C.g:C.acc);
-            return<button key={b.key} onClick={()=>setSelBt(b.key)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,cursor:"pointer",fontWeight:600,border:sel?`2px solid ${borderCol}`:`1px solid ${C.bd}`,background:sel?bgCol:"transparent",color:sel?textCol:C.d,outline:"none"}}>
-              {b.short}{conflict?" ⚠️":(top?" ⭐":"")}
+            const icon=conflict?" ⚠️":(top5?" 🔥":(top10?" ⭐":""));
+            const bdrCol=conflict?"#fbbf24":(top5?C.acc:(top10?C.g:C.acc));
+            const bgCol=conflict?"rgba(251,191,36,0.12)":(top5?C.accD:(top10?"rgba(16,185,129,0.12)":C.accD));
+            const txtCol=conflict?"#fbbf24":(top5?C.acc:(top10?C.g:C.acc));
+            return<button key={b.key} onClick={()=>setSelBt(b.key)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,cursor:"pointer",fontWeight:600,border:sel?`2px solid ${bdrCol}`:`1px solid ${C.bd}`,background:sel?bgCol:"transparent",color:sel?txtCol:C.d,outline:"none"}}>
+              {b.short}{icon}
             </button>;
           })}
         </div>
@@ -1303,8 +1314,9 @@ function scorePick(matchup,btKey){
   if(btKey==="spread_2.5")return null;
 
   let score=0;
-  // Top 10% is the biggest signal
-  if(bt.is_top_10_pct)score+=100;
+  // Top 5% is the strongest signal, then Top 10%
+  if(bt.is_top_5_pct)score+=200;
+  else if(bt.is_top_10_pct)score+=100;
 
   // Each matched filter adds points based on historical hit rate
   const filters=bt.matched_filters||[];
@@ -1555,7 +1567,8 @@ function RecommendPanel({matchups,uid,state,setState}){
         </div>
         {result.parlays.map((parlay,pi)=>{
           const avgScore=parlay.legs.reduce((a,l)=>a+l.score,0)/parlay.legs.length;
-          const allTop10=parlay.legs.every(l=>l.bt.is_top_10_pct);
+          const anyTop5=parlay.legs.some(l=>l.bt.is_top_5_pct);
+          const allTop10=parlay.legs.every(l=>l.bt.is_top_10_pct||l.bt.is_top_5_pct);
 
           // Compute parlay combined odds from fetched data
           const legOdds=parlay.legs.map(l=>findLegOdds(l,oddsData));
@@ -1567,10 +1580,12 @@ function RecommendPanel({matchups,uid,state,setState}){
           }
           const positiveEV=combinedAvg!=null&&combinedAvg>parlay.combinedMinOdds;
 
-          return<div key={pi} style={{background:allTop10?"rgba(16,185,129,0.06)":C.card,borderRadius:10,padding:14,border:`${allTop10?2:1}px solid ${allTop10?C.g:C.acc}`,marginBottom:10}}>
+          const cardBdr=anyTop5?C.acc:allTop10?C.g:C.acc;
+          const cardBg=anyTop5?"rgba(245,158,11,0.06)":allTop10?"rgba(16,185,129,0.06)":C.card;
+          return<div key={pi} style={{background:cardBg,borderRadius:10,padding:14,border:`${(anyTop5||allTop10)?2:1}px solid ${cardBdr}`,marginBottom:10}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div style={{fontSize:14,fontWeight:700,color:allTop10?C.g:C.acc}}>
-                {allTop10?"⭐ ":""}第 {pi+1} 單 · 串 {parlay.legs.length} 關
+              <div style={{fontSize:14,fontWeight:700,color:anyTop5?C.acc:allTop10?C.g:C.acc}}>
+                {anyTop5?"🔥 ":(allTop10?"⭐ ":"")}第 {pi+1} 單 · 串 {parlay.legs.length} 關
               </div>
               <div style={{fontSize:11,color:C.d}}>平均分數 <span style={{...mono,color:C.t,fontWeight:700}}>{avgScore.toFixed(0)}</span></div>
             </div>
@@ -1589,7 +1604,7 @@ function RecommendPanel({matchups,uid,state,setState}){
                     <span style={{fontSize:11,color:C.m,fontWeight:700}}>L{li+1}</span>
                     <span style={{fontSize:13,fontWeight:600}}>{awayZh} @ {homeZh}</span>
                     <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:C.accD,color:C.acc,fontWeight:600}}>{btShort}</span>
-                    {bt.is_top_10_pct&&<span style={{fontSize:10,color:C.g,fontWeight:700}}>⭐Top10%</span>}
+                    {bt.is_top_5_pct?<span style={{fontSize:10,color:C.acc,fontWeight:700}}>🔥Top5%</span>:bt.is_top_10_pct&&<span style={{fontSize:10,color:C.g,fontWeight:700}}>⭐Top10%</span>}
                   </div>
                   <span style={{fontSize:11,color:C.d,...mono}}>分 {leg.score.toFixed(0)}</span>
                 </div>
@@ -1725,12 +1740,18 @@ function AnalysisView({uid,recoState,setRecoState}){
     }
   };
 
-  // Sort matchups: any_top_10_pct first, then by edge gap descending
+  // Sort matchups: Top 5% first, then Top 10%, then by edge gap
   const sortedMatchups=useMemo(()=>{
     const list=data?.today_matchups||data?.matchups||[];
+    const topRank=m=>{
+      const bts=Object.values(m.bet_types||{});
+      if(m.any_top_5_pct||bts.some(b=>b.is_top_5_pct))return 2;
+      if(m.any_top_10_pct)return 1;
+      return 0;
+    };
     return[...list].sort((a,b)=>{
-      const at=a.any_top_10_pct?1:0;
-      const bt=b.any_top_10_pct?1:0;
+      const at=topRank(a);
+      const bt=topRank(b);
       if(at!==bt)return bt-at;
       const da=Math.abs((a.away_edges||0)-(a.home_edges||0));
       const db=Math.abs((b.away_edges||0)-(b.home_edges||0));
