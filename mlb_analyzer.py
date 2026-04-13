@@ -2015,8 +2015,20 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                                 'min_odds_needed': f['breakeven_combined_odds'],
                             })
 
-                is_top_5_pct = any(f['top_pct'] == 5 for f in matched_filters)
-                is_top_10_pct = any(f['top_pct'] <= 10 for f in matched_filters)
+                # === Top 5%/10% 判定：只用主力指標 (避免多重比較膨脹) ===
+                # 主力指標 = profitable_filters 中命中率最高的那個
+                # 只有主力指標的 z-score 落入 Top 5%/10%，才標記為 is_top_5/10_pct
+                # 其他指標的 matched_filters 仍然顯示，但不影響信心度旗標
+                is_top_5_pct = False
+                is_top_10_pct = False
+                if filters_to_check:
+                    primary_filter = max(filters_to_check, key=lambda f: f.get('single_pct', 0))
+                    primary_score = scores.get(primary_filter['stat'])
+                    if primary_score and primary_score.get('bucket'):
+                        bucket_pct = int(primary_score['bucket'].replace('Top ', '').replace('%', ''))
+                        is_top_5_pct = bucket_pct <= 5
+                        is_top_10_pct = bucket_pct <= 10
+
                 if is_top_10_pct:
                     any_top_10 = True
 
@@ -2131,10 +2143,6 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 'any_top_10_pct': any_top_10,
                 'bet_types': bet_type_analysis,
             }
-
-            # --top5 模式: 只保留有任一盤口符合 Top 5% 的場次
-            if top5_only and not any_top_5:
-                continue
 
             today_matchups.append(matchup_data)
 

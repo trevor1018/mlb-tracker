@@ -1370,8 +1370,12 @@ function generateRecommendations(matchups,numBets,legsPerBet){
   const usedPicks=new Set(); // matchupId + "::" + btKey
 
   // Build parlays greedily.
-  // - Each (matchup, btKey) can be used at most once across all parlays.
-  // - Within a single parlay, no two legs from the same matchup (台彩串關規則).
+  // Rules:
+  // - Within a single parlay, no two legs from the same matchup (台彩規則).
+  // - Top 5% picks: same matchup different bet types CAN appear across DIFFERENT parlays.
+  // - Non-Top-5% picks: same matchup only appears ONCE across ALL parlays.
+  //   (Also blocked if that matchup was already used by a Top5% pick.)
+  const usedMatchupsGlobal=new Set(); // tracks ALL matchups used
   const parlays=[];
   for(let i=0;i<numBets;i++){
     const legs=[];
@@ -1382,9 +1386,13 @@ function generateRecommendations(matchups,numBets,legsPerBet){
       const pid=mid+"::"+pick.btKey;
       if(usedPicks.has(pid))continue;
       if(usedMatchupsInParlay.has(mid))continue;
+      const isTop5=pick.bt.is_top_5_pct;
+      // Non-top5: blocked if matchup appeared anywhere (including via Top5%)
+      if(!isTop5&&usedMatchupsGlobal.has(mid))continue;
       legs.push(pick);
       usedPicks.add(pid);
       usedMatchupsInParlay.add(mid);
+      usedMatchupsGlobal.add(mid);
     }
     if(legs.length===legsPerBet){
       // Combined breakeven: sqrt(product of per-leg breakevens)
