@@ -1214,6 +1214,7 @@ function MatchupCardV3({m}){
   const availableBts=BET_TYPES.filter(b=>betTypes[b.key]);
   const defaultBt=availableBts.find(b=>b.key==="ml")?.key||availableBts[0]?.key;
   const[selBt,setSelBt]=useState(defaultBt);
+  const[expanded,setExpanded]=useState(isTop5||isTop10);
 
   const borderCol=isTop5?C.acc:isTop10?C.g:C.bd;
   const cardStyle={
@@ -1242,10 +1243,21 @@ function MatchupCardV3({m}){
         <span style={{color:m.home_edges>m.away_edges?C.acc:C.t}}>{homeZh}</span>
         <span style={{fontSize:11,color:C.d,marginLeft:4}}>({m.home_record||"—"})</span>
       </div>
-      {(m.away_sp||m.home_sp)&&<div style={{fontSize:11,color:C.d,marginBottom:12}}>
-        {m.away_sp||"—"} <span style={{color:C.m}}>vs</span> {m.home_sp||"—"}
-      </div>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:expanded?8:0}}>
+        <div style={{fontSize:11,color:C.d}}>
+          {(m.away_sp||m.home_sp)&&<>{m.away_sp||"—"} <span style={{color:C.m}}>vs</span> {m.home_sp||"—"}</>}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:11,color:C.d}}>
+            <span style={{color:C.g,fontWeight:700}}>{m.away_edges||0}</span>
+            <span style={{color:C.m}}> : </span>
+            <span style={{color:C.acc,fontWeight:700}}>{m.home_edges||0}</span>
+          </span>
+          <button onClick={()=>setExpanded(!expanded)} style={{background:"none",border:"none",color:expanded?C.acc:C.d,cursor:"pointer",fontSize:11,padding:0,outline:"none"}}>{expanded?"收合":"展開"}</button>
+        </div>
+      </div>
 
+      {expanded&&<>
       {/* SP Section */}
       {Object.keys(spComps).length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
         <div style={{fontSize:12,fontWeight:700,color:C.b,marginBottom:8}}>⚾ 今日先發投手對決</div>
@@ -1290,16 +1302,7 @@ function MatchupCardV3({m}){
         </div>
         <BetTypePanel btKey={selBt} bt={betTypes[selBt]} awayZh={awayZh} homeZh={homeZh}/>
       </div>}
-
-      {/* Footer summary */}
-      <div style={{borderTop:`1px solid ${C.bd}`,paddingTop:8,marginTop:8,fontSize:12,display:"flex",justifyContent:"space-between"}}>
-        <span style={{color:C.d}}>整體優勢</span>
-        <span>
-          <span style={{color:C.g,fontWeight:700}}>{awayZh} {m.away_edges||0}</span>
-          <span style={{color:C.m}}> vs </span>
-          <span style={{color:C.acc,fontWeight:700}}>{homeZh} {m.home_edges||0}</span>
-        </span>
-      </div>
+      </>}
     </div>
   </div>;
 }
