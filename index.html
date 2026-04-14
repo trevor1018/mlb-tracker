@@ -170,22 +170,16 @@ function twTeam(name){
   return name;
 }
 
-// ─── OCR via Claude API ───
+// ─── OCR via Google Gemini API (free) ───
 async function ocrBettingSlip(base64,mediaType,apiKey){
-  const res=await fetch("https://api.anthropic.com/v1/messages",{
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const res=await fetch(url,{
     method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "x-api-key":apiKey,
-      "anthropic-version":"2023-06-01",
-      "anthropic-dangerous-direct-browser-access":"true"
-    },
+    headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-      model:"claude-sonnet-4-20250514",
-      max_tokens:4096,
-      messages:[{role:"user",content:[
-        {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
-        {type:"text",text:`分析這張台灣運彩投注單截圖。提取所有投注，以 JSON 回傳，不要任何其他文字：
+      contents:[{parts:[
+        {inline_data:{mime_type:mediaType,data:base64}},
+        {text:`分析這張台灣運彩投注單截圖。提取所有投注，以 JSON 回傳，不要任何其他文字：
 {
   "bets": [
     {
@@ -215,13 +209,13 @@ async function ocrBettingSlip(base64,mediaType,apiKey){
 - date: 比賽日期 (非投注日期)
 - 每張投注單是一個 bet，一張圖可能有多張投注單
 只回傳 JSON。`}
-      ]}]
+      ]}],
+      generationConfig:{temperature:0}
     })
   });
   if(!res.ok){const t=await res.text();throw new Error(`API ${res.status}: ${t.slice(0,200)}`)}
   const data=await res.json();
-  const text=data.content?.[0]?.text||"";
-  // Extract JSON from response (might have markdown wrapping)
+  const text=data.candidates?.[0]?.content?.parts?.[0]?.text||"";
   const jsonMatch=text.match(/\{[\s\S]*\}/);
   if(!jsonMatch)throw new Error("無法解析回應");
   return JSON.parse(jsonMatch[0]);
@@ -350,34 +344,34 @@ function AddBetView({addBet,uid}){
   const[scanning,setScanning]=useState(false);
   const[scanErr,setScanErr]=useState("");
   const[scanResults,setScanResults]=useState(null);
-  const[claudeKey,setClaudeKey]=useState(()=>load("claude-api-key","")||"");
+  const[geminiKey,setGeminiKey]=useState(()=>load("gemini-api-key","")||"");
   const[showKeyInput,setShowKeyInput]=useState(false);
 
-  // Sync Claude API key from Firestore
+  // Sync Gemini API key from Firestore
   useEffect(()=>{
     if(!uid)return;
-    const ref=db.collection("users").doc(uid).collection("meta").doc("claudeApiKey");
+    const ref=db.collection("users").doc(uid).collection("meta").doc("geminiApiKey");
     const unsub=ref.onSnapshot(snap=>{
-      if(snap.exists){const k=snap.data().key;if(k&&k!==claudeKey){setClaudeKey(k);save("claude-api-key",k)}}
+      if(snap.exists){const k=snap.data().key;if(k&&k!==geminiKey){setGeminiKey(k);save("gemini-api-key",k)}}
     },()=>{});
     return()=>unsub();
   },[uid]);
 
-  const saveClaudeKey=async(k)=>{
-    setClaudeKey(k);save("claude-api-key",k);
-    if(uid){try{await db.collection("users").doc(uid).collection("meta").doc("claudeApiKey").set({key:k,updatedAt:new Date().toISOString()})}catch(e){}}
+  const saveGeminiKey=async(k)=>{
+    setGeminiKey(k);save("gemini-api-key",k);
+    if(uid){try{await db.collection("users").doc(uid).collection("meta").doc("geminiApiKey").set({key:k,updatedAt:new Date().toISOString()})}catch(e){}}
   };
 
   const handleScan=async(e)=>{
     const file=e.target.files?.[0];
     if(!file)return;
-    if(!claudeKey.trim()){setScanErr("請先設定 Claude API Key");setShowKeyInput(true);return}
+    if(!geminiKey.trim()){setScanErr("請先設定 Gemini API Key");setShowKeyInput(true);return}
     setScanning(true);setScanErr("");setScanResults(null);
     try{
       const reader=new FileReader();
       const base64=await new Promise((ok,fail)=>{reader.onload=()=>ok(reader.result.split(",")[1]);reader.onerror=fail;reader.readAsDataURL(file)});
       const mediaType=file.type||"image/jpeg";
-      const result=await ocrBettingSlip(base64,mediaType,claudeKey.trim());
+      const result=await ocrBettingSlip(base64,mediaType,geminiKey.trim());
       if(!result.bets||!result.bets.length)throw new Error("未偵測到投注單");
       // Map Taiwan team names to short names
       result.bets.forEach(bet=>{
@@ -440,11 +434,11 @@ function AddBetView({addBet,uid}){
     <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <div style={{fontSize:13,fontWeight:700,color:C.b}}>📷 掃描投注單</div>
-        <button onClick={()=>setShowKeyInput(!showKeyInput)} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:11}}>{claudeKey?"已設定 ✓":"設定 API Key"}</button>
+        <button onClick={()=>setShowKeyInput(!showKeyInput)} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:11}}>{geminiKey?"已設定 ✓":"設定 API Key"}</button>
       </div>
       {showKeyInput&&<div style={{marginBottom:10}}>
-        <Inp value={claudeKey} onChange={saveClaudeKey} placeholder="貼上 Anthropic Claude API Key" mono/>
-        <div style={{fontSize:10,color:C.m,marginTop:4}}>Key 跨裝置同步，使用 Claude Sonnet 辨識</div>
+        <Inp value={geminiKey} onChange={saveGeminiKey} placeholder="貼上 Google Gemini API Key" mono/>
+        <div style={{fontSize:10,color:C.m,marginTop:4}}>免費 · 到 aistudio.google.com/apikey 取得 · 跨裝置同步</div>
       </div>}
       <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{display:"none"}}/>
       <button onClick={()=>fileRef.current?.click()} disabled={scanning} style={{width:"100%",padding:10,borderRadius:8,border:`1px solid ${C.b}`,background:scanning?"transparent":"rgba(59,130,246,0.1)",color:scanning?C.m:C.b,fontSize:13,fontWeight:600,cursor:scanning?"default":"pointer",outline:"none"}}>
