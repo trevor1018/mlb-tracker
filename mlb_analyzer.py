@@ -1734,8 +1734,14 @@ def build_current_trackers(games, cutoff_date=None):
 # 第三步：產出今日分析 JSON (使用 10 年 baseline)
 # ═══════════════════════════════════════════
 def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
-                                           away_sp_snap, home_sp_snap, baseline):
-    """根據 bet_type 算複合指標分數 + bucket 位置"""
+                                           away_sp_snap, home_sp_snap, baseline,
+                                           current_season_means=None):
+    """根據 bet_type 算複合指標分數 + bucket 位置
+
+    current_season_means: 大小分用。提供時用「當季均值」取代 baseline 均值做中心點,
+                          避免整個聯盟 OPS/ERA 偏移導致永遠預測同一方向。
+                          std 仍用 baseline (10 年尺度更穩定)。
+    """
     means = baseline['stat_means']
     stds = baseline['stat_stds']
     bt_data = baseline['bet_types'].get(bt_key, {})
@@ -1813,7 +1819,14 @@ def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
                 if a_val is None or h_val is None:
                     valid = False; break
                 combined = a_val + h_val
-                mean_c = means.get((source, stat_key), 0) * 2
+                # 大小分用「當季均值」做中心 (避免整季 OPS/ERA 偏移的系統性偏差)
+                # std 仍用 baseline (10 年尺度更穩定)
+                if current_season_means:
+                    mean_single = current_season_means.get((source, stat_key),
+                                    means.get((source, stat_key), 0))
+                else:
+                    mean_single = means.get((source, stat_key), 0)
+                mean_c = mean_single * 2
                 std_c = (stds.get((source, stat_key), 1) or 1) * sqrt(2)
                 z = (combined - mean_c) / std_c
                 score += z * weight
@@ -1865,6 +1878,20 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
     # 建立當季 trackers (只用 target_date 前的比賽, 避免用未來資料)
     team_trackers, pitcher_trackers = build_current_trackers(games, cutoff_date=today)
     print(f"  使用 {today} 前的資料 | 球隊: {len(team_trackers)}, 投手: {len(pitcher_trackers)}")
+
+    # 計算當季均值 (用於大小分 z-score 修正)
+    current_season_means = {}
+    all_snaps = [t.snapshot(today) for t in team_trackers.values()]
+    for key in all_snaps[0]:
+        vals = [s[key] for s in all_snaps if isinstance(s[key], (int, float))]
+        if vals:
+            current_season_means[('team', key)] = sum(vals) / len(vals)
+    all_sp_snaps = [p.snapshot() for p in pitcher_trackers.values() if p.starts >= MIN_STARTS]
+    if all_sp_snaps:
+        for key in all_sp_snaps[0]:
+            vals = [s[key] for s in all_sp_snaps if isinstance(s[key], (int, float))]
+            if vals:
+                current_season_means[('sp', key)] = sum(vals) / len(vals)
 
     # 抓今日賽程
     sched = api_get(f"/schedule?date={today}&sportId=1&hydrate=probablePitcher,team")
@@ -1945,6 +1972,21 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                     'edge': 'even',
                 }
 
+            # === 計算預期總分 (用於大小分方向判定) ===
+            est_total = away_snap['runs_per_game'] + home_snap['runs_per_game']
+
+            # SP 修正：今日先發比球隊平均差 → 對手多得分
+            if away_sp_snap and away_sp_snap.get('sp_starts', 0) >= MIN_STARTS:
+                team_era = away_snap.get('era', 4.0)
+                sp_era = away_sp_snap.get('sp_era', team_era)
+                est_total += (sp_era - team_era) * 0.15  # 客隊 SP 差 → 主隊多得分
+            if home_sp_snap and home_sp_snap.get('sp_starts', 0) >= MIN_STARTS:
+                team_era = home_snap.get('era', 4.0)
+                sp_era = home_sp_snap.get('sp_era', team_era)
+                est_total += (sp_era - team_era) * 0.15  # 主隊 SP 差 → 客隊多得分
+
+            est_total = round(est_total, 2)
+
             # 預先合併大小分的 profitable_filters (同一組 z-score 共享篩選)
             total_bt_keys = [k for k, _, t, _, _ in BET_TYPES if t == 'total']
             total_filters_union = {}  # {(stat, top_pct): filter_dict}
@@ -1976,7 +2018,8 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 bt_data = baseline['bet_types'].get(bt_key, {})
                 scores = compute_composite_scores_for_bet_type(
                     bt_key, bt_type, away_snap, home_snap,
-                    away_sp_snap, home_sp_snap, baseline
+                    away_sp_snap, home_sp_snap, baseline,
+                    current_season_means=current_season_means if bt_type == 'total' else None
                 )
 
                 # 大小分盤口: 用共享的 filters 和 thresholds
@@ -2015,33 +2058,46 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                                 'min_odds_needed': f['breakeven_combined_odds'],
                             })
 
-                # === Top 5%/10% 判定：只用主力指標 (避免多重比較膨脹) ===
-                # 主力指標 = profitable_filters 中命中率最高的那個
-                # 只有主力指標的 z-score 落入 Top 5%/10%，才標記為 is_top_5/10_pct
-                # 其他指標的 matched_filters 仍然顯示，但不影響信心度旗標
+                # === Top 5%/10% 判定 ===
+                # 方向型盤口 (ML, 讓分): 統一用不讓分的主力指標
+                #   → 因為「贏」是基本條件，讓分 1.5/2.5 的信心不應超過不讓分
+                # 大小分盤口: 用該盤口自己的主力指標
                 is_top_5_pct = False
                 is_top_10_pct = False
-                if filters_to_check:
-                    primary_filter = max(filters_to_check, key=lambda f: f.get('single_pct', 0))
-                    primary_score = scores.get(primary_filter['stat'])
-                    if primary_score and primary_score.get('bucket'):
-                        bucket_pct = int(primary_score['bucket'].replace('Top ', '').replace('%', ''))
-                        is_top_5_pct = bucket_pct <= 5
-                        is_top_10_pct = bucket_pct <= 10
+
+                if bt_type == 'directional':
+                    # 統一用不讓分 (ml) 的主力指標
+                    ml_filters = baseline['bet_types'].get('ml', {}).get('profitable_filters', [])
+                    if ml_filters:
+                        ml_primary = max(ml_filters, key=lambda f: f.get('single_pct', 0))
+                        primary_score = scores.get(ml_primary['stat'])
+                        if primary_score and primary_score.get('bucket'):
+                            bucket_pct = int(primary_score['bucket'].replace('Top ', '').replace('%', ''))
+                            is_top_5_pct = bucket_pct <= 5
+                            is_top_10_pct = bucket_pct <= 10
+                else:
+                    # 大小分: 用自己的主力指標
+                    if filters_to_check:
+                        primary_filter = max(filters_to_check, key=lambda f: f.get('single_pct', 0))
+                        primary_score = scores.get(primary_filter['stat'])
+                        if primary_score and primary_score.get('bucket'):
+                            bucket_pct = int(primary_score['bucket'].replace('Top ', '').replace('%', ''))
+                            is_top_5_pct = bucket_pct <= 5
+                            is_top_10_pct = bucket_pct <= 10
 
                 if is_top_10_pct:
                     any_top_10 = True
 
-                # === 加權投票（用 z-score 總和，而非純計數）===
-                # 只用 Top 10%/20% 強訊號投票，減少弱訊號雜訊
+                # === 方向判定 ===
                 strong_scores = [
                     s for s in scores.values()
-                    if s.get('bucket') in ('Top 10%', 'Top 20%')
+                    if s.get('bucket') in ('Top 5%', 'Top 10%', 'Top 20%')
                 ]
                 if not strong_scores:
                     strong_scores = list(scores.values())
 
                 if bt_type == 'directional':
+                    # 不讓分/讓分: 用 z-score 加權投票
                     home_z_sum = sum(s['value'] for s in strong_scores if s['value'] > 0)
                     away_z_sum = sum(-s['value'] for s in strong_scores if s['value'] < 0)
                     home_count = sum(1 for s in strong_scores if s['predicts'] == 'home')
@@ -2061,18 +2117,26 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                     total_z = home_z_sum + away_z_sum
                     minority_z = min(home_z_sum, away_z_sum)
                 else:
+                    # === 大小分: 用「預期總分 vs 盤口線」判定方向 ===
+                    # est_total 已在上方從 runs_per_game + SP 修正計算
+                    distance = est_total - bt_line  # 正 = 偏大, 負 = 偏小
+                    if distance > 0:
+                        predicted = 'over'
+                    elif distance < 0:
+                        predicted = 'under'
+                    else:
+                        predicted = 'even'
+
+                    # 複合 z-score 仍計算 (用於信心度和 bucket)
                     over_z_sum = sum(s['value'] for s in strong_scores if s['value'] > 0)
                     under_z_sum = sum(-s['value'] for s in strong_scores if s['value'] < 0)
                     over_count = sum(1 for s in strong_scores if s['predicts'] == 'over')
                     under_count = sum(1 for s in strong_scores if s['predicts'] == 'under')
 
-                    if over_z_sum > under_z_sum:
-                        predicted = 'over'
-                    elif under_z_sum > over_z_sum:
-                        predicted = 'under'
-                    else:
-                        predicted = 'even'
                     vote_info = {
+                        'est_total': est_total,
+                        'line': bt_line,
+                        'distance': round(distance, 2),
                         'over_count': over_count, 'under_count': under_count,
                         'over_z_sum': round(over_z_sum, 2),
                         'under_z_sum': round(under_z_sum, 2),

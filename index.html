@@ -144,6 +144,89 @@ async function fetchMLBGames(dateStr){
   return results;
 }
 
+// ─── Taiwan Sport Lottery team name mapping ───
+const TW_TEAM={
+  "紐約洋基":"洋基","波士頓紅襪":"紅襪","多倫多藍鳥":"藍鳥","坦帕灣光芒":"光芒","巴爾的摩金鶯":"金鶯",
+  "芝加哥白襪":"白襪","克里夫蘭守護者":"守護者","堪薩斯皇家":"皇家","底特律老虎":"老虎","明尼蘇達雙城":"雙城",
+  "休士頓太空人":"太空人","奧克蘭運動家":"運動家","西雅圖水手":"水手","洛杉磯天使":"天使","德州遊騎兵":"遊騎兵",
+  "紐約大都會":"大都會","亞特蘭大勇士":"勇士","費城費城人":"費城人","邁阿密馬林魚":"馬林魚","華盛頓國民":"國民",
+  "芝加哥小熊":"小熊","聖路易紅雀":"紅雀","匹茲堡海盜":"海盜","密爾瓦基釀酒人":"釀酒人","辛辛那堤紅人":"紅人",
+  "洛杉磯道奇":"道奇","聖地牙哥教士":"教士","舊金山巨人":"巨人","亞利桑那響尾蛇":"響尾蛇","科羅拉多落磯":"洛磯",
+  // Fallback: short names map to themselves
+  "洋基":"洋基","紅襪":"紅襪","藍鳥":"藍鳥","光芒":"光芒","金鶯":"金鶯","白襪":"白襪","守護者":"守護者",
+  "皇家":"皇家","老虎":"老虎","雙城":"雙城","太空人":"太空人","運動家":"運動家","水手":"水手","天使":"天使",
+  "遊騎兵":"遊騎兵","大都會":"大都會","勇士":"勇士","費城人":"費城人","馬林魚":"馬林魚","國民":"國民",
+  "小熊":"小熊","紅雀":"紅雀","海盜":"海盜","釀酒人":"釀酒人","紅人":"紅人","道奇":"道奇","教士":"教士",
+  "巨人":"巨人","響尾蛇":"響尾蛇","洛磯":"洛磯"
+};
+function twTeam(name){
+  if(!name)return"";
+  // Try exact match first
+  if(TW_TEAM[name])return TW_TEAM[name];
+  // Try partial match (e.g., "洛杉磯道奇 -2.5" → "道奇")
+  for(const[k,v]of Object.entries(TW_TEAM)){
+    if(name.includes(k))return v;
+  }
+  return name;
+}
+
+// ─── OCR via Claude API ───
+async function ocrBettingSlip(base64,mediaType,apiKey){
+  const res=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "x-api-key":apiKey,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body:JSON.stringify({
+      model:"claude-sonnet-4-20250514",
+      max_tokens:4096,
+      messages:[{role:"user",content:[
+        {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
+        {type:"text",text:`分析這張台灣運彩投注單截圖。提取所有投注，以 JSON 回傳，不要任何其他文字：
+{
+  "bets": [
+    {
+      "type": "parlay",
+      "legs_count": 2,
+      "date": "2026-04-15",
+      "amount": 100,
+      "legs": [
+        {
+          "away_full": "客隊全名",
+          "home_full": "主隊全名",
+          "market": "total",
+          "selection": "over",
+          "line": "7.5",
+          "odds": 1.90
+        }
+      ]
+    }
+  ]
+}
+規則:
+- type: "single" (單場) 或 "parlay" (兩關/三關/四關/五關)
+- market: "normal" (不讓分), "handi" (讓分), "total" ([總分]大小)
+- selection: "home"/"away" (不讓分和讓分), "over"/"under" (大小分)
+- line: 讓分值或大小分線 (如 "7.5", "-1.5", "-2.5")
+- 賽事格式 "XXX @ YYY" 中 XXX=客隊 YYY=主隊
+- date: 比賽日期 (非投注日期)
+- 每張投注單是一個 bet，一張圖可能有多張投注單
+只回傳 JSON。`}
+      ]}]
+    })
+  });
+  if(!res.ok){const t=await res.text();throw new Error(`API ${res.status}: ${t.slice(0,200)}`)}
+  const data=await res.json();
+  const text=data.content?.[0]?.text||"";
+  // Extract JSON from response (might have markdown wrapping)
+  const jsonMatch=text.match(/\{[\s\S]*\}/);
+  if(!jsonMatch)throw new Error("無法解析回應");
+  return JSON.parse(jsonMatch[0]);
+}
+
 // ─── Bet logic ───
 function determineResult(leg,hs,as){
   const h=Number(hs),a=Number(as);if(isNaN(h)||isNaN(a))return"pending";
@@ -242,7 +325,7 @@ function Stat({label,value,unit,color}){return<div style={{background:C.card,bor
 // ═══════════════════════════════════════
 // ADD BET VIEW
 // ═══════════════════════════════════════
-function AddBetView({addBet}){
+function AddBetView({addBet,uid}){
   const empty=()=>({id:genId(),away:"",home:"",market:"normal",selection:"",line:"",odds:"",homeScore:"",awayScore:""});
   const[type,setType]=useState("single");
   const[date,setDate]=useState(todayStr());
@@ -262,8 +345,146 @@ function AddBetView({addBet}){
     setLegs([empty()]);setAmt("");setNote("");
   };
 
+  // ─── OCR Scan ───
+  const fileRef=useRef(null);
+  const[scanning,setScanning]=useState(false);
+  const[scanErr,setScanErr]=useState("");
+  const[scanResults,setScanResults]=useState(null);
+  const[claudeKey,setClaudeKey]=useState(()=>load("claude-api-key","")||"");
+  const[showKeyInput,setShowKeyInput]=useState(false);
+
+  // Sync Claude API key from Firestore
+  useEffect(()=>{
+    if(!uid)return;
+    const ref=db.collection("users").doc(uid).collection("meta").doc("claudeApiKey");
+    const unsub=ref.onSnapshot(snap=>{
+      if(snap.exists){const k=snap.data().key;if(k&&k!==claudeKey){setClaudeKey(k);save("claude-api-key",k)}}
+    },()=>{});
+    return()=>unsub();
+  },[uid]);
+
+  const saveClaudeKey=async(k)=>{
+    setClaudeKey(k);save("claude-api-key",k);
+    if(uid){try{await db.collection("users").doc(uid).collection("meta").doc("claudeApiKey").set({key:k,updatedAt:new Date().toISOString()})}catch(e){}}
+  };
+
+  const handleScan=async(e)=>{
+    const file=e.target.files?.[0];
+    if(!file)return;
+    if(!claudeKey.trim()){setScanErr("請先設定 Claude API Key");setShowKeyInput(true);return}
+    setScanning(true);setScanErr("");setScanResults(null);
+    try{
+      const reader=new FileReader();
+      const base64=await new Promise((ok,fail)=>{reader.onload=()=>ok(reader.result.split(",")[1]);reader.onerror=fail;reader.readAsDataURL(file)});
+      const mediaType=file.type||"image/jpeg";
+      const result=await ocrBettingSlip(base64,mediaType,claudeKey.trim());
+      if(!result.bets||!result.bets.length)throw new Error("未偵測到投注單");
+      // Map Taiwan team names to short names
+      result.bets.forEach(bet=>{
+        bet.legs.forEach(l=>{
+          l.away=twTeam(l.away_full||"");
+          l.home=twTeam(l.home_full||"");
+        });
+      });
+      setScanResults(result.bets);
+    }catch(err){setScanErr("掃描失敗："+err.message)}
+    setScanning(false);
+    if(fileRef.current)fileRef.current.value="";
+  };
+
+  const applyScanBet=(bet)=>{
+    const t=bet.legs_count>1?"parlay":"single";
+    setType(t);
+    if(bet.date)setDate(bet.date);
+    setAmt(String(bet.amount||100));
+    const mapped=bet.legs.map(l=>({
+      id:genId(),away:l.away||"",home:l.home||"",
+      market:l.market||"normal",selection:l.selection||"",
+      line:l.line||"",odds:String(l.odds||""),
+      homeScore:"",awayScore:""
+    }));
+    setLegs(mapped.length?mapped:[empty()]);
+    // Remove this bet from scan results
+    setScanResults(p=>p?p.filter(b=>b!==bet):null);
+  };
+
+  const submitAllScan=()=>{
+    if(!scanResults)return;
+    scanResults.forEach(bet=>{
+      const mk=l=>({
+        id:genId(),date:bet.date||date,
+        away:l.away||"",home:l.home||"",
+        market:l.market||"normal",selection:l.selection||"",
+        line:l.line||"",odds:Number(l.odds)||0,
+        homeScore:"",awayScore:"",result:"pending"
+      });
+      const betLegs=bet.legs.map(mk);
+      const tOdds=betLegs.reduce((a,l)=>a*(l.odds||1),1);
+      addBet({
+        id:genId(),
+        type:bet.legs_count>1?"parlay":"single",
+        legs:betLegs,
+        amount:Number(bet.amount)||100,
+        totalOdds:Math.round(tOdds*100)/100,
+        note:"",
+        createdAt:new Date().toISOString()
+      });
+    });
+    setScanResults(null);
+  };
+
   return<div>
     <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>新增投注紀錄</div>
+
+    {/* OCR Scan Section */}
+    <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.b}}>📷 掃描投注單</div>
+        <button onClick={()=>setShowKeyInput(!showKeyInput)} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:11}}>{claudeKey?"已設定 ✓":"設定 API Key"}</button>
+      </div>
+      {showKeyInput&&<div style={{marginBottom:10}}>
+        <Inp value={claudeKey} onChange={saveClaudeKey} placeholder="貼上 Anthropic Claude API Key" mono/>
+        <div style={{fontSize:10,color:C.m,marginTop:4}}>Key 跨裝置同步，使用 Claude Sonnet 辨識</div>
+      </div>}
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{display:"none"}}/>
+      <button onClick={()=>fileRef.current?.click()} disabled={scanning} style={{width:"100%",padding:10,borderRadius:8,border:`1px solid ${C.b}`,background:scanning?"transparent":"rgba(59,130,246,0.1)",color:scanning?C.m:C.b,fontSize:13,fontWeight:600,cursor:scanning?"default":"pointer",outline:"none"}}>
+        {scanning?"辨識中...":"上傳投注單截圖"}
+      </button>
+      {scanErr&&<div style={{fontSize:11,color:C.r,marginTop:6}}>{scanErr}</div>}
+    </div>
+
+    {/* Scan Results */}
+    {scanResults&&scanResults.length>0&&<div style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.g}}>辨識結果 ({scanResults.length} 筆)</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={submitAllScan} style={{background:C.g,border:"none",borderRadius:6,padding:"4px 12px",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none"}}>全部加入</button>
+          <button onClick={()=>setScanResults(null)} style={{background:"none",border:`1px solid ${C.bd}`,borderRadius:6,padding:"4px 12px",color:C.d,fontSize:11,cursor:"pointer",outline:"none"}}>清除</button>
+        </div>
+      </div>
+      {scanResults.map((bet,bi)=>{
+        const betType=bet.legs_count>1?`串${bet.legs_count}關`:"單場";
+        return<div key={bi} style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+            <span style={{fontSize:12,fontWeight:600}}>{betType} · {bet.date} · NT${bet.amount}</span>
+            <button onClick={()=>applyScanBet(bet)} style={{background:C.acc,border:"none",borderRadius:6,padding:"4px 10px",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none"}}>填入表單</button>
+          </div>
+          {bet.legs.map((l,li)=>{
+            const ML={normal:"不讓分",handi:"讓分",total:"大小分"};
+            const selLabel=l.selection==="home"?l.home:l.selection==="away"?l.away:l.selection==="over"?"大":"小";
+            return<div key={li} style={{fontSize:11,color:C.d,padding:"3px 0",borderTop:li?`1px solid ${C.bd}`:"none"}}>
+              <span style={{color:C.t}}>{l.away} @ {l.home}</span>
+              <span style={{color:C.m}}> · </span>
+              <span style={{color:C.acc}}>{ML[l.market]||l.market}{l.line?` ${l.line}`:""}</span>
+              <span style={{color:C.m}}> → </span>
+              <span style={{color:C.g,fontWeight:600}}>{selLabel}</span>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",marginLeft:6,color:C.t}}>@{l.odds}</span>
+            </div>;
+          })}
+        </div>;
+      })}
+    </div>}
+
     <Field label="投注類型"><div style={{display:"flex",gap:8}}>
       <Pill sel={type==="single"} onClick={()=>{setType("single");if(legs.length>1)setLegs([legs[0]])}}>單場</Pill>
       <Pill sel={type==="parlay"} onClick={()=>{setType("parlay");if(legs.length<2)setLegs([...legs,empty()])}}>串關</Pill>
@@ -1984,7 +2205,7 @@ function App(){
       </div>
     </div>
     <div style={{maxWidth:560,margin:"0 auto",padding:"12px 16px"}}>
-      {tab==="add"&&<AddBetView addBet={addBet}/>}
+      {tab==="add"&&<AddBetView addBet={addBet} uid={uid}/>}
       {tab==="hist"&&<HistView bets={bets} updateBet={upBet} deleteBet={delBet}/>}
       {tab==="results"&&<ResultsView games={games} addGames={addGames} updateGame={upGame} deleteGame={delGame}/>}
       {tab==="stats"&&<StatsView bets={bets} games={games}/>}
