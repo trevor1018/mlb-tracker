@@ -199,10 +199,10 @@ function parseOcrText(fullText){
     if(m)anchors.push({li:i,awayFull:m[2].trim(),homeFull:m[3].trim()});
   }
 
-  // 2. Find all standalone odds (lines that are just a decimal like "1.90")
+  // 2. Find all standalone odds (lines that are just a decimal like "1.90", "2.10")
   const allOdds=[];
   for(const ln of lines){
-    if(ln.match(/^\d\.\d{2}$/))allOdds.push(Number(ln));
+    if(ln.match(/^\d+\.\d{1,2}$/)&&Number(ln)>=1&&Number(ln)<20)allOdds.push(Number(ln));
   }
 
   // 3. Find all bet markers with line indices
@@ -240,12 +240,17 @@ function parseOcrText(fullText){
         if(dm)gameDate=`${dm[1]}-${String(dm[2]).padStart(2,"0")}-${String(dm[3]).padStart(2,"0")}`;
       }
 
-      // Selection header: not a keyword/date/marker line
+      // Selection header: the line with team name or 大/小 (not a keyword/market/date line)
       if(!selectionText){
-        const cleaned=ln.replace(/^[：（◎C\s:()○●·]+/,"").trim();
-        if(cleaned&&!cleaned.match(/^\d{4}[\/\-]/)&&
+        const cleaned=ln.replace(/^[：（◎C\s:()○●·＠]+/,"").trim();
+        if(cleaned&&
+          !cleaned.match(/^\d{4}[\/\-]/)&&
           !cleaned.match(/^(聯盟|美國|玩法|賽事|投注|NTD|未派彩|可能|兩關|三關|四關|五關|單場)/)&&
-          !cleaned.match(/^\d\.\d{2}$/)&&
+          !cleaned.match(/^不讓分/)&&
+          !cleaned.match(/^讓分/)&&
+          !cleaned.match(/大小/)&&
+          !cleaned.match(/^[\[［]/)&&
+          !cleaned.match(/^\d+\.\d{1,2}$/)&&
           !cleaned.match(/^[\d]+$/)&&
           !cleaned.match(/^投注/)&&
           !cleaned.match(/^325|^286/)){
@@ -284,19 +289,28 @@ function parseOcrText(fullText){
   });
 
   // 6. Group legs into bets using bet markers
+  // Use the BET date (first date right after each 兩關 marker = Taiwan投注日 = US game date)
   const bets=[];
   let legIdx=0;
   for(let bi=0;bi<betMarkers.length;bi++){
     const bm=betMarkers[bi];
+    // Find bet date: first date immediately after the marker
+    let betDate="";
+    for(let j=bm.li+1;j<Math.min(bm.li+4,lines.length);j++){
+      const dm=lines[j].match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+      if(dm){betDate=`${dm[1]}-${String(dm[2]).padStart(2,"0")}-${String(dm[3]).padStart(2,"0")}`;break}
+    }
     const betLegs=[];
     for(let k=0;k<bm.count&&legIdx<parsedLegs.length;k++){
-      betLegs.push(parsedLegs[legIdx++]);
+      const leg={...parsedLegs[legIdx++]};
+      leg.date=betDate; // override with bet date
+      betLegs.push(leg);
     }
     if(!betLegs.length)continue;
     bets.push({
       type:bm.count>1?"parlay":"single",
       legs_count:bm.count,
-      date:betLegs[0].date||"",
+      date:betDate,
       amount:ntdAll[bi*2]||100,
       legs:betLegs
     });
