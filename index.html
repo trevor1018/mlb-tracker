@@ -418,6 +418,8 @@ function AddBetView({addBet,uid}){
   const[scanning,setScanning]=useState(false);
   const[scanErr,setScanErr]=useState("");
   const[scanResults,setScanResults]=useState(null);
+  const[rawOcrText,setRawOcrText]=useState("");
+  const[showRawOcr,setShowRawOcr]=useState(false);
   const[ocrKey,setOcrKey]=useState(()=>load("ocr-api-key","")||"");
   const[showKeyInput,setShowKeyInput]=useState(false);
 
@@ -445,6 +447,7 @@ function AddBetView({addBet,uid}){
       const reader=new FileReader();
       const dataUrl=await new Promise((ok,fail)=>{reader.onload=()=>ok(reader.result);reader.onerror=fail;reader.readAsDataURL(file)});
       const rawText=await ocrImage(dataUrl,ocrKey.trim());
+      setRawOcrText(rawText);
       if(!rawText.trim())throw new Error("OCR 未偵測到文字");
       const result=parseOcrText(rawText);
       if(!result.bets||!result.bets.length)throw new Error("無法從 OCR 文字中解析投注單");
@@ -526,6 +529,10 @@ function AddBetView({addBet,uid}){
         {scanning?"辨識中...":"上傳投注單截圖"}
       </button>
       {scanErr&&<div style={{fontSize:11,color:C.r,marginTop:6}}>{scanErr}</div>}
+      {rawOcrText&&<div style={{marginTop:8}}>
+        <button onClick={()=>setShowRawOcr(!showRawOcr)} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:11,padding:0}}>{showRawOcr?"隱藏":"顯示"} OCR 原始文字</button>
+        {showRawOcr&&<pre style={{fontSize:10,color:C.d,background:C.bg,padding:8,borderRadius:6,marginTop:4,whiteSpace:"pre-wrap",wordBreak:"break-all",maxHeight:200,overflow:"auto",border:`1px solid ${C.bd}`}}>{rawOcrText}</pre>}
+      </div>}
     </div>
 
     {/* Scan Results */}
