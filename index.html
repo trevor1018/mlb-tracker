@@ -264,19 +264,31 @@ function parseOcrText(fullText){
     const homeShort=twTeam(a.homeFull);
     let selection="";
 
+    // Build team name check lists
+    const checkHome=[a.homeFull,homeShort].concat(
+      Object.entries(TW_TEAM).filter(([,v])=>v===homeShort).map(([k])=>k)
+    );
+    const checkAway=[a.awayFull,awayShort].concat(
+      Object.entries(TW_TEAM).filter(([,v])=>v===awayShort).map(([k])=>k)
+    );
+    const homeInSel=checkHome.some(n=>n&&selectionText.includes(n));
+    const awayInSel=checkAway.some(n=>n&&selectionText.includes(n));
+
     if(market==="total"){
-      selection=selectionText.includes("小")?"under":"over";
+      // Team total detection: if selectionText contains a team name + 大/小 → team total
+      if(homeInSel){
+        market="team_total_home";
+        selection=selectionText.includes("小")?"under":"over";
+      }else if(awayInSel){
+        market="team_total_away";
+        selection=selectionText.includes("小")?"under":"over";
+      }else{
+        // Regular total (no team name in selection)
+        selection=selectionText.includes("小")?"under":"over";
+      }
     }else{
-      // The team appearing in selectionText = the bet selection (it appears twice: header + matchup)
-      const checkHome=[a.homeFull,homeShort].concat(
-        Object.entries(TW_TEAM).filter(([,v])=>v===homeShort).map(([k])=>k)
-      );
-      const checkAway=[a.awayFull,awayShort].concat(
-        Object.entries(TW_TEAM).filter(([,v])=>v===awayShort).map(([k])=>k)
-      );
-      const homeMatch=checkHome.some(n=>n&&selectionText.includes(n));
-      const awayMatch=checkAway.some(n=>n&&selectionText.includes(n));
-      selection=homeMatch?"home":awayMatch?"away":"away";
+      // ML or spread: the team that appears twice is the bet
+      selection=homeInSel?"home":awayInSel?"away":"away";
     }
 
     return{
@@ -331,6 +343,8 @@ function determineResult(leg,hs,as){
   if(leg.market==="normal"){if(h===a)return"push";return(leg.selection==="home"&&h>a)||(leg.selection==="away"&&a>h)?"win":"lose"}
   if(leg.market==="handi"){const s=Number(leg.line),adj=h+s;if(adj===a)return"push";return(leg.selection==="home"&&adj>a)||(leg.selection==="away"&&a>adj)?"win":"lose"}
   if(leg.market==="total"){const l=Number(leg.line);if(t===l)return"push";return(leg.selection==="over"&&t>l)||(leg.selection==="under"&&t<l)?"win":"lose"}
+  if(leg.market==="team_total_home"){const l=Number(leg.line);if(h===l)return"push";return(leg.selection==="over"&&h>l)||(leg.selection==="under"&&h<l)?"win":"lose"}
+  if(leg.market==="team_total_away"){const l=Number(leg.line);if(a===l)return"push";return(leg.selection==="over"&&a>l)||(leg.selection==="under"&&a<l)?"win":"lose"}
   return"pending";
 }
 function calcPayout(bet){
@@ -581,7 +595,7 @@ function AddBetView({addBet,uid}){
             <button onClick={()=>applyScanBet(bet)} style={{background:C.acc,border:"none",borderRadius:6,padding:"4px 10px",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none"}}>填入表單</button>
           </div>
           {bet.legs.map((l,li)=>{
-            const ML={normal:"不讓分",handi:"讓分",total:"大小分"};
+            const ML={normal:"不讓分",handi:"讓分",total:"大小分",team_total_home:"主隊大小",team_total_away:"客隊大小"};
             const selLabel=l.selection==="home"?l.home:l.selection==="away"?l.away:l.selection==="over"?"大":"小";
             return<div key={li} style={{fontSize:11,color:C.d,padding:"3px 0",borderTop:li?`1px solid ${C.bd}`:"none"}}>
               <span style={{color:C.t}}>{l.away} @ {l.home}</span>
@@ -626,12 +640,12 @@ function LegEdit({leg,idx,onChange,onRemove,canRemove}){
       <Field label="客隊"><Sel value={leg.away} onChange={v=>u("away",v)} options={TEAMS} placeholder="客隊"/></Field>
       <Field label="主隊"><Sel value={leg.home} onChange={v=>u("home",v)} options={TEAMS} placeholder="主隊"/></Field>
     </div>
-    <Field label="玩法"><div style={{display:"flex",gap:8}}>
-      {[["normal","不讓分"],["handi","讓分"],["total","大小分"]].map(([k,l])=><Pill key={k} sel={leg.market===k} onClick={()=>u("market",k)}>{l}</Pill>)}
+    <Field label="玩法"><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      {[["normal","不讓分"],["handi","讓分"],["total","大小分"],["team_total_home","主隊大小"],["team_total_away","客隊大小"]].map(([k,l])=><Pill key={k} sel={leg.market===k} onClick={()=>u("market",k)}>{l}</Pill>)}
     </div></Field>
-    {(leg.market==="handi"||leg.market==="total")&&<Field label={leg.market==="handi"?"讓分值（例：-1.5）":"總分線（例：8.5）"}><Inp value={leg.line} onChange={v=>u("line",v)} placeholder={leg.market==="handi"?"-1.5":"8.5"} mono/></Field>}
+    {(leg.market==="handi"||leg.market==="total"||leg.market==="team_total_home"||leg.market==="team_total_away")&&<Field label={leg.market==="handi"?"讓分值（例：-1.5）":leg.market==="total"?"總分線（例：8.5）":`${leg.market==="team_total_home"?(leg.home||"主隊"):(leg.away||"客隊")}得分線（例：3.5）`}><Inp value={leg.line} onChange={v=>u("line",v)} placeholder={leg.market==="handi"?"-1.5":"3.5"} mono/></Field>}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-      <Field label="方向">{leg.market==="total"?<div style={{display:"flex",gap:8}}><Pill sel={leg.selection==="over"} onClick={()=>u("selection","over")}>大</Pill><Pill sel={leg.selection==="under"} onClick={()=>u("selection","under")}>小</Pill></div>:<div style={{display:"flex",gap:8}}><Pill sel={leg.selection==="away"} onClick={()=>u("selection","away")}>{leg.away||"客"}</Pill><Pill sel={leg.selection==="home"} onClick={()=>u("selection","home")}>{leg.home||"主"}</Pill></div>}</Field>
+      <Field label="方向">{(leg.market==="total"||leg.market==="team_total_home"||leg.market==="team_total_away")?<div style={{display:"flex",gap:8}}><Pill sel={leg.selection==="over"} onClick={()=>u("selection","over")}>大</Pill><Pill sel={leg.selection==="under"} onClick={()=>u("selection","under")}>小</Pill></div>:<div style={{display:"flex",gap:8}}><Pill sel={leg.selection==="away"} onClick={()=>u("selection","away")}>{leg.away||"客"}</Pill><Pill sel={leg.selection==="home"} onClick={()=>u("selection","home")}>{leg.home||"主"}</Pill></div>}</Field>
       <Field label="賠率"><Inp value={leg.odds} onChange={v=>u("odds",v)} placeholder="1.75" mono/></Field>
     </div>
     <div style={{borderTop:`1px dashed ${C.bd}`,marginTop:8,paddingTop:10}}>
@@ -649,7 +663,7 @@ function LegEdit({leg,idx,onChange,onRemove,canRemove}){
 // ═══════════════════════════════════════
 function HistView({bets,updateBet,deleteBet}){
   const[filter,setFilter]=useState("all");
-  const ML={normal:"不讓分",handi:"讓分",total:"大小分"};
+  const ML={normal:"不讓分",handi:"讓分",total:"大小分",team_total_home:"主隊大小",team_total_away:"客隊大小"};
   const filtered=bets.filter(b=>filter==="all"||calcPayout(b).status===filter);
   if(!bets.length)return<div style={{textAlign:"center",padding:"60px 20px",color:C.d}}><div style={{fontSize:40,marginBottom:12}}>📋</div><div>尚無投注紀錄</div></div>;
   return<div>
@@ -680,12 +694,12 @@ function BetCard({bet,r,updateBet,deleteBet,ML}){
           <Field label="客隊"><Sel value={leg.away} onChange={v=>upLeg(i,"away",v)} options={TEAMS} placeholder="客隊"/></Field>
           <Field label="主隊"><Sel value={leg.home} onChange={v=>upLeg(i,"home",v)} options={TEAMS} placeholder="主隊"/></Field>
         </div>
-        <Field label="玩法"><div style={{display:"flex",gap:6}}>
-          {[["normal","不讓分"],["handi","讓分"],["total","大小分"]].map(([k,l])=><Pill key={k} sel={leg.market===k} onClick={()=>upLeg(i,"market",k)}>{l}</Pill>)}
+        <Field label="玩法"><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {[["normal","不讓分"],["handi","讓分"],["total","大小分"],["team_total_home","主隊大小"],["team_total_away","客隊大小"]].map(([k,l])=><Pill key={k} sel={leg.market===k} onClick={()=>upLeg(i,"market",k)}>{l}</Pill>)}
         </div></Field>
-        {(leg.market==="handi"||leg.market==="total")&&<Field label={leg.market==="handi"?"讓分值":"總分線"}><Inp value={leg.line} onChange={v=>upLeg(i,"line",v)} placeholder={leg.market==="handi"?"-1.5":"8.5"} mono/></Field>}
+        {(leg.market==="handi"||leg.market==="total"||leg.market==="team_total_home"||leg.market==="team_total_away")&&<Field label={leg.market==="handi"?"讓分值":leg.market==="total"?"總分線":"隊得分線"}><Inp value={leg.line} onChange={v=>upLeg(i,"line",v)} placeholder={leg.market==="handi"?"-1.5":"3.5"} mono/></Field>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-          <Field label="方向">{leg.market==="total"?<div style={{display:"flex",gap:6}}><Pill sel={leg.selection==="over"} onClick={()=>upLeg(i,"selection","over")}>大</Pill><Pill sel={leg.selection==="under"} onClick={()=>upLeg(i,"selection","under")}>小</Pill></div>:<div style={{display:"flex",gap:6}}><Pill sel={leg.selection==="away"} onClick={()=>upLeg(i,"selection","away")}>{leg.away||"客"}</Pill><Pill sel={leg.selection==="home"} onClick={()=>upLeg(i,"selection","home")}>{leg.home||"主"}</Pill></div>}</Field>
+          <Field label="方向">{(leg.market==="total"||leg.market==="team_total_home"||leg.market==="team_total_away")?<div style={{display:"flex",gap:6}}><Pill sel={leg.selection==="over"} onClick={()=>upLeg(i,"selection","over")}>大</Pill><Pill sel={leg.selection==="under"} onClick={()=>upLeg(i,"selection","under")}>小</Pill></div>:<div style={{display:"flex",gap:6}}><Pill sel={leg.selection==="away"} onClick={()=>upLeg(i,"selection","away")}>{leg.away||"客"}</Pill><Pill sel={leg.selection==="home"} onClick={()=>upLeg(i,"selection","home")}>{leg.home||"主"}</Pill></div>}</Field>
           <Field label="賠率"><Inp value={leg.odds} onChange={v=>upLeg(i,"odds",v)} placeholder="1.75" mono/></Field>
         </div>
         <div style={{borderTop:`1px dashed ${C.bd}`,marginTop:4,paddingTop:8}}>
@@ -714,7 +728,7 @@ function BetCard({bet,r,updateBet,deleteBet,ML}){
     </div>
     {bet.legs.map((leg,i)=><div key={i} style={{fontSize:13,padding:"6px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
       <div style={{display:"flex",justifyContent:"space-between"}}><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:7,height:7,borderRadius:"50%",display:"inline-block",background:leg.result==="win"?C.g:leg.result==="lose"?C.r:C.m}}/><span>{leg.away} @ {leg.home}</span></div><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.d,fontSize:12}}>{Number(leg.odds).toFixed(2)}</span></div>
-      <div style={{fontSize:12,color:C.d,marginTop:2,marginLeft:13}}>{ML[leg.market]}{leg.line?` ${leg.line}`:""} → <span style={{color:C.acc}}>{leg.selection==="home"?leg.home:leg.selection==="away"?leg.away:leg.selection==="over"?"大":"小"}</span>{(leg.homeScore!==""&&leg.awayScore!=="")&&<span style={{marginLeft:8,color:C.t}}>比數 {leg.awayScore}:{leg.homeScore}</span>}</div>
+      <div style={{fontSize:12,color:C.d,marginTop:2,marginLeft:13}}>{leg.market==="team_total_home"?`${leg.home}大小`:leg.market==="team_total_away"?`${leg.away}大小`:(ML[leg.market]||leg.market)}{leg.line?` ${leg.line}`:""} → <span style={{color:C.acc}}>{leg.selection==="home"?leg.home:leg.selection==="away"?leg.away:leg.selection==="over"?"大":"小"}</span>{(leg.homeScore!==""&&leg.awayScore!=="")&&<span style={{marginLeft:8,color:C.t}}>比數 {leg.awayScore}:{leg.homeScore}</span>}</div>
       {mode==="score"&&<div style={{display:"flex",gap:8,marginTop:6,marginLeft:13,alignItems:"center"}}><span style={{fontSize:11,color:C.d}}>{leg.away}</span><input type="number" value={leg.awayScore??""} onChange={e=>upScore(i,"awayScore",e.target.value)} style={{width:44,padding:4,borderRadius:4,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,textAlign:"center",fontSize:13,fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/><span style={{color:C.m}}>:</span><input type="number" value={leg.homeScore??""} onChange={e=>upScore(i,"homeScore",e.target.value)} style={{width:44,padding:4,borderRadius:4,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,textAlign:"center",fontSize:13,fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/><span style={{fontSize:11,color:C.d}}>{leg.home}</span></div>}
     </div>)}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,paddingTop:8,borderTop:`1px solid ${C.bd}`}}>
@@ -1083,7 +1097,7 @@ function StatsView({bets,games}){
   const byMkt={};
   settled.filter(b=>b.type==="single").forEach(b=>{const k=b.legs[0].market;if(!byMkt[k])byMkt[k]={t:0,w:0,p:0};byMkt[k].t++;if(calcPayout(b).status==="win")byMkt[k].w++;byMkt[k].p+=calcPayout(b).profit});
 
-  const ML={normal:"不讓分",handi:"讓分",total:"大小分"};
+  const ML={normal:"不讓分",handi:"讓分",total:"大小分",team_total_home:"主隊大小",team_total_away:"客隊大小"};
 
   const exportMD=async()=>{
     let md="# MLB 賽季報告\n\n";

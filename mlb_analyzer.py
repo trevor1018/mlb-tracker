@@ -713,13 +713,20 @@ def rebuild_season(season):
         progress_bar(f"{season} 解析", idx, len(all_pks), p2_start)
     progress_done("")
 
-    # 儲存
-    parsed.sort(key=lambda x: (x['date'], x['game_pk']))
+    # 去重 + 儲存
+    seen_pks = set()
+    deduped = []
+    for p in parsed:
+        if p['game_pk'] not in seen_pks:
+            seen_pks.add(p['game_pk'])
+            deduped.append(p)
+    deduped.sort(key=lambda x: (x['date'], x['game_pk']))
     cache_file = os.path.join(CACHE_DIR, f"games_{season}.json")
     with open(cache_file, 'w', encoding='utf-8') as f:
-        json.dump(parsed, f, ensure_ascii=False, indent=2)
+        json.dump(deduped, f, ensure_ascii=False, indent=2)
 
-    print(f"  完成！{season} 共 {len(parsed)} 場 (缺 {missing} 場 box cache)")
+    dupes = len(parsed) - len(deduped)
+    print(f"  完成！{season} 共 {len(deduped)} 場 (缺 {missing} 場, 去重 {dupes} 場)")
     return parsed
 
 
@@ -862,7 +869,12 @@ def load_cached_games(seasons):
         with open(cache_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
+        seen_pks = set()
         for d in data:
+            gpk = d['game_pk']
+            if gpk in seen_pks:
+                continue  # 跳過重複的 gamePk
+            seen_pks.add(gpk)
             g = GameRecord(
                 date=d['date'], game_pk=d['game_pk'],
                 away_name=d['away_name'], home_name=d['home_name'],
@@ -870,8 +882,8 @@ def load_cached_games(seasons):
                 winner_side=d['winner_side'],
                 away_stats=TeamGameStats(**d['away_stats']),
                 home_stats=TeamGameStats(**d['home_stats']),
-                away_starter=StarterStats(**d['away_starter']) if 'away_starter' in d else StarterStats(),
-                home_starter=StarterStats(**d['home_starter']) if 'home_starter' in d else StarterStats(),
+                away_starter=StarterStats(**{k: v for k, v in d['away_starter'].items() if k in StarterStats.__dataclass_fields__}) if 'away_starter' in d else StarterStats(),
+                home_starter=StarterStats(**{k: v for k, v in d['home_starter'].items() if k in StarterStats.__dataclass_fields__}) if 'home_starter' in d else StarterStats(),
             )
             games.append(g)
 
