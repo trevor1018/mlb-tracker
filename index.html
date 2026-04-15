@@ -283,17 +283,13 @@ function parseOcrText(fullText){
     const homeInSel=checkHome.some(n=>n&&selectionText.includes(n));
     const awayInSel=checkAway.some(n=>n&&selectionText.includes(n));
 
-    if(market==="total"){
-      // Team total detection: if selectionText contains a team name + 大/小 → team total
-      if(homeInSel){
-        market="team_total_home";
-        selection=selectionText.includes("小")?"under":"over";
-      }else if(awayInSel){
-        market="team_total_away";
-        selection=selectionText.includes("小")?"under":"over";
-      }else{
-        // Regular total (no team name in selection)
-        selection=selectionText.includes("小")?"under":"over";
+    if(market==="total"||market==="team_total_home"||market==="team_total_away"){
+      // All total-type markets: selection is over/under
+      selection=selectionText.includes("小")?"under":"over";
+      // If market is still generic "total", check if selectionText has a team name → upgrade to team_total
+      if(market==="total"){
+        if(homeInSel)market="team_total_home";
+        else if(awayInSel)market="team_total_away";
       }
     }else{
       // ML or spread: the team that appears twice is the bet
