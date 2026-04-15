@@ -170,55 +170,122 @@ function twTeam(name){
   return name;
 }
 
-// ─── OCR via Google Gemini API (free) ───
-async function ocrBettingSlip(base64,mediaType,apiKey){
-  const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`;
-  const res=await fetch(url,{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      contents:[{parts:[
-        {inline_data:{mime_type:mediaType,data:base64}},
-        {text:`分析這張台灣運彩投注單截圖。提取所有投注，以 JSON 回傳，不要任何其他文字：
-{
-  "bets": [
-    {
-      "type": "parlay",
-      "legs_count": 2,
-      "date": "2026-04-15",
-      "amount": 100,
-      "legs": [
-        {
-          "away_full": "客隊全名",
-          "home_full": "主隊全名",
-          "market": "total",
-          "selection": "over",
-          "line": "7.5",
-          "odds": 1.90
-        }
-      ]
-    }
-  ]
-}
-規則:
-- type: "single" (單場) 或 "parlay" (兩關/三關/四關/五關)
-- market: "normal" (不讓分), "handi" (讓分), "total" ([總分]大小)
-- selection: "home"/"away" (不讓分和讓分), "over"/"under" (大小分)
-- line: 讓分值或大小分線 (如 "7.5", "-1.5", "-2.5")
-- 賽事格式 "XXX @ YYY" 中 XXX=客隊 YYY=主隊
-- date: 比賽日期 (非投注日期)
-- 每張投注單是一個 bet，一張圖可能有多張投注單
-只回傳 JSON。`}
-      ]}],
-      generationConfig:{temperature:0}
-    })
-  });
-  if(!res.ok){const t=await res.text();throw new Error(`API ${res.status}: ${t.slice(0,200)}`)}
+// ─── OCR via OCR.space (free 25K/month) ───
+async function ocrImage(base64WithPrefix,apiKey){
+  const form=new FormData();
+  form.append("base64Image",base64WithPrefix);
+  form.append("language","cht");
+  form.append("isOverlayRequired","false");
+  form.append("OCREngine","2");
+  const res=await fetch("https://api.ocr.space/parse/image",{method:"POST",headers:{apikey:apiKey},body:form});
+  if(!res.ok)throw new Error(`OCR API ${res.status}`);
   const data=await res.json();
-  const text=data.candidates?.[0]?.content?.parts?.[0]?.text||"";
-  const jsonMatch=text.match(/\{[\s\S]*\}/);
-  if(!jsonMatch)throw new Error("無法解析回應");
-  return JSON.parse(jsonMatch[0]);
+  if(data.IsErroredOnProcessing)throw new Error(data.ErrorMessage?.[0]||"OCR 處理失敗");
+  return(data.ParsedResults||[]).map(r=>r.ParsedText||"").join("\n");
+}
+
+// ─── Parse OCR text into structured bets ───
+function parseOcrText(text){
+  const bets=[];
+  // Split by bet slip markers (兩關, 三關, 四關, 五關, 單場)
+  const slipPattern=/(兩關|三關|四關|五關|單場)/g;
+  const markers=[];
+  let m;
+  while((m=slipPattern.exec(text))!==null)markers.push({idx:m.index,type:m[1]});
+  if(!markers.length){
+    // Try parsing as single slip
+    const parsed=parseSingleSlip(text);
+    if(parsed)bets.push(parsed);
+    return{bets};
+  }
+  for(let i=0;i<markers.length;i++){
+    const start=markers[i].idx;
+    const end=i+1<markers.length?markers[i+1].idx:text.length;
+    const chunk=text.slice(start,end);
+    const parsed=parseSingleSlip(chunk);
+    if(parsed)bets.push(parsed);
+  }
+  return{bets};
+}
+
+function parseSingleSlip(text){
+  const legsMap={"兩關":2,"三關":3,"四關":4,"五關":5,"單場":1};
+  const typeMatch=text.match(/(兩關|三關|四關|五關|單場)/);
+  const legsCount=typeMatch?legsMap[typeMatch[1]]||1:1;
+
+  // Extract amount
+  const amtMatch=text.match(/NTD\s*(\d+)\s/i)||text.match(/投注[^\d]*(\d+)/);
+  const amount=amtMatch?Number(amtMatch[1]):100;
+
+  // Extract date (比賽日期, not 投注日期)
+  const dates=[...text.matchAll(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/g)];
+  // Second date is usually the game date (first is bet date)
+  const gameDate=dates.length>=2?dates[1]:dates[0];
+  const dateStr=gameDate?`${gameDate[1]}-${String(gameDate[2]).padStart(2,"0")}-${String(gameDate[3]).padStart(2,"0")}`:"";
+
+  // Extract legs by finding odds patterns (decimal like 1.90, 2.10)
+  // and matchup patterns (XXX @ YYY or XXX@YYY)
+  const legs=[];
+  const matchups=[...text.matchAll(/\d+\s+(.+?)\s*[@＠]\s*(.+?)[\n\r]/g)];
+  const oddsAll=[...text.matchAll(/(?:^|\s)(\d\.\d{2})(?:\s|$)/gm)];
+  // Find market types
+  const marketBlocks=[...text.matchAll(/(不讓分|讓分\s*[-\d.]+|\[總分\]大小\s*[\d.]+|大小\s*[\d.]+)/g)];
+
+  for(let i=0;i<Math.max(matchups.length,legsCount);i++){
+    const leg={away_full:"",home_full:"",market:"normal",selection:"",line:"",odds:0};
+
+    // Matchup
+    if(matchups[i]){
+      leg.away_full=matchups[i][1].trim();
+      leg.home_full=matchups[i][2].trim();
+    }
+
+    // Market type
+    if(marketBlocks[i]){
+      const mk=marketBlocks[i][1];
+      if(mk.includes("不讓分")){
+        leg.market="normal";
+      }else if(mk.includes("讓分")){
+        leg.market="handi";
+        const lnMatch=mk.match(/([-\d.]+)/);
+        if(lnMatch)leg.line=lnMatch[1];
+      }else if(mk.includes("大小")){
+        leg.market="total";
+        const lnMatch=mk.match(/([\d.]+)/);
+        if(lnMatch)leg.line=lnMatch[1];
+      }
+    }
+
+    // Odds
+    if(oddsAll[i])leg.odds=Number(oddsAll[i][1]);
+
+    // Selection - detect from the first line of each leg section
+    // For total: look for 大/小 before the line number
+    // For normal/handi: the selected team name appears at top
+    if(leg.market==="total"){
+      // Check if "大" or "小" appears near the odds
+      const nearText=text.slice(Math.max(0,(oddsAll[i]?.index||0)-30),(oddsAll[i]?.index||0)+5);
+      leg.selection=nearText.includes("小")?"under":"over";
+    }else{
+      // For ML/spread, the selected team is the one shown at the top of the leg
+      // Heuristic: if home team name appears before odds, selection=home
+      if(leg.home_full&&leg.away_full){
+        const beforeOdds=text.slice(Math.max(0,(oddsAll[i]?.index||0)-60),(oddsAll[i]?.index||0));
+        // Check which team is in the selection area (before odds, after previous section)
+        const homeInSel=beforeOdds.includes(leg.home_full)||TW_TEAM[leg.home_full]&&beforeOdds.includes(TW_TEAM[leg.home_full]);
+        leg.selection=homeInSel?"home":"away";
+      }
+    }
+
+    // Map team names
+    leg.away=twTeam(leg.away_full);
+    leg.home=twTeam(leg.home_full);
+
+    if(leg.away||leg.home||leg.odds)legs.push(leg);
+  }
+
+  if(!legs.length)return null;
+  return{type:legsCount>1?"parlay":"single",legs_count:legsCount,date:dateStr,amount,legs};
 }
 
 // ─── Bet logic ───
@@ -344,35 +411,36 @@ function AddBetView({addBet,uid}){
   const[scanning,setScanning]=useState(false);
   const[scanErr,setScanErr]=useState("");
   const[scanResults,setScanResults]=useState(null);
-  const[geminiKey,setGeminiKey]=useState(()=>load("gemini-api-key","")||"");
+  const[ocrKey,setOcrKey]=useState(()=>load("ocr-api-key","")||"");
   const[showKeyInput,setShowKeyInput]=useState(false);
 
-  // Sync Gemini API key from Firestore
+  // Sync OCR.space API key from Firestore
   useEffect(()=>{
     if(!uid)return;
-    const ref=db.collection("users").doc(uid).collection("meta").doc("geminiApiKey");
+    const ref=db.collection("users").doc(uid).collection("meta").doc("ocrApiKey");
     const unsub=ref.onSnapshot(snap=>{
-      if(snap.exists){const k=snap.data().key;if(k&&k!==geminiKey){setGeminiKey(k);save("gemini-api-key",k)}}
+      if(snap.exists){const k=snap.data().key;if(k&&k!==ocrKey){setOcrKey(k);save("ocr-api-key",k)}}
     },()=>{});
     return()=>unsub();
   },[uid]);
 
-  const saveGeminiKey=async(k)=>{
-    setGeminiKey(k);save("gemini-api-key",k);
-    if(uid){try{await db.collection("users").doc(uid).collection("meta").doc("geminiApiKey").set({key:k,updatedAt:new Date().toISOString()})}catch(e){}}
+  const saveOcrKey=async(k)=>{
+    setOcrKey(k);save("ocr-api-key",k);
+    if(uid){try{await db.collection("users").doc(uid).collection("meta").doc("ocrApiKey").set({key:k,updatedAt:new Date().toISOString()})}catch(e){}}
   };
 
   const handleScan=async(e)=>{
     const file=e.target.files?.[0];
     if(!file)return;
-    if(!geminiKey.trim()){setScanErr("請先設定 Gemini API Key");setShowKeyInput(true);return}
+    if(!ocrKey.trim()){setScanErr("請先設定 OCR API Key");setShowKeyInput(true);return}
     setScanning(true);setScanErr("");setScanResults(null);
     try{
       const reader=new FileReader();
-      const base64=await new Promise((ok,fail)=>{reader.onload=()=>ok(reader.result.split(",")[1]);reader.onerror=fail;reader.readAsDataURL(file)});
-      const mediaType=file.type||"image/jpeg";
-      const result=await ocrBettingSlip(base64,mediaType,geminiKey.trim());
-      if(!result.bets||!result.bets.length)throw new Error("未偵測到投注單");
+      const dataUrl=await new Promise((ok,fail)=>{reader.onload=()=>ok(reader.result);reader.onerror=fail;reader.readAsDataURL(file)});
+      const rawText=await ocrImage(dataUrl,ocrKey.trim());
+      if(!rawText.trim())throw new Error("OCR 未偵測到文字");
+      const result=parseOcrText(rawText);
+      if(!result.bets||!result.bets.length)throw new Error("無法從 OCR 文字中解析投注單");
       // Map Taiwan team names to short names
       result.bets.forEach(bet=>{
         bet.legs.forEach(l=>{
@@ -434,11 +502,11 @@ function AddBetView({addBet,uid}){
     <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <div style={{fontSize:13,fontWeight:700,color:C.b}}>📷 掃描投注單</div>
-        <button onClick={()=>setShowKeyInput(!showKeyInput)} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:11}}>{geminiKey?"已設定 ✓":"設定 API Key"}</button>
+        <button onClick={()=>setShowKeyInput(!showKeyInput)} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:11}}>{ocrKey?"已設定 ✓":"設定 API Key"}</button>
       </div>
       {showKeyInput&&<div style={{marginBottom:10}}>
-        <Inp value={geminiKey} onChange={saveGeminiKey} placeholder="貼上 Google Gemini API Key" mono/>
-        <div style={{fontSize:10,color:C.m,marginTop:4}}>免費 · 到 aistudio.google.com/apikey 取得 · 跨裝置同步</div>
+        <Inp value={ocrKey} onChange={saveOcrKey} placeholder="貼上 OCR.space API Key" mono/>
+        <div style={{fontSize:10,color:C.m,marginTop:4}}>免費 25K 次/月 · 到 ocr.space/ocrapi 免費註冊取得 · 跨裝置同步</div>
       </div>}
       <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{display:"none"}}/>
       <button onClick={()=>fileRef.current?.click()} disabled={scanning} style={{width:"100%",padding:10,borderRadius:8,border:`1px solid ${C.b}`,background:scanning?"transparent":"rgba(59,130,246,0.1)",color:scanning?C.m:C.b,fontSize:13,fontWeight:600,cursor:scanning?"default":"pointer",outline:"none"}}>
