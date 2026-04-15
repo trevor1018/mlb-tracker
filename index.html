@@ -185,114 +185,129 @@ async function ocrImage(base64WithPrefix,apiKey){
 }
 
 // ─── Parse OCR text into structured bets ───
-function parseOcrText(text){
-  const bets=[];
-  // Split by bet slip markers
-  const slipPattern=/(兩關|三關|四關|五關|單場)/g;
-  const markers=[];
-  let m;
-  while((m=slipPattern.exec(text))!==null)markers.push({idx:m.index,type:m[1]});
-  if(!markers.length){
-    const parsed=parseSingleSlip(text);
-    if(parsed)bets.push(parsed);
-    return{bets};
-  }
-  for(let i=0;i<markers.length;i++){
-    const start=markers[i].idx;
-    const end=i+1<markers.length?markers[i+1].idx:text.length;
-    const parsed=parseSingleSlip(text.slice(start,end));
-    if(parsed)bets.push(parsed);
-  }
-  return{bets};
-}
+// OCR.space reads multi-column images left-to-right, so:
+//   - Matchup lines and selection headers appear in leg order
+//   - Odds appear as standalone decimals (e.g., "1.90") also in leg order
+//   - We match them by index
+function parseOcrText(fullText){
+  const lines=fullText.split(/[\n\r]+/).map(l=>l.trim()).filter(Boolean);
 
-function parseSingleSlip(text){
-  const legsMap={"兩關":2,"三關":3,"四關":4,"五關":5,"單場":1};
-  const typeMatch=text.match(/(兩關|三關|四關|五關|單場)/);
-  const legsCount=typeMatch?legsMap[typeMatch[1]]||1:1;
-
-  // Extract amount (first NTD number)
-  const amtMatch=text.match(/NTD\s*(\d+)/i);
-  const amount=amtMatch?Number(amtMatch[1]):100;
-
-  // Parse line by line, anchor on "賽事" lines to identify each leg
-  const lines=text.split(/[\n\r]+/).map(l=>l.trim()).filter(Boolean);
-  const legs=[];
-
+  // 1. Find all matchup anchors: "number team @ team"
+  const anchors=[];
   for(let i=0;i<lines.length;i++){
-    // Find matchup line: "number team @ team"
-    const matchupMatch=lines[i].match(/\d+\s+(.+?)\s*[@＠]\s*(.+)/);
-    if(!matchupMatch)continue;
+    const m=lines[i].match(/(\d+)\s+(.+?)\s*[@＠]\s*(.+)/);
+    if(m)anchors.push({li:i,awayFull:m[2].trim(),homeFull:m[3].trim()});
+  }
 
-    const awayFull=matchupMatch[1].trim();
-    const homeFull=matchupMatch[2].trim();
-    const awayShort=twTeam(awayFull);
-    const homeShort=twTeam(homeFull);
+  // 2. Find all standalone odds (lines that are just a decimal like "1.90")
+  const allOdds=[];
+  for(const ln of lines){
+    if(ln.match(/^\d\.\d{2}$/))allOdds.push(Number(ln));
+  }
 
-    let market="normal",lineVal="",gameDate="",selectionText="",odds=0;
+  // 3. Find all bet markers with line indices
+  const legsMap={"兩關":2,"三關":3,"四關":4,"五關":5,"單場":1};
+  const betMarkers=[];
+  for(let i=0;i<lines.length;i++){
+    const m=lines[i].match(/^(兩關|三關|四關|五關|單場)$/);
+    if(m)betMarkers.push({li:i,count:legsMap[m[1]]||1});
+  }
 
-    // Look backwards from this matchup line to find leg info
-    for(let j=i-1;j>=Math.max(0,i-12);j--){
+  // 4. Find all NTD amounts (every other one is bet amount, alternating with payout)
+  const ntdAll=[...fullText.matchAll(/NTD\s*(\d+)/gi)].map(m=>Number(m[1]));
+
+  // 5. For each anchor, look backwards to find date, market, selection header
+  const parsedLegs=anchors.map((a,idx)=>{
+    let market="normal",lineVal="",gameDate="",selectionText="";
+
+    for(let j=a.li-1;j>=Math.max(0,a.li-12);j--){
       const ln=lines[j];
 
-      // Market type
-      if(!market||market==="normal"){
-        if(ln.match(/讓分\s*([-\d.]+)/)){
-          market="handi";
-          lineVal=ln.match(/讓分\s*([-\d.]+)/)[1];
-        }else if(ln.match(/大小\s*([\d.]+)/)){
-          market="total";
-          lineVal=ln.match(/大小\s*([\d.]+)/)[1];
-        }else if(ln.includes("不讓分")){
-          market="normal";
-        }
-      }
+      // Stop at another matchup or bet marker
+      if(j<a.li-1&&ln.match(/\d+\s+.+[@＠]/))break;
+      if(ln.match(/^(兩關|三關|四關|五關|單場)$/))break;
 
-      // Game date (per leg)
+      // Market
+      const handiM=ln.match(/讓分\s*([-\d.]+)/);
+      const totalM=ln.match(/大小\s*([\d.]+)/);
+      if(handiM){market="handi";lineVal=handiM[1]}
+      else if(totalM){market="total";lineVal=totalM[1]}
+      else if(ln.includes("不讓分")){market="normal"}
+
+      // Game date (take the LAST one found going backwards = closest to matchup)
       if(!gameDate){
-        const dateMatch=ln.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-        if(dateMatch)gameDate=`${dateMatch[1]}-${String(dateMatch[2]).padStart(2,"0")}-${String(dateMatch[3]).padStart(2,"0")}`;
+        const dm=ln.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+        if(dm)gameDate=`${dm[1]}-${String(dm[2]).padStart(2,"0")}-${String(dm[3]).padStart(2,"0")}`;
       }
 
-      // Selection header + odds (e.g., "底特律老虎 1.60" or "大 7.5 1.90")
-      if(!odds){
-        const oddsMatch=ln.match(/(\d+\.\d{2})\s*$/);
-        if(oddsMatch){
-          odds=Number(oddsMatch[1]);
-          selectionText=ln.replace(oddsMatch[0],"").trim();
+      // Selection header: not a keyword/date/marker line
+      if(!selectionText){
+        const cleaned=ln.replace(/^[：（◎C\s:()○●·]+/,"").trim();
+        if(cleaned&&!cleaned.match(/^\d{4}[\/\-]/)&&
+          !cleaned.match(/^(聯盟|美國|玩法|賽事|投注|NTD|未派彩|可能|兩關|三關|四關|五關|單場)/)&&
+          !cleaned.match(/^\d\.\d{2}$/)&&
+          !cleaned.match(/^[\d]+$/)&&
+          !cleaned.match(/^投注/)&&
+          !cleaned.match(/^325|^286/)){
+          selectionText=cleaned;
         }
       }
-
-      // Stop if we hit another matchup or slip marker
-      if(ln.match(/\d+\s+.+[@＠]/)&&j<i-1)break;
-      if(ln.match(/(兩關|三關|四關|五關|單場)/))break;
     }
 
     // Determine selection
+    const awayShort=twTeam(a.awayFull);
+    const homeShort=twTeam(a.homeFull);
     let selection="";
+
     if(market==="total"){
-      // 大/小 in selectionText
       selection=selectionText.includes("小")?"under":"over";
     }else{
-      // Rule: the team that appears TWICE (once in selectionText, once in matchup) is the bet
-      // Check if selectionText contains home or away team name
-      const homeMatch=selectionText.includes(homeFull)||selectionText.includes(homeShort)||
-        Object.entries(TW_TEAM).some(([full,short])=>(short===homeShort)&&selectionText.includes(full));
-      const awayMatch=selectionText.includes(awayFull)||selectionText.includes(awayShort)||
-        Object.entries(TW_TEAM).some(([full,short])=>(short===awayShort)&&selectionText.includes(full));
+      // The team appearing in selectionText = the bet selection (it appears twice: header + matchup)
+      const checkHome=[a.homeFull,homeShort].concat(
+        Object.entries(TW_TEAM).filter(([,v])=>v===homeShort).map(([k])=>k)
+      );
+      const checkAway=[a.awayFull,awayShort].concat(
+        Object.entries(TW_TEAM).filter(([,v])=>v===awayShort).map(([k])=>k)
+      );
+      const homeMatch=checkHome.some(n=>n&&selectionText.includes(n));
+      const awayMatch=checkAway.some(n=>n&&selectionText.includes(n));
       selection=homeMatch?"home":awayMatch?"away":"away";
     }
 
-    legs.push({
-      away_full:awayFull,home_full:homeFull,
+    return{
+      away_full:a.awayFull,home_full:a.homeFull,
       away:awayShort,home:homeShort,
-      market,selection,line:lineVal,odds,
+      market,selection,line:lineVal,
+      odds:allOdds[idx]||0,
       date:gameDate
+    };
+  });
+
+  // 6. Group legs into bets using bet markers
+  const bets=[];
+  let legIdx=0;
+  for(let bi=0;bi<betMarkers.length;bi++){
+    const bm=betMarkers[bi];
+    const betLegs=[];
+    for(let k=0;k<bm.count&&legIdx<parsedLegs.length;k++){
+      betLegs.push(parsedLegs[legIdx++]);
+    }
+    if(!betLegs.length)continue;
+    bets.push({
+      type:bm.count>1?"parlay":"single",
+      legs_count:bm.count,
+      date:betLegs[0].date||"",
+      amount:ntdAll[bi*2]||100,
+      legs:betLegs
     });
   }
 
-  if(!legs.length)return null;
-  return{type:legsCount>1?"parlay":"single",legs_count:legsCount,date:legs[0].date||"",amount,legs};
+  // Fallback: if no markers found, treat all legs as one bet
+  if(!bets.length&&parsedLegs.length){
+    bets.push({type:parsedLegs.length>1?"parlay":"single",legs_count:parsedLegs.length,date:parsedLegs[0].date||"",amount:ntdAll[0]||100,legs:parsedLegs});
+  }
+
+  return{bets};
 }
 
 // ─── Bet logic ───
