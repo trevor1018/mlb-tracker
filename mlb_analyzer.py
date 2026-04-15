@@ -315,6 +315,7 @@ class StarterStats:
     name: str = ""
     outs: int = 0
     h: int = 0
+    r: int = 0       # total runs (含非自責分)
     er: int = 0
     bb: int = 0
     so: int = 0
@@ -350,8 +351,10 @@ class PitcherCumulative:
     so: int = 0
     hr: int = 0
     pitches: int = 0
+    start_log: list = field(default_factory=list)  # 逐場明細
 
-    def add_start(self, s: StarterStats):
+    def add_start(self, s: StarterStats, date='', vs='', vs_zh='',
+                  team_score=0, opp_score=0, team_won=False):
         self.starts += 1
         self.outs += s.outs
         self.h += s.h
@@ -360,6 +363,28 @@ class PitcherCumulative:
         self.so += s.so
         self.hr += s.hr
         self.pitches += s.pitches
+
+        # 存逐場明細 (用於 recent_starts)
+        if date:
+            self.start_log.append({
+                'date': date,
+                'vs': vs,
+                'vs_zh': vs_zh,
+                'ip': ip_from_outs(s.outs),
+                'h': s.h,
+                'r': s.r,
+                'er': s.er,
+                'bb': s.bb,
+                'so': s.so,
+                'hr': s.hr,
+                'pitches': s.pitches,
+                'result': 'W' if team_won else 'L',
+                'team_score': f"{team_score}-{opp_score}",
+            })
+
+    def recent_starts(self, n=3):
+        """回傳最近 n 場先發明細 (最近的在前)"""
+        return list(reversed(self.start_log[-n:])) if self.start_log else []
 
     def snapshot(self):
         ip = self.outs / 3 if self.outs > 0 else 1
@@ -791,6 +816,7 @@ def parse_boxscore(box, game_pk, date_str):
             starter.name = p_data.get('person', {}).get('fullName', '')
             starter.outs = parse_ip(p_stats.get('inningsPitched', '0'))
             starter.h = int(p_stats.get('hits', 0))
+            starter.r = int(p_stats.get('runs', 0))
             starter.er = int(p_stats.get('earnedRuns', 0))
             starter.bb = int(p_stats.get('baseOnBalls', 0))
             starter.so = int(p_stats.get('strikeOuts', 0))
@@ -1720,12 +1746,28 @@ def build_current_trackers(games, cutoff_date=None):
             pid = g.away_starter.pitcher_id
             if pid not in pitcher_trackers:
                 pitcher_trackers[pid] = PitcherCumulative(pitcher_id=pid, name=g.away_starter.name)
-            pitcher_trackers[pid].add_start(g.away_starter)
+            pitcher_trackers[pid].add_start(
+                g.away_starter,
+                date=g.date,
+                vs=g.home_name,
+                vs_zh=TEAM_ZH.get(g.home_name, g.home_name),
+                team_score=g.away_score,
+                opp_score=g.home_score,
+                team_won=(g.winner_side == 'away'),
+            )
         if g.home_starter.pitcher_id > 0:
             pid = g.home_starter.pitcher_id
             if pid not in pitcher_trackers:
                 pitcher_trackers[pid] = PitcherCumulative(pitcher_id=pid, name=g.home_starter.name)
-            pitcher_trackers[pid].add_start(g.home_starter)
+            pitcher_trackers[pid].add_start(
+                g.home_starter,
+                date=g.date,
+                vs=g.away_name,
+                vs_zh=TEAM_ZH.get(g.away_name, g.away_name),
+                team_score=g.home_score,
+                opp_score=g.away_score,
+                team_won=(g.winner_side == 'home'),
+            )
 
     return team_trackers, pitcher_trackers
 
@@ -1923,6 +1965,10 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
 
             away_sp_snap = pitcher_trackers[away_sp_id].snapshot() if away_sp_id in pitcher_trackers else None
             home_sp_snap = pitcher_trackers[home_sp_id].snapshot() if home_sp_id in pitcher_trackers else None
+
+            # 最近 3 場先發明細
+            away_sp_recent = pitcher_trackers[away_sp_id].recent_starts(3) if away_sp_id in pitcher_trackers else []
+            home_sp_recent = pitcher_trackers[home_sp_id].recent_starts(3) if home_sp_id in pitcher_trackers else []
 
             # 球隊指標比較 (當季累積值)
             team_comparisons = {}
@@ -2199,6 +2245,8 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 'away_sp': away_sp_name, 'home_sp': home_sp_name,
                 'away_record': f"{away_snap['wins']}-{away_snap['losses']}",
                 'home_record': f"{home_snap['wins']}-{home_snap['losses']}",
+                'away_sp_recent': away_sp_recent,
+                'home_sp_recent': home_sp_recent,
                 'team_comparisons': team_comparisons,
                 'sp_comparisons': sp_comparisons,
                 'away_edges': away_edges,

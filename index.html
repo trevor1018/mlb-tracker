@@ -1783,6 +1783,46 @@ function findLegOdds(leg,gamesOdds){
   return{avg,best,count:prices.length,commence:game.commence_time};
 }
 
+// ─── SP Recent Starts Panel ───
+function SpRecentPanel({away,home,awayZh,homeZh,awayRecent,homeRecent}){
+  const mono={fontFamily:"'JetBrains Mono',monospace"};
+  const[open,setOpen]=useState(false);
+  const hasData=(awayRecent&&awayRecent.length)||(homeRecent&&homeRecent.length);
+  if(!hasData)return null;
+
+  const renderStarts=(spName,teamZh,starts)=>{
+    if(!starts||!starts.length)return<div style={{fontSize:11,color:C.m,padding:4}}>{spName||"—"}: 無先發紀錄</div>;
+    return<div style={{marginBottom:8}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.acc,marginBottom:4}}>{teamZh} {spName}</div>
+      {starts.map((s,i)=>{
+        const rc=s.result==="W"?C.g:s.result==="L"?C.r:C.d;
+        return<div key={i} style={{fontSize:11,padding:"4px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{color:C.d}}>{s.date?.slice(5)} vs <span style={{color:C.t}}>{s.vs_zh||s.vs}</span></span>
+            <span style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{...mono,color:C.t}}>{s.team_score}</span>
+              <span style={{fontWeight:700,color:rc,minWidth:14,textAlign:"center"}}>{s.result}</span>
+            </span>
+          </div>
+          <div style={{...mono,color:C.d,marginTop:2}}>
+            {s.ip}IP · {s.h}H · {s.r}R({s.er}ER) · {s.bb}BB · {s.so}K{s.hr>0?` · ${s.hr}HR`:""}{s.pitches?` · ${s.pitches}球`:""}
+          </div>
+        </div>;
+      })}
+    </div>;
+  };
+
+  return<div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.bd}`}}>
+    <button onClick={()=>setOpen(!open)} style={{background:"none",border:"none",color:open?C.acc:C.d,cursor:"pointer",fontSize:11,padding:0,outline:"none"}}>
+      ⚾ 先發近況 {open?"▲":"▼"}
+    </button>
+    {open&&<div style={{marginTop:6}}>
+      {renderStarts(away,awayZh,awayRecent)}
+      {renderStarts(home,homeZh,homeRecent)}
+    </div>}
+  </div>;
+}
+
 // ─── Recommend Panel ───
 function RecommendPanel({matchups,uid,state,setState}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
@@ -1973,6 +2013,8 @@ function RecommendPanel({matchups,uid,state,setState}){
                     </span>
                   </div>:<div style={{color:C.m}}>🌏 國際盤：此盤口無對應 (通常是因為主盤口線與 {btShort} 不同)</div>}
                 </div>}
+                {/* SP Recent Starts */}
+                <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent}/>
               </div>;
             })}
 
