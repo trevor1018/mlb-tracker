@@ -187,13 +187,12 @@ async function ocrImage(base64WithPrefix,apiKey){
 // ─── Parse OCR text into structured bets ───
 function parseOcrText(text){
   const bets=[];
-  // Split by bet slip markers (兩關, 三關, 四關, 五關, 單場)
+  // Split by bet slip markers
   const slipPattern=/(兩關|三關|四關|五關|單場)/g;
   const markers=[];
   let m;
   while((m=slipPattern.exec(text))!==null)markers.push({idx:m.index,type:m[1]});
   if(!markers.length){
-    // Try parsing as single slip
     const parsed=parseSingleSlip(text);
     if(parsed)bets.push(parsed);
     return{bets};
@@ -201,8 +200,7 @@ function parseOcrText(text){
   for(let i=0;i<markers.length;i++){
     const start=markers[i].idx;
     const end=i+1<markers.length?markers[i+1].idx:text.length;
-    const chunk=text.slice(start,end);
-    const parsed=parseSingleSlip(chunk);
+    const parsed=parseSingleSlip(text.slice(start,end));
     if(parsed)bets.push(parsed);
   }
   return{bets};
@@ -213,79 +211,88 @@ function parseSingleSlip(text){
   const typeMatch=text.match(/(兩關|三關|四關|五關|單場)/);
   const legsCount=typeMatch?legsMap[typeMatch[1]]||1:1;
 
-  // Extract amount
-  const amtMatch=text.match(/NTD\s*(\d+)\s/i)||text.match(/投注[^\d]*(\d+)/);
+  // Extract amount (first NTD number)
+  const amtMatch=text.match(/NTD\s*(\d+)/i);
   const amount=amtMatch?Number(amtMatch[1]):100;
 
-  // Extract date (比賽日期, not 投注日期)
-  const dates=[...text.matchAll(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/g)];
-  // Second date is usually the game date (first is bet date)
-  const gameDate=dates.length>=2?dates[1]:dates[0];
-  const dateStr=gameDate?`${gameDate[1]}-${String(gameDate[2]).padStart(2,"0")}-${String(gameDate[3]).padStart(2,"0")}`:"";
-
-  // Extract legs by finding odds patterns (decimal like 1.90, 2.10)
-  // and matchup patterns (XXX @ YYY or XXX@YYY)
+  // Parse line by line, anchor on "賽事" lines to identify each leg
+  const lines=text.split(/[\n\r]+/).map(l=>l.trim()).filter(Boolean);
   const legs=[];
-  const matchups=[...text.matchAll(/\d+\s+(.+?)\s*[@＠]\s*(.+?)[\n\r]/g)];
-  const oddsAll=[...text.matchAll(/(?:^|\s)(\d\.\d{2})(?:\s|$)/gm)];
-  // Find market types
-  const marketBlocks=[...text.matchAll(/(不讓分|讓分\s*[-\d.]+|\[總分\]大小\s*[\d.]+|大小\s*[\d.]+)/g)];
 
-  for(let i=0;i<Math.max(matchups.length,legsCount);i++){
-    const leg={away_full:"",home_full:"",market:"normal",selection:"",line:"",odds:0};
+  for(let i=0;i<lines.length;i++){
+    // Find matchup line: "number team @ team"
+    const matchupMatch=lines[i].match(/\d+\s+(.+?)\s*[@＠]\s*(.+)/);
+    if(!matchupMatch)continue;
 
-    // Matchup
-    if(matchups[i]){
-      leg.away_full=matchups[i][1].trim();
-      leg.home_full=matchups[i][2].trim();
-    }
+    const awayFull=matchupMatch[1].trim();
+    const homeFull=matchupMatch[2].trim();
+    const awayShort=twTeam(awayFull);
+    const homeShort=twTeam(homeFull);
 
-    // Market type
-    if(marketBlocks[i]){
-      const mk=marketBlocks[i][1];
-      if(mk.includes("不讓分")){
-        leg.market="normal";
-      }else if(mk.includes("讓分")){
-        leg.market="handi";
-        const lnMatch=mk.match(/([-\d.]+)/);
-        if(lnMatch)leg.line=lnMatch[1];
-      }else if(mk.includes("大小")){
-        leg.market="total";
-        const lnMatch=mk.match(/([\d.]+)/);
-        if(lnMatch)leg.line=lnMatch[1];
+    let market="normal",lineVal="",gameDate="",selectionText="",odds=0;
+
+    // Look backwards from this matchup line to find leg info
+    for(let j=i-1;j>=Math.max(0,i-12);j--){
+      const ln=lines[j];
+
+      // Market type
+      if(!market||market==="normal"){
+        if(ln.match(/讓分\s*([-\d.]+)/)){
+          market="handi";
+          lineVal=ln.match(/讓分\s*([-\d.]+)/)[1];
+        }else if(ln.match(/大小\s*([\d.]+)/)){
+          market="total";
+          lineVal=ln.match(/大小\s*([\d.]+)/)[1];
+        }else if(ln.includes("不讓分")){
+          market="normal";
+        }
       }
+
+      // Game date (per leg)
+      if(!gameDate){
+        const dateMatch=ln.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+        if(dateMatch)gameDate=`${dateMatch[1]}-${String(dateMatch[2]).padStart(2,"0")}-${String(dateMatch[3]).padStart(2,"0")}`;
+      }
+
+      // Selection header + odds (e.g., "底特律老虎 1.60" or "大 7.5 1.90")
+      if(!odds){
+        const oddsMatch=ln.match(/(\d+\.\d{2})\s*$/);
+        if(oddsMatch){
+          odds=Number(oddsMatch[1]);
+          selectionText=ln.replace(oddsMatch[0],"").trim();
+        }
+      }
+
+      // Stop if we hit another matchup or slip marker
+      if(ln.match(/\d+\s+.+[@＠]/)&&j<i-1)break;
+      if(ln.match(/(兩關|三關|四關|五關|單場)/))break;
     }
 
-    // Odds
-    if(oddsAll[i])leg.odds=Number(oddsAll[i][1]);
-
-    // Selection - detect from the first line of each leg section
-    // For total: look for 大/小 before the line number
-    // For normal/handi: the selected team name appears at top
-    if(leg.market==="total"){
-      // Check if "大" or "小" appears near the odds
-      const nearText=text.slice(Math.max(0,(oddsAll[i]?.index||0)-30),(oddsAll[i]?.index||0)+5);
-      leg.selection=nearText.includes("小")?"under":"over";
+    // Determine selection
+    let selection="";
+    if(market==="total"){
+      // 大/小 in selectionText
+      selection=selectionText.includes("小")?"under":"over";
     }else{
-      // For ML/spread, the selected team is the one shown at the top of the leg
-      // Heuristic: if home team name appears before odds, selection=home
-      if(leg.home_full&&leg.away_full){
-        const beforeOdds=text.slice(Math.max(0,(oddsAll[i]?.index||0)-60),(oddsAll[i]?.index||0));
-        // Check which team is in the selection area (before odds, after previous section)
-        const homeInSel=beforeOdds.includes(leg.home_full)||TW_TEAM[leg.home_full]&&beforeOdds.includes(TW_TEAM[leg.home_full]);
-        leg.selection=homeInSel?"home":"away";
-      }
+      // Rule: the team that appears TWICE (once in selectionText, once in matchup) is the bet
+      // Check if selectionText contains home or away team name
+      const homeMatch=selectionText.includes(homeFull)||selectionText.includes(homeShort)||
+        Object.entries(TW_TEAM).some(([full,short])=>(short===homeShort)&&selectionText.includes(full));
+      const awayMatch=selectionText.includes(awayFull)||selectionText.includes(awayShort)||
+        Object.entries(TW_TEAM).some(([full,short])=>(short===awayShort)&&selectionText.includes(full));
+      selection=homeMatch?"home":awayMatch?"away":"away";
     }
 
-    // Map team names
-    leg.away=twTeam(leg.away_full);
-    leg.home=twTeam(leg.home_full);
-
-    if(leg.away||leg.home||leg.odds)legs.push(leg);
+    legs.push({
+      away_full:awayFull,home_full:homeFull,
+      away:awayShort,home:homeShort,
+      market,selection,line:lineVal,odds,
+      date:gameDate
+    });
   }
 
   if(!legs.length)return null;
-  return{type:legsCount>1?"parlay":"single",legs_count:legsCount,date:dateStr,amount,legs};
+  return{type:legsCount>1?"parlay":"single",legs_count:legsCount,date:legs[0].date||"",amount,legs};
 }
 
 // ─── Bet logic ───
@@ -473,24 +480,30 @@ function AddBetView({addBet,uid}){
   const submitAllScan=()=>{
     if(!scanResults)return;
     scanResults.forEach(bet=>{
-      const mk=l=>({
-        id:genId(),date:bet.date||date,
-        away:l.away||"",home:l.home||"",
-        market:l.market||"normal",selection:l.selection||"",
-        line:l.line||"",odds:Number(l.odds)||0,
-        homeScore:"",awayScore:"",result:"pending"
-      });
-      const betLegs=bet.legs.map(mk);
-      const tOdds=betLegs.reduce((a,l)=>a*(l.odds||1),1);
-      addBet({
-        id:genId(),
-        type:bet.legs_count>1?"parlay":"single",
-        legs:betLegs,
-        amount:Number(bet.amount)||100,
-        totalOdds:Math.round(tOdds*100)/100,
-        note:"",
-        createdAt:new Date().toISOString()
-      });
+      const betDate=bet.date||date;
+      const mk=l=>{
+        const away=TEAMS.includes(l.away)?l.away:(l.away||"");
+        const home=TEAMS.includes(l.home)?l.home:(l.home||"");
+        return{
+          id:genId(),date:l.date||betDate,
+          away,home,
+          market:l.market||"normal",selection:l.selection||"",
+          line:l.line||"",odds:Number(l.odds)||0,
+          homeScore:"",awayScore:"",result:"pending"
+        };
+      };
+      const betType=bet.legs_count>1?"parlay":"single";
+      if(betType==="single"){
+        // Single: each leg is a separate bet (same as manual submit)
+        bet.legs.forEach(l=>{
+          const leg=mk(l);
+          addBet({id:genId(),type:"single",legs:[leg],amount:Number(bet.amount)||100,totalOdds:leg.odds,note:"",createdAt:new Date().toISOString()});
+        });
+      }else{
+        const betLegs=bet.legs.map(mk);
+        const tOdds=betLegs.reduce((a,l)=>a*(l.odds||1),1);
+        addBet({id:genId(),type:"parlay",legs:betLegs,amount:Number(bet.amount)||100,totalOdds:Math.round(tOdds*100)/100,note:"",createdAt:new Date().toISOString()});
+      }
     });
     setScanResults(null);
   };
