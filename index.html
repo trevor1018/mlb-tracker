@@ -227,11 +227,20 @@ function parseOcrText(fullText){
       if(j<a.li-1&&ln.match(/\d+\s+.+[@＠]/))break;
       if(ln.match(/^(兩關|三關|四關|五關|單場)$/))break;
 
-      // Market
+      // Market (check if team total by looking for team name in the same line as 大小)
       const handiM=ln.match(/讓分\s*([-\d.]+)/);
       const totalM=ln.match(/大小\s*([\d.]+)/);
       if(handiM){market="handi";lineVal=handiM[1]}
-      else if(totalM){market="total";lineVal=totalM[1]}
+      else if(totalM){
+        lineVal=totalM[1];
+        // Check if this market line contains a team name → team total
+        const awayS=twTeam(a.awayFull),homeS=twTeam(a.homeFull);
+        const allHome=[a.homeFull,homeS,...Object.entries(TW_TEAM).filter(([,v])=>v===homeS).map(([k])=>k)];
+        const allAway=[a.awayFull,awayS,...Object.entries(TW_TEAM).filter(([,v])=>v===awayS).map(([k])=>k)];
+        if(allHome.some(n=>n&&ln.includes(n)))market="team_total_home";
+        else if(allAway.some(n=>n&&ln.includes(n)))market="team_total_away";
+        else market="total";
+      }
       else if(ln.includes("不讓分")){market="normal"}
 
       // Game date (take the LAST one found going backwards = closest to matchup)
@@ -641,7 +650,7 @@ function LegEdit({leg,idx,onChange,onRemove,canRemove}){
       <Field label="主隊"><Sel value={leg.home} onChange={v=>u("home",v)} options={TEAMS} placeholder="主隊"/></Field>
     </div>
     <Field label="玩法"><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-      {[["normal","不讓分"],["handi","讓分"],["total","大小分"],["team_total_home","主隊大小"],["team_total_away","客隊大小"]].map(([k,l])=><Pill key={k} sel={leg.market===k} onClick={()=>u("market",k)}>{l}</Pill>)}
+      {[["normal","不讓分"],["handi","讓分"],["total","大小分"],["team_total_away","客隊大小"],["team_total_home","主隊大小"]].map(([k,l])=><Pill key={k} sel={leg.market===k} onClick={()=>u("market",k)}>{l}</Pill>)}
     </div></Field>
     {(leg.market==="handi"||leg.market==="total"||leg.market==="team_total_home"||leg.market==="team_total_away")&&<Field label={leg.market==="handi"?"讓分值（例：-1.5）":leg.market==="total"?"總分線（例：8.5）":`${leg.market==="team_total_home"?(leg.home||"主隊"):(leg.away||"客隊")}得分線（例：3.5）`}><Inp value={leg.line} onChange={v=>u("line",v)} placeholder={leg.market==="handi"?"-1.5":"3.5"} mono/></Field>}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -695,7 +704,7 @@ function BetCard({bet,r,updateBet,deleteBet,ML}){
           <Field label="主隊"><Sel value={leg.home} onChange={v=>upLeg(i,"home",v)} options={TEAMS} placeholder="主隊"/></Field>
         </div>
         <Field label="玩法"><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {[["normal","不讓分"],["handi","讓分"],["total","大小分"],["team_total_home","主隊大小"],["team_total_away","客隊大小"]].map(([k,l])=><Pill key={k} sel={leg.market===k} onClick={()=>upLeg(i,"market",k)}>{l}</Pill>)}
+          {[["normal","不讓分"],["handi","讓分"],["total","大小分"],["team_total_away","客隊大小"],["team_total_home","主隊大小"]].map(([k,l])=><Pill key={k} sel={leg.market===k} onClick={()=>upLeg(i,"market",k)}>{l}</Pill>)}
         </div></Field>
         {(leg.market==="handi"||leg.market==="total"||leg.market==="team_total_home"||leg.market==="team_total_away")&&<Field label={leg.market==="handi"?"讓分值":leg.market==="total"?"總分線":"隊得分線"}><Inp value={leg.line} onChange={v=>upLeg(i,"line",v)} placeholder={leg.market==="handi"?"-1.5":"3.5"} mono/></Field>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
