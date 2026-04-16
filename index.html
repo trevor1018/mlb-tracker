@@ -1852,7 +1852,6 @@ function SpRecentPanel({away,home,awayZh,homeZh,awayRecent,homeRecent}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
   const[open,setOpen]=useState(false);
   const hasData=(awayRecent&&awayRecent.length)||(homeRecent&&homeRecent.length);
-  if(!hasData)return null;
 
   const renderStarts=(spName,teamZh,starts)=>{
     if(!starts||!starts.length)return<div style={{fontSize:11,color:C.m,padding:4}}>{spName||"—"}: 無先發紀錄</div>;
