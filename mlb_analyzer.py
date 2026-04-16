@@ -11,6 +11,8 @@ MLB 投注分析工具 — 統計相關性回測 + 牛棚追蹤 + 每日分析
   python mlb_analyzer.py daily [date] --top5         # 同上, 只顯示 Top 5% 場次
   python mlb_analyzer.py today [date]                # 不抓新資料, 只重新產生分析
   python mlb_analyzer.py today [date] --top5         # 同上, 只顯示 Top 5%
+  python mlb_analyzer.py weather <season>            # 抓取該季歷史天氣 (Open-Meteo)
+  python mlb_analyzer.py weather range <s> <e>       # 抓取多季歷史天氣
 
 日期參數 (可選):
   daily                → 今天
@@ -53,8 +55,11 @@ FIP_CONSTANT = 3.10    # 近似 cFIP
 HOME_ADV_BONUS = 0.15  # 主場優勢加成 (z-score 單位，約對應 1-2% 勝率)
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
 BASELINE_FILE = "baseline_10y.json"
+VENUES_FILE = "venues.json"
 ANALYSIS_OUTPUT = "mlb_analysis.json"
 API_BASE = "https://statsapi.mlb.com/api/v1"
+OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 
 # ═══════════════════════════════════════════
 # 盤口定義 — 支援多種 bet type 並行回測
@@ -145,6 +150,11 @@ TOTAL_COMPOSITES_DEF = [
     ("ops+2sp_fip",        [("ops", 1, "team"), ("sp_fip", 2, "sp")]),
     ("runs+2sp_era",       [("runs_per_game", 1, "team"), ("sp_era", 2, "sp")]),
     ("2sp_fip+sp_era",     [("sp_fip", 2, "sp"), ("sp_era", 1, "sp")]),
+    # === 含 park factor (pf source 在 compute_total_composite 中特殊處理) ===
+    ("runs+era+pf",        [("runs_per_game", 1, "team"), ("era", 1, "team"), ("park_factor", 1, "pf")]),
+    ("ops+fip+pf",         [("ops", 1, "team"), ("fip", 1, "team"), ("park_factor", 1, "pf")]),
+    ("ops+sp_fip+pf",      [("ops", 1, "team"), ("sp_fip", 1, "sp"), ("park_factor", 1, "pf")]),
+    ("runs+sp_era+pf",     [("runs_per_game", 1, "team"), ("sp_era", 1, "sp"), ("park_factor", 1, "pf")]),
 ]
 
 TEAM_ZH = {
@@ -176,7 +186,7 @@ def progress_bar(label, current, total, start_time, bar_width=30):
         return
     pct = current / total
     filled = int(bar_width * pct)
-    bar = "█" * filled + "░" * (bar_width - filled)
+    bar = "#" * filled + "-" * (bar_width - filled)
 
     elapsed = time.time() - start_time
     if current > 0:
@@ -241,6 +251,301 @@ def api_get(path, max_retries=4):
                 return None
             time.sleep(2 ** attempt)
     return None
+
+
+# ═══════════════════════════════════════════
+# 球場資料與天氣
+# ═══════════════════════════════════════════
+def fetch_venues():
+    """從 MLB API 抓取 30 隊球場元資料 (座標、屋頂、海拔)，存入 cache/venues.json"""
+    print("  抓取球場元資料...")
+    data = api_get("/teams?sportId=1&hydrate=venue(location,fieldInfo)")
+    if not data:
+        print("  [X] 無法取得球場資料")
+        return {}
+
+    venues = {}
+    for team in data.get('teams', []):
+        v = team.get('venue', {})
+        loc = v.get('location', {})
+        fi = v.get('fieldInfo', {})
+        coords = loc.get('defaultCoordinates', {})
+        vid = v.get('id')
+        if not vid:
+            continue
+        venues[str(vid)] = {
+            'id': vid,
+            'name': v.get('name', ''),
+            'team': team.get('name', ''),
+            'lat': coords.get('latitude'),
+            'lon': coords.get('longitude'),
+            'elevation': loc.get('elevation', 0),
+            'roof': fi.get('roofType', 'Open'),
+            'timezone': loc.get('timeZone', {}).get('id', 'America/New_York'),
+        }
+
+    # 存檔
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    path = os.path.join(CACHE_DIR, VENUES_FILE)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(venues, f, ensure_ascii=False, indent=2)
+    print(f"  已存 {len(venues)} 座球場 -> {path}")
+    return venues
+
+
+def load_venues():
+    """載入球場資料 (若不存在則自動抓取)"""
+    path = os.path.join(CACHE_DIR, VENUES_FILE)
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return fetch_venues()
+
+
+# 隊名 → venue_id 對照 (用 home_name 查主場)
+_TEAM_VENUE_CACHE = {}
+
+def get_team_venue_id(team_name):
+    """查詢球隊主場的 venue_id"""
+    if not _TEAM_VENUE_CACHE:
+        venues = load_venues()
+        for vid, info in venues.items():
+            _TEAM_VENUE_CACHE[info['team']] = int(vid)
+    return _TEAM_VENUE_CACHE.get(team_name)
+
+
+def compute_park_factors(games, min_home_games=10):
+    """從歷史比賽資料計算各主場球隊的 park factor
+
+    Park Factor = (主場平均每場總得分) / (全聯盟平均每場總得分)
+    > 1.0 = 打者球場 (偏大分), < 1.0 = 投手球場 (偏小分)
+
+    min_home_games: 至少需要幾場主場才納入 (多季回測用 50, 單季用 10)
+    """
+    from collections import defaultdict
+    venue_runs = defaultdict(lambda: [0, 0])  # {home_team: [total_runs, games]}
+    for g in games:
+        total = g.away_score + g.home_score
+        venue_runs[g.home_name][0] += total
+        venue_runs[g.home_name][1] += 1
+
+    total_all_runs = sum(v[0] for v in venue_runs.values())
+    total_all_games = sum(v[1] for v in venue_runs.values())
+    league_avg = total_all_runs / total_all_games if total_all_games > 0 else 9.0
+
+    park_factors = {}
+    for team, (runs, gms) in venue_runs.items():
+        if gms >= min_home_games:
+            avg = runs / gms
+            park_factors[team] = round(avg / league_avg, 3)
+
+    return park_factors, league_avg
+
+
+def fetch_game_weather(lat, lon, date_str, game_hour=19, is_forecast=False):
+    """查詢指定地點和日期的天氣 (Open-Meteo)
+
+    is_forecast=True: 用 forecast API (未來比賽)
+    is_forecast=False: 用 archive API (歷史比賽)
+    回傳: {temp_f, humidity, wind_mph, wind_dir_deg, precip_prob} 或 None
+    """
+    hourly_vars = "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m"
+    if is_forecast:
+        hourly_vars += ",precipitation_probability"
+        url = (f"{OPEN_METEO_FORECAST}?latitude={lat}&longitude={lon}"
+               f"&hourly={hourly_vars}"
+               f"&temperature_unit=fahrenheit&wind_speed_unit=mph&forecast_days=3")
+    else:
+        hourly_vars += ",precipitation"
+        url = (f"{OPEN_METEO_ARCHIVE}?latitude={lat}&longitude={lon}"
+               f"&hourly={hourly_vars}"
+               f"&temperature_unit=fahrenheit&wind_speed_unit=mph"
+               f"&start_date={date_str}&end_date={date_str}")
+
+    try:
+        req = Request(url, headers={"User-Agent": "MLB-Analyzer/1.0"})
+        with urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception:
+        return None
+
+    hourly = data.get('hourly', {})
+    times = hourly.get('time', [])
+    if not times:
+        return None
+
+    # 找最接近比賽時間的 index
+    target = f"{date_str}T{game_hour:02d}:00"
+    best_idx = 0
+    for i, t in enumerate(times):
+        if t <= target:
+            best_idx = i
+        else:
+            break
+
+    def safe_get(key, idx):
+        arr = hourly.get(key, [])
+        return arr[idx] if idx < len(arr) else None
+
+    result = {
+        'temp_f': safe_get('temperature_2m', best_idx),
+        'humidity': safe_get('relative_humidity_2m', best_idx),
+        'wind_mph': safe_get('wind_speed_10m', best_idx),
+        'wind_dir_deg': safe_get('wind_direction_10m', best_idx),
+    }
+    if is_forecast:
+        result['precip_prob'] = safe_get('precipitation_probability', best_idx)
+    else:
+        result['precip_mm'] = safe_get('precipitation', best_idx)
+
+    return result
+
+
+WEATHER_CACHE_FILE = "weather_cache.json"
+
+def load_weather_cache():
+    """載入歷史天氣快取"""
+    path = os.path.join(CACHE_DIR, WEATHER_CACHE_FILE)
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+def save_weather_cache(cache):
+    """存檔天氣快取"""
+    path = os.path.join(CACHE_DIR, WEATHER_CACHE_FILE)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(cache, f, ensure_ascii=False)
+
+
+def fetch_historical_weather(games):
+    """批次抓取歷史比賽天氣資料
+
+    策略: 按主場球隊分組, 每組用 date range 呼叫 Open-Meteo archive API,
+    一次最多跨 90 天避免回應太大, 然後從 hourly 中取出每場比賽時間的天氣。
+    """
+    venues = load_venues()
+    weather_cache = load_weather_cache()
+
+    # 建立 team -> venue_info 對照
+    team_venue = {}
+    for vid, info in venues.items():
+        team_venue[info['team']] = info
+
+    # 按主場球隊分組
+    from collections import defaultdict
+    games_by_home = defaultdict(list)
+    skipped = 0
+    for g in games:
+        gpk = str(g.game_pk)
+        if gpk in weather_cache:
+            skipped += 1
+            continue
+        if g.home_name in team_venue:
+            games_by_home[g.home_name].append(g)
+        # 找不到球場座標就跳過
+
+    total_to_fetch = sum(len(gl) for gl in games_by_home.values())
+    print(f"\n=== 歷史天氣抓取 ===")
+    print(f"  共 {len(games)} 場, 已快取 {skipped} 場, 需抓 {total_to_fetch} 場")
+    if total_to_fetch == 0:
+        print("  全部已快取, 跳過")
+        return weather_cache
+
+    fetched = 0
+    failed = 0
+    start_time = time.time()
+
+    for home_team, team_games in sorted(games_by_home.items()):
+        venue = team_venue[home_team]
+        lat, lon = venue['lat'], venue['lon']
+        if not lat or not lon:
+            continue
+
+        # 按日期排序
+        team_games.sort(key=lambda g: g.date)
+
+        # 分批 (每批最多 90 天跨度)
+        batch_start = 0
+        while batch_start < len(team_games):
+            batch_end = batch_start
+            first_date = team_games[batch_start].date
+            # 往後找, 直到超過 90 天或用完
+            while batch_end < len(team_games):
+                days_diff = (datetime.strptime(team_games[batch_end].date, "%Y-%m-%d") -
+                             datetime.strptime(first_date, "%Y-%m-%d")).days
+                if days_diff > 90:
+                    break
+                batch_end += 1
+
+            batch = team_games[batch_start:batch_end]
+            start_date = batch[0].date
+            end_date = batch[-1].date
+
+            # 呼叫 Open-Meteo archive API (一次取整段日期)
+            hourly_vars = "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation"
+            url = (f"{OPEN_METEO_ARCHIVE}?latitude={lat}&longitude={lon}"
+                   f"&hourly={hourly_vars}"
+                   f"&temperature_unit=fahrenheit&wind_speed_unit=mph"
+                   f"&start_date={start_date}&end_date={end_date}")
+            try:
+                req = Request(url, headers={"User-Agent": "MLB-Analyzer/1.0"})
+                with urlopen(req, timeout=30) as resp:
+                    data = json.loads(resp.read().decode())
+            except Exception as e:
+                failed += len(batch)
+                batch_start = batch_end
+                time.sleep(0.5)
+                continue
+
+            hourly = data.get('hourly', {})
+            times = hourly.get('time', [])
+            if not times:
+                failed += len(batch)
+                batch_start = batch_end
+                continue
+
+            # 建立 time -> index 對照
+            time_index = {t: i for i, t in enumerate(times)}
+
+            def safe_get(key, idx):
+                arr = hourly.get(key, [])
+                return arr[idx] if idx < len(arr) else None
+
+            for g in batch:
+                # 大部分 MLB 夜間比賽 ~19:00 local, 日間 ~13:00
+                game_hour = 19  # 預設晚場
+                target = f"{g.date}T{game_hour:02d}:00"
+                # 找最接近的 index
+                if target in time_index:
+                    idx = time_index[target]
+                else:
+                    # 找最接近的
+                    idx = 0
+                    for t in times:
+                        if t.startswith(g.date) and t <= target:
+                            idx = time_index[t]
+
+                w = {
+                    'temp_f': safe_get('temperature_2m', idx),
+                    'humidity': safe_get('relative_humidity_2m', idx),
+                    'wind_mph': safe_get('wind_speed_10m', idx),
+                    'wind_dir_deg': safe_get('wind_direction_10m', idx),
+                    'precip_mm': safe_get('precipitation', idx),
+                }
+                weather_cache[str(g.game_pk)] = w
+                fetched += 1
+
+            progress_bar("天氣抓取", fetched + failed, total_to_fetch, start_time)
+            time.sleep(0.3)  # 禮貌性延遲
+            batch_start = batch_end
+
+    if total_to_fetch > 0:
+        progress_done("")
+    save_weather_cache(weather_cache)
+    print(f"  完成: 成功 {fetched}, 失敗 {failed}")
+    print(f"  天氣快取: {len(weather_cache)} 場 -> cache/{WEATHER_CACHE_FILE}")
+    return weather_cache
 
 
 def parse_ip(ip_str):
@@ -902,6 +1207,11 @@ def run_correlation_analysis(games):
     # 按日期排序
     games.sort(key=lambda x: (x.date, x.game_pk))
 
+    # 載入天氣快取 & park factors
+    weather_cache = load_weather_cache()
+    pf_all, _ = compute_park_factors(games, min_home_games=50)
+    print(f"  天氣快取: {len(weather_cache)} 場, Park factors: {len(pf_all)} 球場")
+
     # 累積追蹤器 - 每季獨立 (避免跨季污染)
     trackers = {}            # 球隊累積
     pitcher_trackers = {}    # 投手累積 (per starter)
@@ -956,6 +1266,8 @@ def run_correlation_analysis(games):
                 'winner_side': g.winner_side,
                 'total_runs': g.away_score + g.home_score,
                 'score_diff': g.home_score - g.away_score,  # home 視角
+                'park_factor': pf_all.get(g.home_name, 1.0),
+                'weather': weather_cache.get(str(g.game_pk)),
             }
             # 預先計算每個 bet type 的 outcome
             for bt_key, _, _, _, outcome_fn in BET_TYPES:
@@ -1036,6 +1348,17 @@ def run_correlation_analysis(games):
             for key in snap:
                 if isinstance(snap[key], (int, float)):
                     all_values.setdefault(('sp', key), []).append(snap[key])
+        # Park factor
+        pf_val = m.get('park_factor')
+        if pf_val is not None:
+            all_values.setdefault(('pf', 'park_factor'), []).append(pf_val)
+        # 天氣
+        w = m.get('weather')
+        if w:
+            for wk in ['temp_f', 'humidity', 'wind_mph']:
+                wv = w.get(wk)
+                if wv is not None:
+                    all_values.setdefault(('weather', wk), []).append(wv)
 
     stat_means = {k: sum(v) / len(v) for k, v in all_values.items()}
     stat_stds = {}
@@ -1161,7 +1484,7 @@ def run_correlation_analysis(games):
                 add_result(bt_key, stat_name, c, t, label)
                 if t > 0:
                     r = results[bt_key][stat_name]
-                    sig = "⭐" if r['significant'] else ""
+                    sig = "*" if r['significant'] else ""
                     print(f"{stat_name:<16s} | {c:5d} | {t:5d} | {r['pct']:5.1f}%  | {label:<8s} | {sig}")
 
             # 投手指標
@@ -1173,7 +1496,7 @@ def run_correlation_analysis(games):
                     add_result(bt_key, stat_name, c, t, label)
                     if t > 0:
                         r = results[bt_key][stat_name]
-                        sig = "⭐" if r['significant'] else ""
+                        sig = "*" if r['significant'] else ""
                         print(f"{stat_name:<16s} | {c:5d} | {t:5d} | {r['pct']:5.1f}%  | {label:<8s} | {sig}")
 
         else:  # total
@@ -1185,7 +1508,7 @@ def run_correlation_analysis(games):
                 add_result(bt_key, stat_name, c, t, label)
                 if t > 0:
                     r = results[bt_key][stat_name]
-                    sig = "⭐" if r['significant'] else ""
+                    sig = "*" if r['significant'] else ""
                     print(f"{stat_name:<16s} | {c:5d} | {t:5d} | {r['pct']:5.1f}%  | {label:<8s} | {sig}")
 
             if has_starter_data:
@@ -1198,8 +1521,45 @@ def run_correlation_analysis(games):
                     add_result(bt_key, stat_name, c, t, label)
                     if t > 0:
                         r = results[bt_key][stat_name]
-                        sig = "⭐" if r['significant'] else ""
+                        sig = "*" if r['significant'] else ""
                         print(f"{stat_name:<16s} | {c:5d} | {t:5d} | {r['pct']:5.1f}%  | {label:<8s} | {sig}")
+
+            # 天氣 + 球場指標 (大小分專用)
+            weather_total_stats = [
+                ("park_factor", lambda m: m.get('park_factor', 1.0), "positive", "高偏大分"),
+                ("temp_f",      lambda m: (m.get('weather') or {}).get('temp_f'), "positive", "高溫偏大"),
+                ("wind_mph",    lambda m: (m.get('weather') or {}).get('wind_mph'), "positive", "大風偏大"),
+                ("humidity",    lambda m: (m.get('weather') or {}).get('humidity'), "negative", "高濕偏小"),
+            ]
+            print(f"  -- 天氣/球場 --")
+            for stat_name, getter, total_dir, label in weather_total_stats:
+                correct = 0
+                total_count = 0
+                out_key = f'out_{bt_key}'
+                vals = []
+                for m in matchups:
+                    v = getter(m)
+                    if v is not None:
+                        vals.append(v)
+                if not vals:
+                    continue
+                w_mean = sum(vals) / len(vals)
+                for m in matchups:
+                    v = getter(m)
+                    if v is None:
+                        continue
+                    if total_dir == "positive":
+                        predicted = "over" if v > w_mean else "under"
+                    else:
+                        predicted = "under" if v > w_mean else "over"
+                    total_count += 1
+                    if predicted == m[out_key]:
+                        correct += 1
+                add_result(bt_key, stat_name, correct, total_count, label)
+                if total_count > 0:
+                    r = results[bt_key][stat_name]
+                    sig = "*" if r['significant'] else ""
+                    print(f"{stat_name:<16s} | {correct:5d} | {total_count:5d} | {r['pct']:5.1f}%  | {label:<8s} | {sig}")
 
     # === 複合指標 (directional: ML, 讓分) ===
     def compute_directional_composite(m, components, use_home_adv):
@@ -1232,6 +1592,14 @@ def run_correlation_analysis(games):
         """加總型複合 (大小分用)。回傳 z-score 差距 (相對於樣本均值)"""
         score = 0
         for stat_key, weight, source in components:
+            if source == "pf":
+                # Park factor: 單一值 (不分兩隊加總)
+                pf_val = m.get('park_factor', 1.0)
+                pf_mean = stat_means.get(('pf', 'park_factor'), 1.0)
+                pf_std = stat_stds.get(('pf', 'park_factor'), 0.1) or 0.1
+                z = (pf_val - pf_mean) / pf_std
+                score += z * weight
+                continue
             if source == "team":
                 a_snap = m['away_snap']
                 h_snap = m['home_snap']
@@ -1283,7 +1651,7 @@ def run_correlation_analysis(games):
                     comp_stat_name = f"composite:{comp_name}"
                     add_result(bt_key, comp_stat_name, correct, total, "複合")
                     r = results[bt_key][comp_stat_name]
-                    sig = "⭐" if r['significant'] else ""
+                    sig = "*" if r['significant'] else ""
                     print(f"{comp_name:<30s} | {correct:5d} | {total:5d} | {r['pct']:5.1f}%  | {sig}")
         else:  # total
             for comp_name, components in TOTAL_COMPOSITES_DEF:
@@ -1302,7 +1670,7 @@ def run_correlation_analysis(games):
                     comp_stat_name = f"composite:{comp_name}"
                     add_result(bt_key, comp_stat_name, correct, total, "加總複合")
                     r = results[bt_key][comp_stat_name]
-                    sig = "⭐" if r['significant'] else ""
+                    sig = "*" if r['significant'] else ""
                     print(f"{comp_name:<30s} | {correct:5d} | {total:5d} | {r['pct']:5.1f}%  | {sig}")
 
     # 排名 (各 bet type 分開顯示 top 10)
@@ -1312,7 +1680,7 @@ def run_correlation_analysis(games):
         print(f"{'='*72}")
         ranked = sorted(results[bt_key].items(), key=lambda x: -x[1]['pct'])
         for i, (name, r) in enumerate(ranked[:15], 1):
-            sig = "⭐" if r.get('significant') else ""
+            sig = "*" if r.get('significant') else ""
             print(f"  {i:2d}. {name:<32s}  {r['pct']:5.1f}%  ({r['correct']}/{r['total']})  {sig}")
 
     # === 分層回測 (每個 bet type 各跑一次) ===
@@ -1330,6 +1698,17 @@ def run_correlation_analysis(games):
         bucket_thresholds_all[bt_key] = b_thresh
         profitable_filters_all[bt_key] = b_profit
 
+    # === 計算 park factors ===
+    pf, league_rpg = compute_park_factors(games, min_home_games=50)
+    print(f"\n  Park factors ({len(pf)} 球場, 聯盟平均 {league_rpg:.2f} rpg)")
+    # 前 5 / 後 5
+    sorted_pf = sorted(pf.items(), key=lambda x: -x[1])
+    for team, factor in sorted_pf[:3]:
+        print(f"    ▲ {TEAM_ZH.get(team, team)}: {factor:.3f}")
+    print(f"    ...")
+    for team, factor in sorted_pf[-3:]:
+        print(f"    ▼ {TEAM_ZH.get(team, team)}: {factor:.3f}")
+
     # === 自動存 baseline (多季資料時) ===
     seasons_in_data = sorted(set(int(m['date'][:4]) for m in matchups))
     if len(seasons_in_data) >= 2:
@@ -1342,6 +1721,7 @@ def run_correlation_analysis(games):
             'stat_stds': stat_stds,
             'bucket_thresholds': bucket_thresholds_all,
             'profitable_filters': profitable_filters_all,
+            'park_factors': pf,
         })
 
     return results, trackers
@@ -1365,7 +1745,7 @@ def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_
         "sp_k9": "sp_k9", "sp_bb9": "sp_bb9", "sp_k_bb": "sp_k_bb", "sp_hr9": "sp_hr9",
     }
     out_key = f'out_{bet_type_key}'
-    print(f"目標: 找出命中率 ≥ 58% 的場次篩選條件\n")
+    print(f"目標: 找出命中率 >= 58% 的場次篩選條件\n")
 
     bucket_targets = []
 
@@ -1498,6 +1878,13 @@ def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_
                 def fn(m):
                     score = 0
                     for stat_key, weight, source in comps:
+                        if source == "pf":
+                            pf_val = m.get('park_factor', 1.0)
+                            pf_mean = stat_means.get(('pf', 'park_factor'), 1.0)
+                            pf_std = stat_stds.get(('pf', 'park_factor'), 0.1) or 0.1
+                            z = (pf_val - pf_mean) / pf_std
+                            score += z * weight
+                            continue
                         if source == "team":
                             a_snap = m['away_snap']; h_snap = m['home_snap']
                         else:
@@ -1600,18 +1987,18 @@ def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_
     for stat_name in top_stats_for_print:
         buckets = bucket_results[stat_name]
         top_pct = buckets[0]['pct']
-        print(f"  📊 {stat_name}")
+        print(f"  >> {stat_name}")
         labels = ["Top 20% (差距最大)", "20-40%", "40-60%", "60-80%", "Bottom 20%"]
         for b, label in zip(buckets, labels):
             bar_len = int(b['pct'] / 2)
-            bar = "█" * bar_len + "░" * (35 - bar_len)
-            marker = " 🎯" if b['pct'] >= 58 else (" ✓" if b['pct'] >= 55 else "")
+            bar = "#" * bar_len + "-" * (35 - bar_len)
+            marker = " [!]" if b['pct'] >= 58 else (" [+]" if b['pct'] >= 55 else "")
             print(f"    {label:<22s} {bar} {b['pct']:5.1f}% ({b['wins']}/{b['total']}){marker}")
         print()
 
     # 印出可獲利篩選條件
     print(f"{'='*72}")
-    print(f"⭐ 可正 ROI 的篩選條件 (單腳 ≥58%, 串2關正 EV)")
+    print(f"[*] 可正 ROI 的篩選條件 (單腳 >=58%, 串2關正 EV)")
     print(f"{'='*72}")
     if profitable_filters:
         # 依單腳命中率排序
@@ -1625,15 +2012,15 @@ def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_
                 continue
             seen.add(key)
             print(f"  {f['stat']:<30s} | {f['top_pct']:3d}% | {f['sample']:4d} | {f['single_pct']:5.1f}% | {f['parlay_pct']:5.1f}% | {f['breakeven_combined_odds']:.2f}")
-        print(f"\n  💡 解讀: 上述「指標 + Top%」的子集場次，命中率達正 EV 門檻")
+        print(f"\n  [i] 解讀: 上述「指標 + Top%」的子集場次，命中率達正 EV 門檻")
         print(f"      例: 'comp:ops+era Top 10%' 表示「OPS+ERA 複合指標差距最大的前10% 場次」")
     else:
-        print(f"  ⚠️ 沒有任何篩選條件能達到 58% 單腳命中率")
+        print(f"  [!] 沒有任何篩選條件能達到 58% 單腳命中率")
         print(f"     即使分層也難以擺脫台彩抽水")
 
     # 終極建議
     print(f"\n{'='*72}")
-    print(f"💎 終極建議")
+    print(f"[*] 終極建議")
     print(f"{'='*72}")
     if profitable_filters:
         best = profitable_filters[0]
@@ -1706,12 +2093,13 @@ def save_baseline(data):
         'bet_types': bet_types_data,
         'stat_means': serialized_means,
         'stat_stds': serialized_stds,
+        'park_factors': data.get('park_factors', {}),
     }
 
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(baseline, f, ensure_ascii=False, indent=2)
 
-    print(f"\n💾 10 年 baseline 已存入: {path}")
+    print(f"\n[OK] 10 年 baseline 已存入: {path}")
     for bt_key, bt_data in bet_types_data.items():
         n_filters = len(bt_data['profitable_filters'])
         print(f"   {bt_data['name']:<12s}: {len(bt_data['indicator_ranking'])} 指標, {n_filters} 個正 EV 篩選")
@@ -1789,7 +2177,7 @@ def build_current_trackers(games, cutoff_date=None):
 # ═══════════════════════════════════════════
 def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
                                            away_sp_snap, home_sp_snap, baseline,
-                                           current_season_means=None):
+                                           current_season_means=None, **kwargs):
     """根據 bet_type 算複合指標分數 + bucket 位置
 
     current_season_means: 大小分用。提供時用「當季均值」取代 baseline 均值做中心點,
@@ -1860,6 +2248,14 @@ def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
             score = 0
             valid = True
             for stat_key, weight, source in components:
+                if source == "pf":
+                    # Park factor: 用當場比賽的球場 PF
+                    pf_val = kwargs.get('park_factor', 1.0)
+                    pf_mean = means.get(('pf', 'park_factor'), 1.0)
+                    pf_std = stds.get(('pf', 'park_factor'), 0.1) or 0.1
+                    z = (pf_val - pf_mean) / pf_std
+                    score += z * weight
+                    continue
                 if source == "team":
                     a_val = away_snap.get(stat_key)
                     h_val = home_snap.get(stat_key)
@@ -1923,7 +2319,7 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
     # 載入 10 年 baseline
     baseline = load_baseline()
     if baseline is None:
-        print("❌ 找不到 10 年 baseline")
+        print("[X] 找不到 10 年 baseline")
         print("   請先執行: python mlb_analyzer.py correlate range 2015 2025")
         return None
 
@@ -1947,10 +2343,19 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
             if vals:
                 current_season_means[('sp', key)] = sum(vals) / len(vals)
 
-    # 抓今日賽程
-    sched = api_get(f"/schedule?date={today}&sportId=1&hydrate=probablePitcher,team")
+    # Park factors: 優先用 10 年 baseline, 不夠時用當季資料補
+    baseline_pf = baseline.get('park_factors', {})
+    season_pf, league_avg_rpg = compute_park_factors(games)
+    park_factors = {**season_pf, **baseline_pf}  # baseline 覆蓋當季 (更穩定)
+    print(f"  Park factors: {len(park_factors)} 座球場 (baseline {len(baseline_pf)}, 當季 {len(season_pf)})")
+
+    # 載入球場元資料 (座標、屋頂)
+    venues = load_venues()
+
+    # 抓今日賽程 (含 venue)
+    sched = api_get(f"/schedule?date={today}&sportId=1&hydrate=probablePitcher,team,venue")
     if not sched or not sched.get('dates'):
-        print("  ⚠️ 今天沒有比賽或尚未公布")
+        print("  [!] 今天沒有比賽或尚未公布")
         today_matchups = []
     else:
         today_matchups = []
@@ -1981,6 +2386,21 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
             # 最近 3 場先發明細
             away_sp_recent = pitcher_trackers[away_sp_id].recent_starts(3) if away_sp_id in pitcher_trackers else []
             home_sp_recent = pitcher_trackers[home_sp_id].recent_starts(3) if home_sp_id in pitcher_trackers else []
+
+            # 球場資訊 + park factor
+            venue_data = game.get('venue', {})
+            venue_id = str(venue_data.get('id', ''))
+            venue_info = venues.get(venue_id, {})
+            pf = park_factors.get(home_team, 1.0)  # 主場球隊的 park factor
+            is_dome = venue_info.get('roof', 'Open') in ('Dome', 'Retractable')
+
+            # 天氣查詢 (Open-Meteo forecast)
+            weather = None
+            if venue_info.get('lat') and venue_info.get('lon'):
+                weather = fetch_game_weather(
+                    venue_info['lat'], venue_info['lon'], today,
+                    game_hour=19, is_forecast=True
+                )
 
             # 球隊指標比較 (當季累積值)
             team_comparisons = {}
@@ -2033,6 +2453,9 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
             # === 計算預期總分 (用於大小分方向判定) ===
             est_total = away_snap['runs_per_game'] + home_snap['runs_per_game']
 
+            # Park factor 修正：球場 rpg 偏差
+            est_total *= pf
+
             # SP 修正：今日先發比球隊平均差 → 對手多得分
             if away_sp_snap and away_sp_snap.get('sp_starts', 0) >= MIN_STARTS:
                 team_era = away_snap.get('era', 4.0)
@@ -2077,7 +2500,8 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 scores = compute_composite_scores_for_bet_type(
                     bt_key, bt_type, away_snap, home_snap,
                     away_sp_snap, home_sp_snap, baseline,
-                    current_season_means=current_season_means if bt_type == 'total' else None
+                    current_season_means=current_season_means if bt_type == 'total' else None,
+                    park_factor=pf
                 )
 
                 # 大小分盤口: 用共享的 filters 和 thresholds
@@ -2259,6 +2683,14 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 'home_record': f"{home_snap['wins']}-{home_snap['losses']}",
                 'away_sp_recent': away_sp_recent,
                 'home_sp_recent': home_sp_recent,
+                'venue': {
+                    'id': int(venue_id) if venue_id else None,
+                    'name': venue_info.get('name', ''),
+                    'roof': venue_info.get('roof', 'Open'),
+                    'elevation': venue_info.get('elevation', 0),
+                    'park_factor': pf,
+                },
+                'weather': weather,
                 'team_comparisons': team_comparisons,
                 'sp_comparisons': sp_comparisons,
                 'away_edges': away_edges,
@@ -2308,8 +2740,13 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
     # 印出摘要
     print(f"\n  共 {len(today_matchups)} 場符合條件")
     for m in today_matchups:
-        marker = " ⭐" if m['any_top_10_pct'] else ""
+        marker = " [*]" if m['any_top_10_pct'] else ""
         print(f"\n  {m['away_zh']} ({m['away_record']}) @ {m['home_zh']} ({m['home_record']}){marker}")
+        v = m.get('venue', {})
+        pf_str = f" PF={v.get('park_factor', 1.0):.3f}" if v else ""
+        w = m.get('weather')
+        w_str = f" | {w['temp_f']:.0f}°F 風{w['wind_mph']:.0f}mph 濕{w['humidity']:.0f}%" if w and w.get('temp_f') is not None else ""
+        print(f"    球場: {v.get('name', '?')} ({v.get('roof', '?')}){pf_str}{w_str}")
         print(f"    先發: {m['away_sp']} vs {m['home_sp']}")
         for bt_key, bt_rec in m['bet_types'].items():
             if bt_rec['predicted'] == 'even':
@@ -2321,7 +2758,7 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 pred_display = '大'
             elif bt_rec['predicted'] == 'under':
                 pred_display = '小'
-            top10_mark = " ⭐" if bt_rec['is_top_10_pct'] else ""
+            top10_mark = " [*]" if bt_rec['is_top_10_pct'] else ""
             print(f"    [{bt_rec['name']}] → {pred_display} (信心 {bt_rec['confidence']}){top10_mark}")
             for f in bt_rec['matched_filters'][:2]:
                 print(f"       • {f['stat']} Top {f['top_pct']}% (歷史 {f['baseline_hit_rate']}%, 最低賠率 {f['min_odds_needed']})")
@@ -2419,6 +2856,19 @@ def main():
         games = load_cached_games(CURRENT_SEASON)
         if games:
             generate_daily_analysis(games, target_date=target, top5_only=top5)
+
+    # weather - 抓取歷史天氣資料 (用於回測)
+    elif cmd == "weather":
+        if len(sys.argv) < 3:
+            print("用法: weather <season>  或  weather range <s> <e>")
+            sys.exit(1)
+        if sys.argv[2] == "range":
+            seasons = [y for y in range(int(sys.argv[3]), int(sys.argv[4]) + 1) if y not in EXCLUDED_SEASONS]
+        else:
+            seasons = [int(sys.argv[2])]
+        games = load_cached_games(seasons)
+        if games:
+            fetch_historical_weather(games)
 
     else:
         print(f"未知指令: {cmd}")

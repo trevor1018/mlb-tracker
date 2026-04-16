@@ -1,4 +1,4 @@
-# 「分析」Tab 開發規格 (v3 — 多盤口支援)
+# 「分析」Tab 開發規格 (v4 — 球場因素+天氣)
 
 ## 資料來源
 
@@ -27,17 +27,21 @@ python -X utf8 mlb_analyzer.py today 4.11
 
 > **v3 重大更新**：支援 6 種盤口（不讓分、讓分 1.5、讓分 2.5、大小分 7.5/8.5/9.5），每種盤口有獨立的指標排名、bucket thresholds 和 profitable filters。
 
+> **v4 重大更新**：新增球場因素 (Park Factor)、球場元資料 (venue)、即時天氣 (Open-Meteo)。Park factor 是大小分最強指標，所有 `+pf` 複合指標衝到排名前 4。
+
 ---
 
-## v3 vs v2 的差異
+## v4 vs v3 的差異
 
-| 項目 | v2 | v3 |
+| 項目 | v3 | v4 |
 |------|----|----|
-| 盤口數量 | 1 (只有不讓分) | **6** (ML + 讓分×2 + 大小分×3) |
-| Baseline 結構 | 平坦 | **per-bet-type 巢狀** |
-| Daily 預測 | 每場 1 組預測 | **每場 6 組預測** |
-| 指標檢查 | 固定 | **每盤口最強指標不同** |
-| 已知反向指標 | 無標註 | **讓分 home_adv 反向, 已自動排除** |
+| 球場資訊 | 無 | **venue: {name, roof, elevation, park_factor}** |
+| 天氣資料 | 無 | **weather: {temp_f, humidity, wind_mph, wind_dir_deg, precip_prob}** |
+| 大小分指標 | 25 個複合 | **29 個** (+4 含 park factor: `+pf`) |
+| est_total | runs_per_game + SP修正 | **+ park_factor 修正** |
+| 大小分 Top 1 | ops+sp_fip (53.3%) | **ops+fip+pf (55.0%)** |
+| 天氣指標 | 無 | park_factor 54.3%, temp_f 53.0%, humidity 52.7% |
+| 正 EV 篩選 (大小分) | 7-10 個 | **28-31 個** (大幅增加) |
 
 ---
 
@@ -45,12 +49,12 @@ python -X utf8 mlb_analyzer.py today 4.11
 
 | 盤口 | 最強指標 | Top 10% 命中率 | 損益平衡賠率 | 正 EV 篩選數 |
 |------|---------|--------------|------------|-------------|
-| 🥇 **不讓分** | `comp:pyth+ops+sp_fip+home` | **66.9%** | 2.24 | 101 |
-| 🥈 **讓分 1.5** | `comp:pyth+ops+sp_fip` | 65.3% | 2.34 | 65 |
-| 🥉 **讓分 2.5** | `comp:pyth+ops+sp_fip` | 63.5% | 2.48 | 44 |
-| 4 大小分 9.5 | `sp_k_bb` | 60.5% | 2.73 | 7 |
-| 5 大小分 7.5 | `comp:ops+sp_fip` | 60.2% | 2.76 | 10 |
-| 6 大小分 8.5 | `comp:ops+sp_whip` | 59.9% | 2.79 | 8 |
+| 🥇 **不讓分** | `comp:run_diff+fip` | **67.9%** | 2.17 | 125 |
+| 🥈 **讓分 1.5** | `comp:ops+whip` | 65.6% | 2.28 | 82 |
+| 🥉 **讓分 2.5** | `comp:ops+whip` | 63.5% | 2.48 | 60 |
+| 4 **大小分 7.5** | `comp:ops+fip+pf` | **63.6%** | 2.47 | 31 |
+| 5 **大小分 8.5** | `comp:ops+fip+pf` | **63.6%** | 2.47 | 28 |
+| 6 **大小分 9.5** | `comp:ops+sp_fip+pf` | **65.0%** | 2.38 | 30 |
 
 ### 重要警告 (要在 UI 顯示)
 
@@ -133,6 +137,27 @@ python -X utf8 mlb_analyzer.py today 4.11
       "away_record": "8-5",
       "home_record": "6-7",
 
+      "away_sp_recent": [
+        {"date": "2026-04-10", "vs": "Team", "ip": "6.0", "er": 2, "k": 7, "bb": 1, "result": "W 5-2"}
+      ],
+      "home_sp_recent": [...],
+
+      "venue": {
+        "id": 1,
+        "name": "Angel Stadium",
+        "roof": "Open",           // "Open" | "Retractable" | "Dome"
+        "elevation": 151,
+        "park_factor": 0.996      // > 1.0 = 打者球場 (偏大分), < 1.0 = 投手球場 (偏小分)
+      },
+
+      "weather": {                // null if unavailable
+        "temp_f": 72.5,           // 華氏溫度
+        "humidity": 45,           // 濕度 %
+        "wind_mph": 8.3,          // 風速 mph
+        "wind_dir_deg": 210,      // 風向 (0=北, 90=東, 180=南, 270=西)
+        "precip_prob": 5          // 降雨機率 % (forecast only)
+      },
+
       "team_comparisons": {
         "ops":              { "away": 0.721, "home": 0.698, "edge": "away" },
         "era":              { "away": 3.45,  "home": 4.10,  "edge": "away" },
@@ -211,20 +236,44 @@ python -X utf8 mlb_analyzer.py today 4.11
           "name": "大小分 7.5",
           "line": 7.5,
           "composite_scores": {
-            "comp:ops+sp_fip": {
-              "value": 0.42,
+            "comp:ops+fip+pf": {
+              "value": 3.10,
               "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.2
+              "bucket": "Top 10%",
+              "baseline_top_10_hit_rate": 63.6
+            },
+            "comp:runs+era+pf": {
+              "value": 2.33,
+              "predicts": "over",
+              "bucket": "Top 20%",
+              "baseline_top_10_hit_rate": 64.2
             }
-            // ... 21 個 total composites
+            // ... 29 個 total composites (含 4 個 +pf)
           },
-          "matched_filters": [],
-          "is_top_10_pct": false,
+          "matched_filters": [
+            {
+              "stat": "comp:ops+fip+pf",
+              "top_pct": 10,
+              "baseline_hit_rate": 63.6,
+              "min_odds_needed": 2.47
+            }
+          ],
+          "is_top_10_pct": true,
           "predicted": "over",
-          "votes": { "over": 15, "under": 6 },
-          "confidence": "low",
-          "min_combined_odds_needed": null
+          "votes": {
+            "est_total": 9.33,
+            "line": 7.5,
+            "distance": 1.83,
+            "over_count": 11,
+            "under_count": 4,
+            "over_z_sum": 27.81,
+            "under_z_sum": 6.38,
+            "minority_ratio": 0.19,
+            "conflict": false
+          },
+          "confidence": "medium",
+          "signal_conflict": false,
+          "min_combined_odds_needed": 2.47
         },
 
         "total_8.5": { ... },
@@ -269,6 +318,10 @@ python -X utf8 mlb_analyzer.py today 4.11
 ├──────────────────────────────────────────────────────────┤
 │ 勇士 (8-5)       @       天使 (6-7)                     │
 │ Grant Holmes     vs      Reid Detmers                    │
+│                                                          │
+│ 【球場 & 天氣】                                          │
+│   🏟️ Angel Stadium (Open)  PF=0.996                      │
+│   🌡️ 72°F  💨 8mph  💧 45%  ☔ 5%                        │
 │                                                          │
 │ 【今日先發投手對決】                                     │
 │   sp_fip   3.10 ◀ 4.85   ✓ 勇士優                       │
@@ -484,7 +537,9 @@ useEffect(() => {
 ## 相關檔案
 
 - `D:/python/mlb-tracker/mlb_analyzer.py` — 分析引擎
-- `D:/python/mlb-tracker/cache/baseline_10y.json` — 10 年 baseline
+- `D:/python/mlb-tracker/cache/baseline_10y.json` — 10 年 baseline (含 park_factors)
+- `D:/python/mlb-tracker/cache/venues.json` — 30 座 MLB 球場元資料 (座標/屋頂/海拔)
+- `D:/python/mlb-tracker/cache/weather_cache.json` — 歷史天氣快取 (23,341 場)
 - `D:/python/mlb-tracker/mlb_analysis.json` — daily 輸出 (web app 讀取)
 - `D:/python/mlb-tracker/MLB_INDICATORS.txt` — 指標完整定義
 

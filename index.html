@@ -1387,6 +1387,7 @@ function IndicatorRanking({ranking,btKey}){
             {isStarter&&<span style={{fontSize:10,color:C.b,background:C.bD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>先發投手</span>}
             {isComposite&&<span style={{fontSize:10,color:C.acc,background:C.accD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>複合</span>}
             {hasHomeBonus&&<span style={{fontSize:10,color:C.g,background:C.gD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>主場修正</span>}
+            {r.name.includes("+pf")&&<span style={{fontSize:10,color:"#60a5fa",background:"rgba(96,165,250,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>🏟️ 球場</span>}
             {cat==="bullpen"&&<span style={{fontSize:10,color:"#f59e0b",background:"rgba(245,158,11,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>牛棚 ⚠️</span>}
             {cat==="situational"&&<span style={{fontSize:10,color:C.d,background:"rgba(107,114,128,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>情境</span>}
             {r.significant&&<span style={{fontSize:10,color:C.g,background:C.gD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>顯著</span>}
@@ -1423,6 +1424,7 @@ function ProfitableFiltersTable({filters,limit=15}){
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             <span style={{fontSize:14,fontWeight:700,color:isTop?C.acc:C.t}}>{medal}</span>
             <span style={{fontSize:13,fontWeight:600,color:C.t,wordBreak:"break-all"}}>{f.stat}</span>
+            {f.stat.includes("+pf")&&<span style={{fontSize:10,color:"#60a5fa",background:"rgba(96,165,250,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>🏟️</span>}
             <span style={{fontSize:10,color:C.acc,background:C.accD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>Top {f.top_pct}%</span>
           </div>
           <span style={{fontSize:11,color:C.d}}>樣本 {f.sample}</span>
@@ -1499,18 +1501,34 @@ function BetTypePanel({btKey,bt,awayZh,homeZh}){
       </div>
     </div>
 
-    {/* Vote breakdown */}
-    {voteEntries.filter(([k])=>k!=="conflict").length>0&&<div style={{background:C.bg,borderRadius:6,padding:"8px 10px",border:`1px solid ${C.bd}`,marginBottom:10}}>
-      <div style={{fontSize:10,color:C.d,marginBottom:4}}>複合分數投票</div>
-      <div style={{display:"flex",gap:10,fontSize:12,...mono,justifyContent:"center",flexWrap:"wrap"}}>
-        {voteEntries.filter(([k])=>k!=="conflict").map(([k,v])=>{
-          const lbl=k==="home"?homeZh:k==="away"?awayZh:k==="over"?"大":k==="under"?"小":k;
-          const isPredicted=k===bt.predicted;
-          return<span key={k} style={{color:isPredicted&&!isConflict?C.g:C.d,fontWeight:isPredicted&&!isConflict?700:400}}>{lbl} {v}</span>;
-        })}
-        {votes.conflict>0&&<span style={{color:"#fbbf24",fontWeight:600}}>衝突 {votes.conflict}</span>}
+    {/* Est total vs line (for total bet types) */}
+    {votes.est_total!=null&&votes.line!=null&&<div style={{background:C.bg,borderRadius:6,padding:"8px 10px",border:`1px solid ${C.bd}`,marginBottom:10}}>
+      <div style={{fontSize:10,color:C.d,marginBottom:4}}>預期總分 vs 盤口</div>
+      <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,fontSize:13,...mono}}>
+        <span style={{fontWeight:700,color:C.t}}>{votes.est_total.toFixed(2)}</span>
+        <span style={{color:C.m}}>vs</span>
+        <span style={{fontWeight:700,color:C.d}}>{votes.line}</span>
+        <span style={{color:votes.distance>0?"#10b981":"#ef4444",fontWeight:700,fontSize:12}}>({votes.distance>0?"+":""}{votes.distance.toFixed(2)})</span>
       </div>
     </div>}
+
+    {/* Vote breakdown */}
+    {(()=>{
+      const isTotal=votes.over_count!=null;
+      const voteDisplay=isTotal?[["over",votes.over_count],["under",votes.under_count]]
+        :voteEntries.filter(([k])=>!["conflict","est_total","line","distance","over_count","under_count","over_z_sum","under_z_sum","minority_ratio"].includes(k));
+      return voteDisplay.length>0&&<div style={{background:C.bg,borderRadius:6,padding:"8px 10px",border:`1px solid ${C.bd}`,marginBottom:10}}>
+        <div style={{fontSize:10,color:C.d,marginBottom:4}}>複合分數投票</div>
+        <div style={{display:"flex",gap:10,fontSize:12,...mono,justifyContent:"center",flexWrap:"wrap"}}>
+          {voteDisplay.map(([k,v])=>{
+            const lbl=k==="home"?homeZh:k==="away"?awayZh:k==="over"?"大":k==="under"?"小":k;
+            const isPredicted=k===bt.predicted;
+            return<span key={k} style={{color:isPredicted&&!isConflict?C.g:C.d,fontWeight:isPredicted&&!isConflict?700:400}}>{lbl} {v}</span>;
+          })}
+          {(votes.conflict===true||votes.conflict>0)&&<span style={{color:"#fbbf24",fontWeight:600}}>⚠️ 衝突</span>}
+        </div>
+      </div>;
+    })()}
 
     {/* Min combined odds needed */}
     {bt.min_combined_odds_needed!=null&&<div style={{background:"rgba(245,158,11,0.08)",borderRadius:6,padding:"8px 10px",border:`1px solid ${C.acc}`,marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1522,7 +1540,7 @@ function BetTypePanel({btKey,bt,awayZh,homeZh}){
     {matchedFilters.length>0&&<div style={{background:"rgba(16,185,129,0.08)",borderRadius:6,padding:"8px 10px",border:`1px solid ${C.g}`,marginBottom:10}}>
       <div style={{fontSize:11,fontWeight:700,color:C.g,marginBottom:6}}>✅ 符合篩選 ({matchedFilters.length})</div>
       {matchedFilters.map((f,i)=><div key={i} style={{fontSize:11,color:C.t,padding:"3px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
-        <div style={{fontWeight:600,wordBreak:"break-all"}}>✓ {f.stat} <span style={{color:C.acc}}>Top {f.top_pct}%</span></div>
+        <div style={{fontWeight:600,wordBreak:"break-all"}}>✓ {f.stat.includes("+pf")?"🏟️ ":""}{f.stat} <span style={{color:C.acc}}>Top {f.top_pct}%</span></div>
         {(f.baseline_hit_rate!=null||f.min_odds_needed!=null)&&<div style={{fontSize:10,color:C.d,marginTop:2,...mono}}>
           {f.baseline_hit_rate!=null&&<>歷史命中 {f.baseline_hit_rate.toFixed(1)}%</>}
           {f.min_odds_needed!=null&&<> · 最低賠率 {f.min_odds_needed.toFixed(2)}</>}
@@ -1540,7 +1558,7 @@ function BetTypePanel({btKey,bt,awayZh,homeZh}){
         const predictsZh=formatPrediction(predicts,awayZh,homeZh);
         const valColor=c.value>=0?C.acc:C.b;
         return<div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderTop:`1px solid ${C.bd}`,fontSize:11}}>
-          <span style={{color:C.d,wordBreak:"break-all",flex:1,minWidth:0}}>{k}</span>
+          <span style={{color:C.d,wordBreak:"break-all",flex:1,minWidth:0}}>{k.includes("+pf")?"🏟️ ":""}{k}</span>
           <span style={{...mono,color:valColor,fontWeight:700,marginLeft:6,minWidth:48,textAlign:"right"}}>{c.value>=0?"+":""}{c.value?.toFixed(2)}</span>
           <span style={{color:C.m,margin:"0 6px"}}>→</span>
           <span style={{color:predicts==="away"||predicts==="over"?C.g:C.acc,fontWeight:700,minWidth:28,textAlign:"left"}}>{predictsZh}</span>
@@ -1609,6 +1627,33 @@ function MatchupCardV3({m}){
       </div>
 
       {expanded&&<>
+      {/* Venue & Weather */}
+      {m.venue&&(()=>{
+        const v=m.venue;
+        const pf=v.park_factor;
+        const pfColor=pf>=1.10?"#ef4444":pf>=1.03?"#f87171":pf>=0.97?"#9ca3af":pf>=0.90?"#60a5fa":"#3b82f6";
+        const pfLabel=pf>=1.10?"極度打者球場":pf>=1.03?"偏打者":pf>=0.97?"中性":pf>=0.90?"偏投手":"極度投手球場";
+        const roofLabel=v.roof==="Dome"?"巨蛋":v.roof==="Retractable"?"可關頂":"露天";
+        const roofBadge=v.roof==="Dome"||v.roof==="Retractable";
+        const w=m.weather;
+        return<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:w?4:0}}>
+            <span style={{fontSize:12}}>🏟️</span>
+            <span style={{fontSize:12,fontWeight:600,color:C.t}}>{v.name}</span>
+            <span style={{fontSize:10,color:C.d}}>({roofLabel})</span>
+            {roofBadge&&<span style={{fontSize:9,background:"rgba(96,165,250,0.15)",color:"#60a5fa",padding:"1px 6px",borderRadius:8,fontWeight:600}}>{v.roof}</span>}
+            <span style={{fontSize:12,fontWeight:700,color:pfColor,fontFamily:"'JetBrains Mono',monospace"}}>PF {pf?.toFixed(3)}</span>
+            <span style={{fontSize:9,color:pfColor}}>({pfLabel})</span>
+          </div>
+          {w&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",fontSize:11,color:C.d,fontFamily:"'JetBrains Mono',monospace"}}>
+            <span>🌡️ {w.temp_f?.toFixed(0)}°F</span>
+            <span>💨 {w.wind_mph?.toFixed(0)}mph</span>
+            <span>💧 {w.humidity}%</span>
+            {w.precip_prob!=null&&<span style={{color:w.precip_prob>=30?"#fbbf24":C.d}}>☔ {w.precip_prob}%</span>}
+          </div>}
+        </div>;
+      })()}
+
       {/* SP Section */}
       {Object.keys(spComps).length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
         <div style={{fontSize:12,fontWeight:700,color:C.b,marginBottom:8}}>⚾ 今日先發投手對決</div>
