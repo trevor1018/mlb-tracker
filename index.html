@@ -1727,15 +1727,15 @@ function StatRow({label,away,home,edge,awayZh,homeZh,warn}){
   const arrow=edge==="away"?"◀":edge==="home"?"▶":"=";
   const awayCol=edge==="away"?C.g:edge==="home"?C.r:C.d;
   const homeCol=edge==="home"?C.g:edge==="away"?C.r:C.d;
-  return<React.Fragment>
-    <div style={{color:C.d,fontSize:12}}>{label}{warn&&<span style={{color:"#f59e0b",marginLeft:4}}>⚠️</span>}</div>
-    <div style={{...mono,color:awayCol,textAlign:"right",fontSize:12}}>{fmtNum(away)}</div>
-    <div style={{color:C.m,textAlign:"center",width:14,fontSize:12}}>{arrow}</div>
-    <div style={{...mono,color:homeCol,textAlign:"left",fontSize:12}}>{fmtNum(home)}</div>
-    <div style={{fontSize:11,color:edge==="away"?C.g:edge==="home"?C.acc:C.m,paddingLeft:4}}>
-      {edge==="away"?`✓ ${awayZh}優`:edge==="home"?`✓ ${homeZh}優`:"持平"}
-    </div>
-  </React.Fragment>;
+  const edgeCol=edge==="away"?C.g:edge==="home"?C.acc:C.m;
+  const edgeText=edge==="away"?`✓${awayZh}`:edge==="home"?`✓${homeZh}`:"—";
+  return<div style={{display:"flex",alignItems:"center",padding:"3px 0",fontSize:12}}>
+    <div style={{width:60,flexShrink:0,color:C.d,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}{warn&&<span style={{color:"#f59e0b",marginLeft:2}}>⚠️</span>}</div>
+    <div style={{flex:1,...mono,color:awayCol,textAlign:"right"}}>{fmtNum(away)}</div>
+    <div style={{width:24,textAlign:"center",color:C.m,flexShrink:0}}>{arrow}</div>
+    <div style={{flex:1,...mono,color:homeCol,textAlign:"left"}}>{fmtNum(home)}</div>
+    <div style={{width:50,flexShrink:0,textAlign:"right",fontSize:11,color:edgeCol}}>{edgeText}</div>
+  </div>;
 }
 
 // ─── Indicator Ranking Table (per bet type) ───
@@ -2048,10 +2048,13 @@ function MatchupCardV3({m}){
         </div>;
       })()}
 
+      {/* SP Recent Starts */}
+      <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent}/>
+
       {/* SP Section */}
       {Object.keys(spComps).length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
         <div style={{fontSize:12,fontWeight:700,color:C.b,marginBottom:8}}>⚾ 今日先發投手對決</div>
-        <div style={{display:"grid",gridTemplateColumns:"auto 1fr 14px 1fr auto",gap:"4px 8px",alignItems:"center"}}>
+        <div>
           {Object.entries(spComps).map(([k,c])=>{
             const meta=getMetricMeta(k);
             return<StatRow key={k} label={meta.name} away={c.away} home={c.home} edge={c.edge} awayZh={awayZh} homeZh={homeZh}/>;
@@ -2062,7 +2065,7 @@ function MatchupCardV3({m}){
       {/* Team Section */}
       {Object.keys(teamComps).length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
         <div style={{fontSize:12,fontWeight:700,color:C.t,marginBottom:8}}>📊 球隊整季數據</div>
-        <div style={{display:"grid",gridTemplateColumns:"auto 1fr 14px 1fr auto",gap:"4px 8px",alignItems:"center"}}>
+        <div>
           {Object.entries(teamComps).map(([k,c])=>{
             const meta=getMetricMeta(k);
             const warn=k==="bp_fatigue";
