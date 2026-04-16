@@ -1087,7 +1087,7 @@ function TeamPanel({team,setTeam,games,color}){
 }
 
 function StatsView({bets,games}){
-  const[section,setSection]=useState("standings");
+  const[section,setSection]=useState("team");
   const[matchupIdx,setMatchupIdx]=useState(0);
   const analysisData=useMemo(()=>load("mlb-analysis",null),[section]);
 
@@ -1234,7 +1234,7 @@ function StatsView({bets,games}){
 
   return<div>
     <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>統計分析</div>
-    <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="standings"} onClick={()=>setSection("standings")}>各區戰績</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>今日對戰</Pill><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill></div>
+    <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="team"} onClick={()=>setSection("team")}>今日對戰</Pill><Pill sel={section==="standings"} onClick={()=>setSection("standings")}>各區戰績</Pill><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill></div>
 
     {section==="standings"&&<Standings/>}
 
@@ -1608,6 +1608,9 @@ function StatsView({bets,games}){
               })}
             </div>
 
+            {/* SP Recent (always open in stats) */}
+            <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent}/>
+
             {/* Recent 10 games side by side */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
               {[[awayZh,awayTs],[homeZh,homeTs]].map(([teamZh,ts])=><div key={teamZh} style={{background:C.card,borderRadius:10,padding:10,border:`1px solid ${C.bd}`}}>
@@ -1730,7 +1733,7 @@ function StatRow({label,away,home,edge,awayZh,homeZh,warn}){
   const edgeCol=edge==="away"?C.g:edge==="home"?C.acc:C.m;
   const edgeText=edge==="away"?`✓${awayZh}`:edge==="home"?`✓${homeZh}`:"—";
   return<div style={{display:"flex",alignItems:"center",padding:"3px 0",fontSize:12}}>
-    <div style={{width:60,flexShrink:0,color:C.d,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}{warn&&<span style={{color:"#f59e0b",marginLeft:2}}>⚠️</span>}</div>
+    <div style={{width:60,flexShrink:0,color:C.d,overflowX:"auto",whiteSpace:"nowrap"}}>{label}{warn&&<span style={{color:"#f59e0b",marginLeft:2}}>⚠️</span>}</div>
     <div style={{flex:1,...mono,color:awayCol,textAlign:"right"}}>{fmtNum(away)}</div>
     <div style={{width:24,textAlign:"center",color:C.m,flexShrink:0}}>{arrow}</div>
     <div style={{flex:1,...mono,color:homeCol,textAlign:"left"}}>{fmtNum(home)}</div>
@@ -2048,8 +2051,8 @@ function MatchupCardV3({m}){
         </div>;
       })()}
 
-      {/* SP Recent Starts */}
-      <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent}/>
+      {/* SP Recent Starts (collapsible in analysis) */}
+      <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent} collapsible/>
 
       {/* SP Section */}
       {Object.keys(spComps).length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
@@ -2245,12 +2248,13 @@ function findLegOdds(leg,gamesOdds){
 }
 
 // ─── SP Recent Starts Panel ───
-function SpRecentPanel({away,home,awayZh,homeZh,awayRecent,homeRecent}){
+function SpRecentPanel({away,home,awayZh,homeZh,awayRecent,homeRecent,collapsible}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
+  const[open,setOpen]=useState(!collapsible);
 
   const renderStarts=(spName,teamZh,starts,color)=>{
     return<div style={{background:C.bg,borderRadius:8,padding:12,border:`1px solid ${C.bd}`,flex:1,minWidth:0}}>
-      <div style={{fontSize:12,fontWeight:700,color,marginBottom:8}}>{teamZh}</div>
+      <div style={{fontSize:12,fontWeight:700,color,marginBottom:6}}>{teamZh}</div>
       <div style={{fontSize:11,color:C.t,fontWeight:600,marginBottom:8}}>{spName||"TBD"}</div>
       {(!starts||!starts.length)?<div style={{fontSize:11,color:C.m,padding:"4px 0"}}>無先發紀錄</div>:
       starts.map((s,i)=>{
@@ -2271,12 +2275,14 @@ function SpRecentPanel({away,home,awayZh,homeZh,awayRecent,homeRecent}){
     </div>;
   };
 
-  return<div style={{background:C.card,borderRadius:10,padding:12,border:`1px solid ${C.bd}`,marginTop:8,marginBottom:8}}>
-    <div style={{fontSize:12,fontWeight:700,color:C.acc,marginBottom:10,textAlign:"center"}}>⚾ 先發投手近況</div>
-    <div style={{display:"flex",gap:10}}>
+  return<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginTop:10,marginBottom:10}}>
+    {collapsible?<button onClick={()=>setOpen(!open)} style={{background:"none",border:"none",color:C.acc,cursor:"pointer",fontSize:12,fontWeight:700,padding:0,outline:"none",width:"100%",textAlign:"center"}}>
+      ⚾ 先發投手近況 {open?"▲":"▼"}
+    </button>:<div style={{fontSize:12,fontWeight:700,color:C.acc,marginBottom:12,textAlign:"center"}}>⚾ 先發投手近況</div>}
+    {open&&<div style={{display:"flex",gap:10,marginTop:collapsible?10:0}}>
       {renderStarts(away,awayZh,awayRecent,C.g)}
       {renderStarts(home,homeZh,homeRecent,C.acc)}
-    </div>
+    </div>}
   </div>;
 }
 
@@ -2471,7 +2477,7 @@ function RecommendPanel({matchups,uid,state,setState}){
                   </div>:<div style={{color:C.m}}>🌏 國際盤：此盤口無對應 (通常是因為主盤口線與 {btShort} 不同)</div>}
                 </div>}
                 {/* SP Recent Starts */}
-                <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent}/>
+                <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent} collapsible/>
               </div>;
             })}
 
