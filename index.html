@@ -1731,13 +1731,13 @@ function StatRow({label,away,home,edge,awayZh,homeZh,warn}){
   const awayCol=edge==="away"?C.g:edge==="home"?C.r:C.d;
   const homeCol=edge==="home"?C.g:edge==="away"?C.r:C.d;
   const edgeCol=edge==="away"?C.g:edge==="home"?C.acc:C.m;
-  const edgeText=edge==="away"?`✓${awayZh}`:edge==="home"?`✓${homeZh}`:"—";
-  return<div style={{display:"flex",alignItems:"center",padding:"3px 0",fontSize:12}}>
-    <div style={{width:60,flexShrink:0,color:C.d,overflowX:"auto",whiteSpace:"nowrap"}}>{label}{warn&&<span style={{color:"#f59e0b",marginLeft:2}}>⚠️</span>}</div>
-    <div style={{flex:1,...mono,color:awayCol,textAlign:"right"}}>{fmtNum(away)}</div>
-    <div style={{width:24,textAlign:"center",color:C.m,flexShrink:0}}>{arrow}</div>
-    <div style={{flex:1,...mono,color:homeCol,textAlign:"left"}}>{fmtNum(home)}</div>
-    <div style={{width:50,flexShrink:0,textAlign:"right",fontSize:11,color:edgeCol}}>{edgeText}</div>
+  const edgeText=edge==="away"?`✓ ${awayZh}優`:edge==="home"?`✓ ${homeZh}優`:"持平";
+  return<div style={{display:"flex",alignItems:"center",padding:"3px 0",fontSize:12,gap:8}}>
+    <div style={{color:C.d,whiteSpace:"nowrap"}}>{label}{warn&&<span style={{color:"#f59e0b",marginLeft:2}}>⚠️</span>}</div>
+    <div style={{marginLeft:"auto",...mono,color:awayCol,whiteSpace:"nowrap"}}>{fmtNum(away)}</div>
+    <div style={{color:C.m,flexShrink:0}}>{arrow}</div>
+    <div style={{...mono,color:homeCol,whiteSpace:"nowrap"}}>{fmtNum(home)}</div>
+    <div style={{fontSize:11,color:edgeCol,whiteSpace:"nowrap"}}>{edgeText}</div>
   </div>;
 }
 
