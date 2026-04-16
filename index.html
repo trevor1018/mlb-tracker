@@ -2247,16 +2247,15 @@ function findLegOdds(leg,gamesOdds){
 // ─── SP Recent Starts Panel ───
 function SpRecentPanel({away,home,awayZh,homeZh,awayRecent,homeRecent}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
-  const[open,setOpen]=useState(false);
-  const hasData=(awayRecent&&awayRecent.length)||(homeRecent&&homeRecent.length);
 
-  const renderStarts=(spName,teamZh,starts)=>{
-    if(!starts||!starts.length)return<div style={{fontSize:11,color:C.m,padding:4}}>{spName||"—"}: 無先發紀錄</div>;
-    return<div style={{marginBottom:8}}>
-      <div style={{fontSize:11,fontWeight:700,color:C.acc,marginBottom:4}}>{teamZh} {spName}</div>
-      {starts.map((s,i)=>{
+  const renderStarts=(spName,teamZh,starts,color)=>{
+    return<div style={{background:C.bg,borderRadius:8,padding:12,border:`1px solid ${C.bd}`,flex:1,minWidth:0}}>
+      <div style={{fontSize:12,fontWeight:700,color,marginBottom:8}}>{teamZh}</div>
+      <div style={{fontSize:11,color:C.t,fontWeight:600,marginBottom:8}}>{spName||"TBD"}</div>
+      {(!starts||!starts.length)?<div style={{fontSize:11,color:C.m,padding:"4px 0"}}>無先發紀錄</div>:
+      starts.map((s,i)=>{
         const rc=s.result==="W"?C.g:s.result==="L"?C.r:C.d;
-        return<div key={i} style={{fontSize:11,padding:"4px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
+        return<div key={i} style={{fontSize:11,padding:"6px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{color:C.d}}>{s.date?.slice(5)} vs <span style={{color:C.t}}>{s.vs_zh||s.vs}</span></span>
             <span style={{display:"flex",alignItems:"center",gap:6}}>
@@ -2264,7 +2263,7 @@ function SpRecentPanel({away,home,awayZh,homeZh,awayRecent,homeRecent}){
               <span style={{fontWeight:700,color:rc,minWidth:14,textAlign:"center"}}>{s.result}</span>
             </span>
           </div>
-          <div style={{...mono,color:C.d,marginTop:2}}>
+          <div style={{...mono,color:C.d,marginTop:3}}>
             {s.ip}IP · {s.h}H · {s.r}R({s.er}ER) · {s.bb}BB · {s.so}K{s.hr>0?` · ${s.hr}HR`:""}{s.pitches?` · ${s.pitches}球`:""}
           </div>
         </div>;
@@ -2272,14 +2271,12 @@ function SpRecentPanel({away,home,awayZh,homeZh,awayRecent,homeRecent}){
     </div>;
   };
 
-  return<div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.bd}`}}>
-    <button onClick={()=>setOpen(!open)} style={{background:"none",border:"none",color:open?C.acc:C.d,cursor:"pointer",fontSize:11,padding:0,outline:"none"}}>
-      ⚾ 先發近況 {open?"▲":"▼"}
-    </button>
-    {open&&<div style={{marginTop:6}}>
-      {renderStarts(away,awayZh,awayRecent)}
-      {renderStarts(home,homeZh,homeRecent)}
-    </div>}
+  return<div style={{background:C.card,borderRadius:10,padding:12,border:`1px solid ${C.bd}`,marginTop:8,marginBottom:8}}>
+    <div style={{fontSize:12,fontWeight:700,color:C.acc,marginBottom:10,textAlign:"center"}}>⚾ 先發投手近況</div>
+    <div style={{display:"flex",gap:10}}>
+      {renderStarts(away,awayZh,awayRecent,C.g)}
+      {renderStarts(home,homeZh,homeRecent,C.acc)}
+    </div>
   </div>;
 }
 
