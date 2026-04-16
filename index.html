@@ -1096,46 +1096,51 @@ function StatsView({bets,games}){
   const settled=bets.filter(b=>calcPayout(b).status!=="pending");
   const ML={normal:"不讓分",handi:"讓分",total:"大小分",team_total_home:"主隊大小",team_total_away:"客隊大小"};
 
-  // Split single vs parlay
-  const singles=settled.filter(b=>b.type==="single");
-  const parlays=settled.filter(b=>b.type==="parlay");
+  // Bet-level stats (注單層：整注贏/輸)
+  const betWins=settled.filter(b=>calcPayout(b).status==="win").length;
+  const betAmt=settled.reduce((a,b)=>a+b.amount,0);
+  const betProfit=settled.reduce((a,b)=>a+calcPayout(b).profit,0);
+  const betAvgOdds=settled.length?settled.reduce((a,b)=>a+b.totalOdds,0)/settled.length:0;
+  const betMaxWin=settled.length?Math.max(...settled.map(b=>calcPayout(b).profit)):0;
+  const betMaxLoss=settled.length?Math.min(...settled.map(b=>calcPayout(b).profit)):0;
 
-  const calcGroup=(arr)=>{
-    const w=arr.filter(b=>calcPayout(b).status==="win").length;
-    const tAmt=arr.reduce((a,b)=>a+b.amount,0);
-    const tProfit=arr.reduce((a,b)=>a+calcPayout(b).profit,0);
-    const avgOdds=arr.length?arr.reduce((a,b)=>a+b.totalOdds,0)/arr.length:0;
-    const maxWin=arr.length?Math.max(...arr.map(b=>calcPayout(b).profit)):0;
-    const maxLoss=arr.length?Math.min(...arr.map(b=>calcPayout(b).profit)):0;
-    return{count:arr.length,wins:w,amount:tAmt,profit:tProfit,wr:arr.length?((w/arr.length)*100).toFixed(1):"—",roi:tAmt?((tProfit/tAmt)*100).toFixed(1):"—",avgOdds:avgOdds.toFixed(2),maxWin,maxLoss};
-  };
-  const allStats=calcGroup(settled);
-  const singleStats=calcGroup(singles);
-  const parlayStats=calcGroup(parlays);
+  // Leg-level stats (單關層：每關獨立看勝負)
+  const allLegs=[];
+  settled.forEach(b=>{b.legs.forEach(l=>{if(l.result!=="pending")allLegs.push(l)})});
+  const legWins=allLegs.filter(l=>l.result==="win").length;
 
-  // Per-market stats (all legs, regardless of single/parlay)
+  // Per-market stats (以「關」為單位)
   const byMkt={};
   settled.forEach(b=>{
-    const isSingle=b.type==="single";
-    const payout=calcPayout(b);
     b.legs.forEach(l=>{
       const k=l.market;
-      if(!byMkt[k])byMkt[k]={sW:0,sT:0,sP:0,pW:0,pT:0,legs:[],selHome:0,selHomeW:0,selAway:0,selAwayW:0,selOver:0,selOverW:0,selUnder:0,selUnderW:0,oddsSum:0};
+      if(!byMkt[k])byMkt[k]={w:0,t:0,legs:[],selHome:0,selHomeW:0,selAway:0,selAwayW:0,selOver:0,selOverW:0,selUnder:0,selUnderW:0,oddsSum:0};
       const m=byMkt[k];
       const legWin=l.result==="win";
-      const legSettled=l.result!=="pending";
-      if(!legSettled)return;
+      if(l.result==="pending")return;
+      m.t++;if(legWin)m.w++;
       m.legs.push({win:legWin,date:l.date});
       m.oddsSum+=Number(l.odds)||0;
-      if(isSingle){m.sT++;if(payout.status==="win")m.sW++;m.sP+=payout.profit}
-      else{m.pT++;if(legWin)m.pW++}
-      // Selection breakdown
       if(l.selection==="home"){m.selHome++;if(legWin)m.selHomeW++}
       if(l.selection==="away"){m.selAway++;if(legWin)m.selAwayW++}
       if(l.selection==="over"){m.selOver++;if(legWin)m.selOverW++}
       if(l.selection==="under"){m.selUnder++;if(legWin)m.selUnderW++}
     });
   });
+
+  // Parlay leg count grouping (串幾關)
+  const byLegCount={};
+  settled.forEach(b=>{
+    const n=b.legs.length;
+    if(!byLegCount[n])byLegCount[n]={count:0,wins:0,amount:0,profit:0};
+    const g=byLegCount[n];
+    g.count++;
+    const p=calcPayout(b);
+    if(p.status==="win")g.wins++;
+    g.amount+=b.amount;
+    g.profit+=p.profit;
+  });
+
   const[betMktTab,setBetMktTab]=useState("all");
 
   const exportMD=async()=>{
@@ -1237,13 +1242,13 @@ function StatsView({bets,games}){
       {!settled.length?<div style={{textAlign:"center",padding:"40px",color:C.d}}>尚無已結算投注</div>:<>
         {/* Overall summary */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
-          <Stat label="已結算" value={allStats.count} unit="注"/>
-          <Stat label="勝率" value={allStats.wr} unit="%" color={Number(allStats.wr)>=50?C.g:C.r}/>
-          <Stat label="ROI" value={allStats.roi} unit="%" color={Number(allStats.roi)>=0?C.g:C.r}/>
+          <Stat label="已結算" value={settled.length} unit="注"/>
+          <Stat label="注單勝率" value={settled.length?((betWins/settled.length)*100).toFixed(1):"—"} unit="%" color={settled.length&&(betWins/settled.length)>=0.5?C.g:C.r}/>
+          <Stat label="ROI" value={betAmt?((betProfit/betAmt)*100).toFixed(1):"—"} unit="%" color={betProfit>=0?C.g:C.r}/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-          <Stat label="總投注" value={`$${allStats.amount.toLocaleString()}`}/>
-          <Stat label="累積盈虧" value={`${allStats.profit>=0?"+":""}$${allStats.profit.toLocaleString()}`} color={allStats.profit>=0?C.g:C.r}/>
+          <Stat label="總投注" value={`$${betAmt.toLocaleString()}`}/>
+          <Stat label="累積盈虧" value={`${betProfit>=0?"+":""}$${betProfit.toLocaleString()}`} color={betProfit>=0?C.g:C.r}/>
         </div>
 
         {/* Profit curve */}
@@ -1277,53 +1282,46 @@ function StatsView({bets,games}){
           </div>;
         })()}
 
-        {/* Single vs Parlay split */}
+        {/* Bet-level vs Leg-level split */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-          {[["📋 單場",singleStats],["🔗 串關",parlayStats]].map(([title,s])=><div key={title} style={{background:C.card,borderRadius:10,padding:12,border:`1px solid ${C.bd}`}}>
-            <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>{title}</div>
-            {s.count===0?<div style={{fontSize:11,color:C.d}}>尚無資料</div>:
+          <div style={{background:C.card,borderRadius:10,padding:12,border:`1px solid ${C.bd}`}}>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>🎫 注單層</div>
             <div style={{fontSize:12,lineHeight:1.8}}>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>注數</span><span style={{...mono}}>{s.count}</span></div>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>勝率</span><span style={{...mono,color:Number(s.wr)>=50?C.g:C.r}}>{s.wr}%</span></div>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>盈虧</span><span style={{...mono,fontWeight:700,color:s.profit>=0?C.g:C.r}}>{s.profit>=0?"+":""}${s.profit.toLocaleString()}</span></div>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>ROI</span><span style={{...mono,color:Number(s.roi)>=0?C.g:C.r}}>{s.roi}%</span></div>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>平均賠率</span><span style={{...mono}}>{s.avgOdds}</span></div>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>最大贏</span><span style={{...mono,color:C.g}}>+${s.maxWin.toLocaleString()}</span></div>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>最大虧</span><span style={{...mono,color:C.r}}>${s.maxLoss.toLocaleString()}</span></div>
-            </div>}
-          </div>)}
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>注數</span><span style={{...mono}}>{settled.length}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>勝率</span><span style={{...mono,color:settled.length&&(betWins/settled.length)>=0.5?C.g:C.r}}>{settled.length?((betWins/settled.length)*100).toFixed(1):0}%</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>平均賠率</span><span style={{...mono}}>{betAvgOdds.toFixed(2)}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>最大贏</span><span style={{...mono,color:C.g}}>+${betMaxWin.toLocaleString()}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>最大虧</span><span style={{...mono,color:C.r}}>${betMaxLoss.toLocaleString()}</span></div>
+            </div>
+          </div>
+          <div style={{background:C.card,borderRadius:10,padding:12,border:`1px solid ${C.bd}`}}>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>🔍 單關層</div>
+            <div style={{fontSize:12,lineHeight:1.8}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>總關數</span><span style={{...mono}}>{allLegs.length}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>過關率</span><span style={{...mono,color:allLegs.length&&(legWins/allLegs.length)>=0.5?C.g:C.r}}>{allLegs.length?((legWins/allLegs.length)*100).toFixed(1):0}%</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>勝/負</span><span style={{...mono}}><span style={{color:C.g}}>{legWins}W</span>-<span style={{color:C.r}}>{allLegs.length-legWins}L</span></span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>平均單關賠率</span><span style={{...mono}}>{allLegs.length?(allLegs.reduce((a,l)=>a+(Number(l.odds)||0),0)/allLegs.length).toFixed(2):0}</span></div>
+            </div>
+          </div>
         </div>
 
         {/* Parlay leg count analysis */}
-        {parlays.length>0&&(()=>{
-          const byLegs={};
-          parlays.forEach(b=>{
-            const n=b.legs.length;
-            if(!byLegs[n])byLegs[n]={count:0,wins:0,amount:0,profit:0};
-            const g=byLegs[n];
-            g.count++;
-            const p=calcPayout(b);
-            if(p.status==="win")g.wins++;
-            g.amount+=b.amount;
-            g.profit+=p.profit;
-          });
-          return<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:14}}>
-            <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>🔗 串關腳數分析</div>
-            {Object.entries(byLegs).sort((a,b)=>Number(a[0])-Number(b[0])).map(([n,g])=>{
-              const wr=g.count?(g.wins/g.count*100).toFixed(0):0;
-              const roi=g.amount?(g.profit/g.amount*100).toFixed(1):0;
-              return<div key={n} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.bd}`,fontSize:12}}>
-                <span style={{fontWeight:600}}>串 {n} 關</span>
-                <div style={{display:"flex",gap:12,...mono}}>
-                  <span style={{color:C.d}}>{g.count}注</span>
-                  <span style={{color:Number(wr)>=50?C.g:C.r}}>{wr}%</span>
-                  <span style={{fontWeight:700,color:g.profit>=0?C.g:C.r}}>{g.profit>=0?"+":""}${g.profit.toLocaleString()}</span>
-                  <span style={{color:Number(roi)>=0?C.g:C.r}}>ROI {roi}%</span>
-                </div>
-              </div>;
-            })}
-          </div>;
-        })()}
+        {Object.keys(byLegCount).length>0&&<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:14}}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>🔗 串關腳數分析</div>
+          {Object.entries(byLegCount).sort((a,b)=>Number(a[0])-Number(b[0])).map(([n,g])=>{
+            const wr=g.count?(g.wins/g.count*100).toFixed(0):0;
+            const roi=g.amount?(g.profit/g.amount*100).toFixed(1):0;
+            return<div key={n} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.bd}`,fontSize:12}}>
+              <span style={{fontWeight:600}}>串 {n} 關</span>
+              <div style={{display:"flex",gap:12,...mono}}>
+                <span style={{color:C.d}}>{g.count}注</span>
+                <span style={{color:Number(wr)>=50?C.g:C.r}}>{wr}%</span>
+                <span style={{fontWeight:700,color:g.profit>=0?C.g:C.r}}>{g.profit>=0?"+":""}${g.profit.toLocaleString()}</span>
+                <span style={{color:Number(roi)>=0?C.g:C.r}}>ROI {roi}%</span>
+              </div>
+            </div>;
+          })}
+        </div>}
 
         {/* Per-market tabs */}
         {Object.keys(byMkt).length>0&&<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
@@ -1335,44 +1333,25 @@ function StatsView({bets,games}){
 
           {betMktTab==="all"?<div>
             {Object.entries(byMkt).map(([k,m])=>{
-              const totalLegs=m.sT+m.pT;
-              const totalW=m.sW+m.pW;
               return<div key={k} style={{padding:"8px 0",borderBottom:`1px solid ${C.bd}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <span style={{fontSize:13,fontWeight:600}}>{ML[k]||k}</span>
-                  <div style={{display:"flex",gap:12,fontSize:12}}>
-                    <span style={{color:C.d,...mono}}>{totalW}/{totalLegs} ({totalLegs?(totalW/totalLegs*100).toFixed(0):0}%)</span>
-                    {m.sT>0&&<span style={{...mono,fontWeight:700,color:m.sP>=0?C.g:C.r}}>{m.sP>=0?"+":""}${m.sP.toLocaleString()}</span>}
-                  </div>
+                  <span style={{color:C.d,fontSize:12,...mono}}>{m.w}/{m.t} ({m.t?(m.w/m.t*100).toFixed(0):0}%)</span>
                 </div>
               </div>;
             })}
           </div>:(()=>{
             const m=byMkt[betMktTab];
             if(!m)return null;
-            const totalLegs=m.sT+m.pT;
-            const totalW=m.sW+m.pW;
-            const avgOdds=totalLegs?m.oddsSum/totalLegs:0;
+            const avgOdds=m.t?m.oddsSum/m.t:0;
             const recentLegs=m.legs.slice(-10);
             const isDirectional=betMktTab==="normal"||betMktTab==="handi";
             return<div style={{fontSize:12,lineHeight:1.6}}>
-              {/* Single vs Parlay within this market */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-                <div style={{background:C.bg,borderRadius:6,padding:8,border:`1px solid ${C.bd}`}}>
-                  <div style={{fontSize:10,color:C.d,marginBottom:2}}>單場</div>
-                  <div style={{...mono,fontWeight:700}}>{m.sW}/{m.sT} <span style={{color:m.sT?(m.sW/m.sT*100)>=50?C.g:C.r:C.d}}>({m.sT?(m.sW/m.sT*100).toFixed(0):0}%)</span></div>
-                  {m.sT>0&&<div style={{...mono,fontSize:11,color:m.sP>=0?C.g:C.r,marginTop:2}}>{m.sP>=0?"+":""}${m.sP.toLocaleString()}</div>}
-                </div>
-                <div style={{background:C.bg,borderRadius:6,padding:8,border:`1px solid ${C.bd}`}}>
-                  <div style={{fontSize:10,color:C.d,marginBottom:2}}>串關中</div>
-                  <div style={{...mono,fontWeight:700}}>{m.pW}/{m.pT} <span style={{color:m.pT?(m.pW/m.pT*100)>=50?C.g:C.r:C.d}}>({m.pT?(m.pW/m.pT*100).toFixed(0):0}%)</span></div>
-                </div>
-              </div>
-
-              {/* Average odds */}
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                <span style={{color:C.d}}>平均賠率</span>
-                <span style={{...mono}}>{avgOdds.toFixed(2)}</span>
+              {/* Overall for this market */}
+              <div style={{background:C.bg,borderRadius:6,padding:8,border:`1px solid ${C.bd}`,marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>總關數</span><span style={{...mono,fontWeight:700}}>{m.t}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>過關率</span><span style={{...mono,fontWeight:700,color:m.t&&(m.w/m.t)>=0.5?C.g:C.r}}>{m.t?(m.w/m.t*100).toFixed(1):0}%</span></div>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>平均賠率</span><span style={{...mono}}>{avgOdds.toFixed(2)}</span></div>
               </div>
 
               {/* Selection breakdown */}
@@ -2730,8 +2709,8 @@ function App(){
     {id:"add",icon:"＋",label:"投注"},
     {id:"hist",icon:"📋",label:"紀錄"},
     {id:"results",icon:"⚾",label:"賽果"},
-    {id:"stats",icon:"📈",label:"統計"},
     {id:"analysis",icon:"🔬",label:"分析"},
+    {id:"stats",icon:"📈",label:"統計"},
   ];
 
   return<div style={{background:C.bg,minHeight:"100vh",color:C.t,paddingBottom:80}}>
