@@ -1088,21 +1088,55 @@ function TeamPanel({team,setTeam,games,color}){
 
 function StatsView({bets,games}){
   const[section,setSection]=useState("standings");
-  const[teamL,setTeamL]=useState("");
-  const[teamR,setTeamR]=useState("");
-  const[teamMode,setTeamMode]=useState("single");
+  const[matchupIdx,setMatchupIdx]=useState(0);
+  const analysisData=useMemo(()=>load("mlb-analysis",null),[section]);
 
   // --- Bet stats ---
+  const mono={fontFamily:"'JetBrains Mono',monospace"};
   const settled=bets.filter(b=>calcPayout(b).status!=="pending");
-  const wins=settled.filter(b=>calcPayout(b).status==="win").length;
-  const tW=settled.reduce((a,b)=>a+b.amount,0);
-  const tP=settled.reduce((a,b)=>a+calcPayout(b).profit,0);
-  const wr=settled.length?((wins/settled.length)*100).toFixed(1):"—";
-  const roi=tW?((tP/tW)*100).toFixed(1):"—";
-  const byMkt={};
-  settled.filter(b=>b.type==="single").forEach(b=>{const k=b.legs[0].market;if(!byMkt[k])byMkt[k]={t:0,w:0,p:0};byMkt[k].t++;if(calcPayout(b).status==="win")byMkt[k].w++;byMkt[k].p+=calcPayout(b).profit});
-
   const ML={normal:"不讓分",handi:"讓分",total:"大小分",team_total_home:"主隊大小",team_total_away:"客隊大小"};
+
+  // Split single vs parlay
+  const singles=settled.filter(b=>b.type==="single");
+  const parlays=settled.filter(b=>b.type==="parlay");
+
+  const calcGroup=(arr)=>{
+    const w=arr.filter(b=>calcPayout(b).status==="win").length;
+    const tAmt=arr.reduce((a,b)=>a+b.amount,0);
+    const tProfit=arr.reduce((a,b)=>a+calcPayout(b).profit,0);
+    const avgOdds=arr.length?arr.reduce((a,b)=>a+b.totalOdds,0)/arr.length:0;
+    const maxWin=arr.length?Math.max(...arr.map(b=>calcPayout(b).profit)):0;
+    const maxLoss=arr.length?Math.min(...arr.map(b=>calcPayout(b).profit)):0;
+    return{count:arr.length,wins:w,amount:tAmt,profit:tProfit,wr:arr.length?((w/arr.length)*100).toFixed(1):"—",roi:tAmt?((tProfit/tAmt)*100).toFixed(1):"—",avgOdds:avgOdds.toFixed(2),maxWin,maxLoss};
+  };
+  const allStats=calcGroup(settled);
+  const singleStats=calcGroup(singles);
+  const parlayStats=calcGroup(parlays);
+
+  // Per-market stats (all legs, regardless of single/parlay)
+  const byMkt={};
+  settled.forEach(b=>{
+    const isSingle=b.type==="single";
+    const payout=calcPayout(b);
+    b.legs.forEach(l=>{
+      const k=l.market;
+      if(!byMkt[k])byMkt[k]={sW:0,sT:0,sP:0,pW:0,pT:0,legs:[],selHome:0,selHomeW:0,selAway:0,selAwayW:0,selOver:0,selOverW:0,selUnder:0,selUnderW:0,oddsSum:0};
+      const m=byMkt[k];
+      const legWin=l.result==="win";
+      const legSettled=l.result!=="pending";
+      if(!legSettled)return;
+      m.legs.push({win:legWin,date:l.date});
+      m.oddsSum+=Number(l.odds)||0;
+      if(isSingle){m.sT++;if(payout.status==="win")m.sW++;m.sP+=payout.profit}
+      else{m.pT++;if(legWin)m.pW++}
+      // Selection breakdown
+      if(l.selection==="home"){m.selHome++;if(legWin)m.selHomeW++}
+      if(l.selection==="away"){m.selAway++;if(legWin)m.selAwayW++}
+      if(l.selection==="over"){m.selOver++;if(legWin)m.selOverW++}
+      if(l.selection==="under"){m.selUnder++;if(legWin)m.selUnderW++}
+    });
+  });
+  const[betMktTab,setBetMktTab]=useState("all");
 
   const exportMD=async()=>{
     let md="# MLB 賽季報告\n\n";
@@ -1195,38 +1229,327 @@ function StatsView({bets,games}){
 
   return<div>
     <div style={{fontSize:16,fontWeight:700,marginBottom:14}}>統計分析</div>
-    <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="standings"} onClick={()=>setSection("standings")}>各區戰績</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>球隊數據</Pill><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill></div>
+    <div style={{display:"flex",gap:6,marginBottom:16}}><Pill sel={section==="standings"} onClick={()=>setSection("standings")}>各區戰績</Pill><Pill sel={section==="team"} onClick={()=>setSection("team")}>今日對戰</Pill><Pill sel={section==="bet"} onClick={()=>setSection("bet")}>投注績效</Pill></div>
 
     {section==="standings"&&<Standings/>}
 
     {section==="bet"&&<div>
       {!settled.length?<div style={{textAlign:"center",padding:"40px",color:C.d}}>尚無已結算投注</div>:<>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-          <Stat label="已結算" value={settled.length} unit="注"/>
-          <Stat label="勝率" value={wr} unit="%" color={Number(wr)>=50?C.g:C.r}/>
-          <Stat label="總投注" value={`$${tW.toLocaleString()}`}/>
-          <Stat label="累積盈虧" value={`${tP>=0?"+":""}$${tP.toLocaleString()}`} color={tP>=0?C.g:C.r}/>
-          <Stat label="勝/負" value={`${wins}/${settled.length-wins}`}/>
-          <Stat label="ROI" value={roi} unit="%" color={Number(roi)>=0?C.g:C.r}/>
+        {/* Overall summary */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+          <Stat label="已結算" value={allStats.count} unit="注"/>
+          <Stat label="勝率" value={allStats.wr} unit="%" color={Number(allStats.wr)>=50?C.g:C.r}/>
+          <Stat label="ROI" value={allStats.roi} unit="%" color={Number(allStats.roi)>=0?C.g:C.r}/>
         </div>
-        {Object.keys(byMkt).length>0&&<div style={{background:C.card,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.bd}`,marginBottom:12}}>
-          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>各玩法統計</div>
-          {Object.entries(byMkt).map(([k,m])=><div key={k} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.bd}`}}>
-            <span style={{fontSize:13}}>{ML[k]}</span>
-            <div style={{display:"flex",gap:16,fontSize:12}}><span style={{color:C.d}}>{m.w}/{m.t} ({(m.w/m.t*100).toFixed(0)}%)</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:m.p>=0?C.g:C.r}}>{m.p>=0?"+":""}{m.p.toLocaleString()}</span></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+          <Stat label="總投注" value={`$${allStats.amount.toLocaleString()}`}/>
+          <Stat label="累積盈虧" value={`${allStats.profit>=0?"+":""}$${allStats.profit.toLocaleString()}`} color={allStats.profit>=0?C.g:C.r}/>
+        </div>
+
+        {/* Profit curve */}
+        {settled.length>=2&&(()=>{
+          const sorted=[...settled].sort((a,b)=>(a.legs[0]?.date||"").localeCompare(b.legs[0]?.date||"")||(a.createdAt||"").localeCompare(b.createdAt||""));
+          const cumulative=[];let cum=0;
+          sorted.forEach(b=>{cum+=calcPayout(b).profit;cumulative.push(cum)});
+          const maxAbs=Math.max(1,...cumulative.map(v=>Math.abs(v)));
+          const W=300,H=100,padX=0,padY=10;
+          const points=cumulative.map((v,i)=>{
+            const x=padX+(i/(cumulative.length-1))*(W-2*padX);
+            const y=padY+(H-2*padY)/2-(v/maxAbs)*((H-2*padY)/2);
+            return`${x.toFixed(1)},${y.toFixed(1)}`;
+          });
+          const zeroY=padY+(H-2*padY)/2;
+          return<div style={{background:C.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.bd}`,marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>📈 盈虧曲線</div>
+            <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto"}}>
+              <line x1={padX} y1={zeroY} x2={W-padX} y2={zeroY} stroke={C.m} strokeWidth="0.5" strokeDasharray="4,3"/>
+              <polyline points={points.join(" ")} fill="none" stroke={cum>=0?C.g:C.r} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+              {cumulative.map((v,i)=>{
+                const x=padX+(i/(cumulative.length-1))*(W-2*padX);
+                const y=padY+(H-2*padY)/2-(v/maxAbs)*((H-2*padY)/2);
+                return<circle key={i} cx={x.toFixed(1)} cy={y.toFixed(1)} r="2.5" fill={v>=0?C.g:C.r}/>;
+              })}
+            </svg>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.d,...mono,marginTop:4}}>
+              <span>第 1 注</span>
+              <span>第 {cumulative.length} 注</span>
+            </div>
+          </div>;
+        })()}
+
+        {/* Single vs Parlay split */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+          {[["📋 單場",singleStats],["🔗 串關",parlayStats]].map(([title,s])=><div key={title} style={{background:C.card,borderRadius:10,padding:12,border:`1px solid ${C.bd}`}}>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>{title}</div>
+            {s.count===0?<div style={{fontSize:11,color:C.d}}>尚無資料</div>:
+            <div style={{fontSize:12,lineHeight:1.8}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>注數</span><span style={{...mono}}>{s.count}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>勝率</span><span style={{...mono,color:Number(s.wr)>=50?C.g:C.r}}>{s.wr}%</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>盈虧</span><span style={{...mono,fontWeight:700,color:s.profit>=0?C.g:C.r}}>{s.profit>=0?"+":""}${s.profit.toLocaleString()}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>ROI</span><span style={{...mono,color:Number(s.roi)>=0?C.g:C.r}}>{s.roi}%</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>平均賠率</span><span style={{...mono}}>{s.avgOdds}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>最大贏</span><span style={{...mono,color:C.g}}>+${s.maxWin.toLocaleString()}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.d}}>最大虧</span><span style={{...mono,color:C.r}}>${s.maxLoss.toLocaleString()}</span></div>
+            </div>}
           </div>)}
+        </div>
+
+        {/* Parlay leg count analysis */}
+        {parlays.length>0&&(()=>{
+          const byLegs={};
+          parlays.forEach(b=>{
+            const n=b.legs.length;
+            if(!byLegs[n])byLegs[n]={count:0,wins:0,amount:0,profit:0};
+            const g=byLegs[n];
+            g.count++;
+            const p=calcPayout(b);
+            if(p.status==="win")g.wins++;
+            g.amount+=b.amount;
+            g.profit+=p.profit;
+          });
+          return<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:14}}>
+            <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>🔗 串關腳數分析</div>
+            {Object.entries(byLegs).sort((a,b)=>Number(a[0])-Number(b[0])).map(([n,g])=>{
+              const wr=g.count?(g.wins/g.count*100).toFixed(0):0;
+              const roi=g.amount?(g.profit/g.amount*100).toFixed(1):0;
+              return<div key={n} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.bd}`,fontSize:12}}>
+                <span style={{fontWeight:600}}>串 {n} 關</span>
+                <div style={{display:"flex",gap:12,...mono}}>
+                  <span style={{color:C.d}}>{g.count}注</span>
+                  <span style={{color:Number(wr)>=50?C.g:C.r}}>{wr}%</span>
+                  <span style={{fontWeight:700,color:g.profit>=0?C.g:C.r}}>{g.profit>=0?"+":""}${g.profit.toLocaleString()}</span>
+                  <span style={{color:Number(roi)>=0?C.g:C.r}}>ROI {roi}%</span>
+                </div>
+              </div>;
+            })}
+          </div>;
+        })()}
+
+        {/* Per-market tabs */}
+        {Object.keys(byMkt).length>0&&<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>各玩法統計</div>
+          <div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>
+            <Pill sel={betMktTab==="all"} onClick={()=>setBetMktTab("all")}>總覽</Pill>
+            {Object.keys(byMkt).map(k=><Pill key={k} sel={betMktTab===k} onClick={()=>setBetMktTab(k)}>{ML[k]||k}</Pill>)}
+          </div>
+
+          {betMktTab==="all"?<div>
+            {Object.entries(byMkt).map(([k,m])=>{
+              const totalLegs=m.sT+m.pT;
+              const totalW=m.sW+m.pW;
+              return<div key={k} style={{padding:"8px 0",borderBottom:`1px solid ${C.bd}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:13,fontWeight:600}}>{ML[k]||k}</span>
+                  <div style={{display:"flex",gap:12,fontSize:12}}>
+                    <span style={{color:C.d,...mono}}>{totalW}/{totalLegs} ({totalLegs?(totalW/totalLegs*100).toFixed(0):0}%)</span>
+                    {m.sT>0&&<span style={{...mono,fontWeight:700,color:m.sP>=0?C.g:C.r}}>{m.sP>=0?"+":""}${m.sP.toLocaleString()}</span>}
+                  </div>
+                </div>
+              </div>;
+            })}
+          </div>:(()=>{
+            const m=byMkt[betMktTab];
+            if(!m)return null;
+            const totalLegs=m.sT+m.pT;
+            const totalW=m.sW+m.pW;
+            const avgOdds=totalLegs?m.oddsSum/totalLegs:0;
+            const recentLegs=m.legs.slice(-10);
+            const isDirectional=betMktTab==="normal"||betMktTab==="handi";
+            return<div style={{fontSize:12,lineHeight:1.6}}>
+              {/* Single vs Parlay within this market */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                <div style={{background:C.bg,borderRadius:6,padding:8,border:`1px solid ${C.bd}`}}>
+                  <div style={{fontSize:10,color:C.d,marginBottom:2}}>單場</div>
+                  <div style={{...mono,fontWeight:700}}>{m.sW}/{m.sT} <span style={{color:m.sT?(m.sW/m.sT*100)>=50?C.g:C.r:C.d}}>({m.sT?(m.sW/m.sT*100).toFixed(0):0}%)</span></div>
+                  {m.sT>0&&<div style={{...mono,fontSize:11,color:m.sP>=0?C.g:C.r,marginTop:2}}>{m.sP>=0?"+":""}${m.sP.toLocaleString()}</div>}
+                </div>
+                <div style={{background:C.bg,borderRadius:6,padding:8,border:`1px solid ${C.bd}`}}>
+                  <div style={{fontSize:10,color:C.d,marginBottom:2}}>串關中</div>
+                  <div style={{...mono,fontWeight:700}}>{m.pW}/{m.pT} <span style={{color:m.pT?(m.pW/m.pT*100)>=50?C.g:C.r:C.d}}>({m.pT?(m.pW/m.pT*100).toFixed(0):0}%)</span></div>
+                </div>
+              </div>
+
+              {/* Average odds */}
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                <span style={{color:C.d}}>平均賠率</span>
+                <span style={{...mono}}>{avgOdds.toFixed(2)}</span>
+              </div>
+
+              {/* Selection breakdown */}
+              {isDirectional?<div style={{marginBottom:8}}>
+                <div style={{fontSize:11,color:C.d,marginBottom:4}}>選邊分布</div>
+                {m.selHome>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>選主隊</span><span style={{...mono,color:m.selHome?(m.selHomeW/m.selHome*100)>=50?C.g:C.r:C.d}}>{m.selHomeW}/{m.selHome} ({(m.selHomeW/m.selHome*100).toFixed(0)}%)</span></div>}
+                {m.selAway>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>選客隊</span><span style={{...mono,color:m.selAway?(m.selAwayW/m.selAway*100)>=50?C.g:C.r:C.d}}>{m.selAwayW}/{m.selAway} ({(m.selAwayW/m.selAway*100).toFixed(0)}%)</span></div>}
+              </div>:<div style={{marginBottom:8}}>
+                <div style={{fontSize:11,color:C.d,marginBottom:4}}>大小分布</div>
+                {m.selOver>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>選大</span><span style={{...mono,color:m.selOver?(m.selOverW/m.selOver*100)>=50?C.g:C.r:C.d}}>{m.selOverW}/{m.selOver} ({(m.selOverW/m.selOver*100).toFixed(0)}%)</span></div>}
+                {m.selUnder>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>選小</span><span style={{...mono,color:m.selUnder?(m.selUnderW/m.selUnder*100)>=50?C.g:C.r:C.d}}>{m.selUnderW}/{m.selUnder} ({(m.selUnderW/m.selUnder*100).toFixed(0)}%)</span></div>}
+              </div>}
+
+              {/* Recent trend dots */}
+              {recentLegs.length>0&&<div>
+                <div style={{fontSize:11,color:C.d,marginBottom:4}}>近{recentLegs.length}關走勢</div>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {recentLegs.map((l,i)=><span key={i} style={{width:14,height:14,borderRadius:7,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,color:"#000",background:l.win?C.g:C.r}}>{l.win?"W":"L"}</span>)}
+                </div>
+              </div>}
+            </div>;
+          })()}
         </div>}
+
+        {/* Analysis recommendation alignment */}
+        {(()=>{
+          const ad=load("mlb-analysis",null);
+          if(!ad||!ad.today_matchups)return null;
+          const matchups=ad.today_matchups;
+          // Market key mapping from bet leg market to analysis bet_type key
+          const mktMap={normal:"ml",handi:"spread_1.5",total:"total_8.5",team_total_home:null,team_total_away:null};
+          let followed=0,followedWin=0,against=0,againstWin=0;
+          settled.forEach(b=>{
+            b.legs.forEach(l=>{
+              if(l.result==="pending")return;
+              const legWin=l.result==="win";
+              // Find matching matchup by team names
+              const mu=matchups.find(m=>{
+                const az=m.away_zh||"";const hz=m.home_zh||"";
+                return(l.away===az&&l.home===hz)||(l.away===hz&&l.home===az);
+              });
+              if(!mu)return;
+              const btKey=mktMap[l.market];
+              if(!btKey)return;
+              const bt=mu.bet_types?.[btKey];
+              if(!bt||!bt.predicted||bt.predicted==="even")return;
+              const isTop=bt.is_top_10_pct||bt.is_top_5_pct;
+              if(!isTop)return;
+              // Check if user's selection matches prediction
+              const matches=l.selection===bt.predicted;
+              if(matches){followed++;if(legWin)followedWin++}
+              else{against++;if(legWin)againstWin++}
+            });
+          });
+          const total=followed+against;
+          if(total===0)return null;
+          return<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
+            <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>🔬 分析推薦對照</div>
+            <div style={{fontSize:11,color:C.d,marginBottom:8}}>比對你的投注紀錄與分析模型的 Top 10%/5% 推薦是否一致</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.g}`}}>
+                <div style={{fontSize:11,color:C.g,fontWeight:600,marginBottom:4}}>✓ 跟著推薦</div>
+                <div style={{...mono,fontSize:16,fontWeight:700,color:C.g}}>{followed>0?(followedWin/followed*100).toFixed(0):0}%</div>
+                <div style={{fontSize:11,color:C.d,...mono}}>{followedWin}/{followed} 關</div>
+              </div>
+              <div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.r}`}}>
+                <div style={{fontSize:11,color:C.r,fontWeight:600,marginBottom:4}}>✗ 反向操作</div>
+                <div style={{...mono,fontSize:16,fontWeight:700,color:C.r}}>{against>0?(againstWin/against*100).toFixed(0):0}%</div>
+                <div style={{fontSize:11,color:C.d,...mono}}>{againstWin}/{against} 關</div>
+              </div>
+            </div>
+            <div style={{fontSize:10,color:C.m,marginTop:6}}>※ 僅比對 Top 10%/5% 推薦且隊名匹配的場次（共 {total} 關）</div>
+          </div>;
+        })()}
+
         <button onClick={exportMD} style={{width:"100%",padding:12,borderRadius:8,border:`1px solid ${C.bd}`,background:C.card,color:C.t,fontSize:14,fontWeight:600,cursor:"pointer",outline:"none",marginTop:12}}>匯出分析報告 (.md)</button>
       </>}
     </div>}
 
     {section==="team"&&<div>
-      <div style={{display:"flex",gap:6,marginBottom:12}}><Pill sel={teamMode==="single"} onClick={()=>setTeamMode("single")}>單隊</Pill><Pill sel={teamMode==="compare"} onClick={()=>setTeamMode("compare")}>比較</Pill></div>
-      {teamMode==="single"?<TeamPanel team={teamL} setTeam={setTeamL} games={games}/>:
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <TeamPanel team={teamL} setTeam={setTeamL} games={games}/>
-        <TeamPanel team={teamR} setTeam={setTeamR} games={games}/>
-      </div>}
+      {(()=>{
+        const matchups=analysisData?.today_matchups||[];
+        if(!matchups.length)return<div style={{textAlign:"center",padding:40,color:C.d}}>尚無今日對戰資料。請先在「分析」頁載入 mlb_analysis.json。</div>;
+        const m=matchups[matchupIdx]||matchups[0];
+        const awayZh=m.away_zh||m.away;
+        const homeZh=m.home_zh||m.home;
+        const tc=m.team_comparisons||{};
+        const sc=m.sp_comparisons||{};
+        const v=m.venue;
+        const w=m.weather;
+        const pfColor=v?.park_factor>=1.10?"#ef4444":v?.park_factor>=1.03?"#f87171":v?.park_factor>=0.97?"#9ca3af":v?.park_factor>=0.90?"#60a5fa":"#3b82f6";
+        const pfLabel=v?.park_factor>=1.10?"極度打者":v?.park_factor>=1.03?"偏打者":v?.park_factor>=0.97?"中性":v?.park_factor>=0.90?"偏投手":"極度投手";
+        const monoSt={fontFamily:"'JetBrains Mono',monospace"};
+
+        // Group team_comparisons into categories
+        const batting=["ops","slg","obp","avg","runs_per_game"];
+        const pitching=["era","whip","fip","k9","bb9","ra_per_game"];
+        const overall=["run_diff_per_game","pyth_pct"];
+        const spKeys=Object.keys(sc);
+
+        const renderSection=(title,icon,keys,data)=>{
+          const items=keys.filter(k=>data[k]);
+          if(!items.length)return null;
+          return<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.acc,marginBottom:8}}>{icon} {title}</div>
+            <div style={{display:"grid",gridTemplateColumns:"auto 1fr 14px 1fr auto",gap:"4px 8px",alignItems:"center"}}>
+              {items.map(k=>{
+                const c=data[k];
+                const meta=getMetricMeta(k);
+                return<StatRow key={k} label={meta.name} away={c.away} home={c.home} edge={c.edge} awayZh={awayZh} homeZh={homeZh}/>;
+              })}
+            </div>
+          </div>;
+        };
+
+        return<div>
+          {/* Matchup selector */}
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,color:C.d,marginBottom:4}}>選擇場次 ({analysisData?.date||""})</div>
+            <select value={matchupIdx} onChange={e=>setMatchupIdx(Number(e.target.value))} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,fontSize:14,outline:"none"}}>
+              {matchups.map((mu,i)=>{
+                const aZ=mu.away_zh||mu.away;
+                const hZ=mu.home_zh||mu.home;
+                const top=mu.any_top_5_pct?"🔥 ":mu.any_top_10_pct?"⭐ ":"";
+                return<option key={i} value={i}>{top}{aZ} @ {hZ}</option>;
+              })}
+            </select>
+          </div>
+
+          {/* Header */}
+          <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:10}}>
+            <div style={{fontSize:16,fontWeight:700,textAlign:"center",marginBottom:4}}>
+              <span style={{color:m.away_edges>m.home_edges?C.g:C.t}}>{awayZh}</span>
+              <span style={{fontSize:11,color:C.d,marginLeft:4}}>({m.away_record||"—"})</span>
+              <span style={{color:C.m,margin:"0 8px"}}>@</span>
+              <span style={{color:m.home_edges>m.away_edges?C.acc:C.t}}>{homeZh}</span>
+              <span style={{fontSize:11,color:C.d,marginLeft:4}}>({m.home_record||"—"})</span>
+            </div>
+            <div style={{textAlign:"center",fontSize:12,color:C.d}}>
+              {m.away_sp||"—"} <span style={{color:C.m}}>vs</span> {m.home_sp||"—"}
+            </div>
+            <div style={{textAlign:"center",fontSize:12,marginTop:6}}>
+              <span style={{color:C.d}}>優勢計數</span>
+              <span style={{color:C.g,fontWeight:700,marginLeft:6}}>{awayZh} {m.away_edges||0}</span>
+              <span style={{color:C.m}}> : </span>
+              <span style={{color:C.acc,fontWeight:700}}>{m.home_edges||0} {homeZh}</span>
+            </div>
+          </div>
+
+          {/* Venue & Weather */}
+          {v&&<div style={{background:C.card,borderRadius:10,padding:12,border:`1px solid ${C.bd}`,marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:w?6:0}}>
+              <span style={{fontSize:13}}>🏟️</span>
+              <span style={{fontSize:13,fontWeight:600,color:C.t}}>{v.name}</span>
+              <span style={{fontSize:10,color:C.d}}>({v.roof==="Dome"?"巨蛋":v.roof==="Retractable"?"可關頂":"露天"})</span>
+              {(v.roof==="Dome"||v.roof==="Retractable")&&<span style={{fontSize:9,background:"rgba(96,165,250,0.15)",color:"#60a5fa",padding:"1px 6px",borderRadius:8,fontWeight:600}}>{v.roof}</span>}
+              <span style={{fontSize:13,fontWeight:700,color:pfColor,...monoSt}}>PF {v.park_factor?.toFixed(3)}</span>
+              <span style={{fontSize:10,color:pfColor}}>({pfLabel})</span>
+            </div>
+            {w&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",fontSize:12,color:C.d,...monoSt}}>
+              <span>🌡️ {w.temp_f?.toFixed(0)}°F</span>
+              <span>💨 {w.wind_mph?.toFixed(0)}mph</span>
+              <span>💧 {w.humidity}%</span>
+              {w.precip_prob!=null&&<span style={{color:w.precip_prob>=30?"#fbbf24":C.d}}>☔ {w.precip_prob}%</span>}
+            </div>}
+          </div>}
+
+          {/* Data sections */}
+          {renderSection("打擊數據","🏏",batting,tc)}
+          {renderSection("投手數據","⚾",pitching,tc)}
+          {renderSection("綜合表現","📊",overall,tc)}
+          {renderSection("今日先發投手","🎯",spKeys,sc)}
+
+          {/* SP Recent */}
+          <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent}/>
+        </div>;
+      })()}
     </div>}
   </div>;
 }
