@@ -2252,14 +2252,22 @@ function SpRecentPanel({away,home,awayZh,homeZh,awayRecent,homeRecent,collapsibl
     </div>;
   };
 
-  return<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginTop:10,marginBottom:10}}>
-    {collapsible?<button onClick={()=>setOpen(!open)} style={{background:"none",border:"none",color:C.acc,cursor:"pointer",fontSize:14,fontWeight:700,padding:0,outline:"none",width:"100%",textAlign:"center"}}>
-      ⚾ 先發投手近況 {open?"▲":"▼"}
-    </button>:<div style={{fontSize:14,fontWeight:700,color:C.acc,marginBottom:12,textAlign:"center"}}>⚾ 先發投手近況</div>}
-    {open&&<div style={{display:"flex",gap:10,marginTop:collapsible?10:0}}>
+  if(collapsible)return<div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.bd}`}}>
+    <button onClick={()=>setOpen(!open)} style={{background:"none",border:"none",color:open?C.acc:C.d,cursor:"pointer",fontSize:11,padding:0,outline:"none"}}>
+      ⚾ 先發近況 {open?"▲":"▼"}
+    </button>
+    {open&&<div style={{display:"flex",gap:10,marginTop:8}}>
       {renderStarts(away,awayZh,awayRecent,C.g)}
       {renderStarts(home,homeZh,homeRecent,C.acc)}
     </div>}
+  </div>;
+
+  return<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginTop:10,marginBottom:10}}>
+    <div style={{fontSize:14,fontWeight:700,color:C.acc,marginBottom:12,textAlign:"center"}}>⚾ 先發投手近況</div>
+    <div style={{display:"flex",gap:10}}>
+      {renderStarts(away,awayZh,awayRecent,C.g)}
+      {renderStarts(home,homeZh,homeRecent,C.acc)}
+    </div>
   </div>;
 }
 
