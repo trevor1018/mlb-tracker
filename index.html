@@ -2028,8 +2028,8 @@ function MatchupCardV3({m}){
         </div>;
       })()}
 
-      {/* SP Recent Starts (collapsible in analysis) */}
-      <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent} collapsible/>
+      {/* SP Recent Starts (always open in analysis) */}
+      <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent}/>
 
       {/* SP Section */}
       {Object.keys(spComps).length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
