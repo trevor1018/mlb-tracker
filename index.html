@@ -1344,7 +1344,8 @@ function StatsView({bets,games}){
             const m=byMkt[betMktTab];
             if(!m)return null;
             const avgOdds=m.t?m.oddsSum/m.t:0;
-            const recentLegs=m.legs.slice(-10);
+            const sortedLegs=[...m.legs].sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+            const recentLegs=sortedLegs.slice(-10);
             const isDirectional=betMktTab==="normal"||betMktTab==="handi";
             return<div style={{fontSize:12,lineHeight:1.6}}>
               {/* Overall for this market */}
