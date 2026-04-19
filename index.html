@@ -2412,7 +2412,7 @@ function RecommendPanel({matchups,uid,state,setState}){
   const btLabelForEx=(bk)=>{const m={"ml":"不讓分","spread_1.5":"讓1.5","spread_2.5":"讓2.5","total_7.5":"大小7.5","total_8.5":"大小8.5","total_9.5":"大小9.5"};return m[bk]||bk};
 
   const generate=(excl)=>{
-    const ex=excl||excludes;
+    const ex=excl instanceof Set?excl:excludes;
     const r=generateRecommendations(matchups,ex);
     setState(s=>({...s,result:r}));
   };
