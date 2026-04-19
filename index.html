@@ -487,26 +487,34 @@ function AddBetView({addBet,uid}){
   };
 
   const handleScan=async(e)=>{
-    const file=e.target.files?.[0];
-    if(!file)return;
+    const files=Array.from(e.target.files||[]);
+    if(!files.length)return;
     if(!ocrKey.trim()){setScanErr("請先設定 OCR API Key");setShowKeyInput(true);return}
     setScanning(true);setScanErr("");setScanResults(null);
     try{
-      const reader=new FileReader();
-      const dataUrl=await new Promise((ok,fail)=>{reader.onload=()=>ok(reader.result);reader.onerror=fail;reader.readAsDataURL(file)});
-      const rawText=await ocrImage(dataUrl,ocrKey.trim());
-      setRawOcrText(rawText);
-      if(!rawText.trim())throw new Error("OCR 未偵測到文字");
-      const result=parseOcrText(rawText);
-      if(!result.bets||!result.bets.length)throw new Error("無法從 OCR 文字中解析投注單");
-      // Map Taiwan team names to short names
-      result.bets.forEach(bet=>{
-        bet.legs.forEach(l=>{
-          l.away=twTeam(l.away_full||"");
-          l.home=twTeam(l.home_full||"");
-        });
-      });
-      setScanResults(result.bets);
+      let allRawText="";
+      const allBets=[];
+      for(let fi=0;fi<files.length;fi++){
+        const file=files[fi];
+        const reader=new FileReader();
+        const dataUrl=await new Promise((ok,fail)=>{reader.onload=()=>ok(reader.result);reader.onerror=fail;reader.readAsDataURL(file)});
+        const rawText=await ocrImage(dataUrl,ocrKey.trim());
+        allRawText+=(fi>0?"\n--- 第 "+(fi+1)+" 張 ---\n":"")+rawText;
+        if(!rawText.trim())continue;
+        const result=parseOcrText(rawText);
+        if(result.bets&&result.bets.length){
+          result.bets.forEach(bet=>{
+            bet.legs.forEach(l=>{
+              l.away=twTeam(l.away_full||"");
+              l.home=twTeam(l.home_full||"");
+            });
+          });
+          allBets.push(...result.bets);
+        }
+      }
+      setRawOcrText(allRawText);
+      if(!allBets.length)throw new Error("無法從 OCR 文字中解析投注單");
+      setScanResults(allBets);
     }catch(err){setScanErr("掃描失敗："+err.message)}
     setScanning(false);
     if(fileRef.current)fileRef.current.value="";
@@ -572,9 +580,9 @@ function AddBetView({addBet,uid}){
         <Inp value={ocrKey} onChange={saveOcrKey} placeholder="貼上 OCR.space API Key" mono/>
         <div style={{fontSize:10,color:C.m,marginTop:4}}>免費 25K 次/月 · 到 ocr.space/ocrapi 免費註冊取得 · 跨裝置同步</div>
       </div>}
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{display:"none"}}/>
+      <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" onChange={handleScan} style={{display:"none"}}/>
       <button onClick={()=>fileRef.current?.click()} disabled={scanning} style={{width:"100%",padding:10,borderRadius:8,border:`1px solid ${C.b}`,background:scanning?"transparent":"rgba(59,130,246,0.1)",color:scanning?C.m:C.b,fontSize:13,fontWeight:600,cursor:scanning?"default":"pointer",outline:"none"}}>
-        {scanning?"辨識中...":"上傳投注單截圖"}
+        {scanning?"辨識中...":"上傳投注單截圖 (可多張)"}
       </button>
       {scanErr&&<div style={{fontSize:11,color:C.r,marginTop:6}}>{scanErr}</div>}
       {rawOcrText&&<div style={{marginTop:8}}>
