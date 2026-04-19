@@ -2220,13 +2220,26 @@ function scoreYoloPick(matchup,btKey){
   return{matchup,btKey,bt,score,bestHitRate:0,bestMinOdds:null,filterCount:0,isYolo:true};
 }
 
-function generateRecommendations(matchups){
+// Cascade exclusion: excluding total_9.5 for a matchup also excludes 8.5 and 7.5
+function expandExcludes(excludes){
+  const expanded=new Set(excludes);
+  for(const ex of excludes){
+    const[mid,bk]=ex.split("::");
+    if(bk==="total_9.5"){expanded.add(mid+"::total_8.5");expanded.add(mid+"::total_7.5")}
+    if(bk==="total_8.5"){expanded.add(mid+"::total_7.5")}
+  }
+  return expanded;
+}
+
+function generateRecommendations(matchups,excludes){
   const matchupId=(m)=>`${m.away}@${m.home}`;
+  const blocked=expandExcludes(excludes||new Set());
 
   // ═══ A區：穩健推薦 4×串2關 (10年指標) ═══
   const stablePicks=[];
   matchups.forEach(m=>{
     Object.keys(m.bet_types||{}).forEach(k=>{
+      if(blocked.has(matchupId(m)+"::"+k))return;
       const p=scorePick(m,k);
       if(p&&p.score>0)stablePicks.push(p);
     });
@@ -2262,6 +2275,7 @@ function generateRecommendations(matchups){
   const yoloPicks=[];
   matchups.forEach(m=>{
     ["spread_2.5","total_9.5"].forEach(k=>{
+      if(blocked.has(matchupId(m)+"::"+k))return;
       const p=scoreYoloPick(m,k);
       if(p)yoloPicks.push(p);
     });
@@ -2273,7 +2287,7 @@ function generateRecommendations(matchups){
   for(const pick of yoloPicks){
     if(yoloLegs.length>=5)break;
     const mid=matchupId(pick.matchup);
-    if(yoloUsed.has(mid))continue; // 台彩同場不能放同一單
+    if(yoloUsed.has(mid))continue;
     yoloLegs.push(pick);
     yoloUsed.add(mid);
   }
@@ -2383,6 +2397,7 @@ function RecommendPanel({matchups,uid,state,setState}){
   const[oddsLoading,setOddsLoading]=useState(false);
   const[oddsError,setOddsError]=useState("");
   const[showKeyInput,setShowKeyInput]=useState(false);
+  const[excludes,setExcludes]=useState(()=>new Set());
 
   useEffect(()=>{
     if(!uid)return;
@@ -2393,9 +2408,36 @@ function RecommendPanel({matchups,uid,state,setState}){
     return()=>unsub();
   },[uid]);
 
-  const generate=()=>{
-    const r=generateRecommendations(matchups);
+  const matchupId=(m)=>`${m.away}@${m.home}`;
+  const btLabelForEx=(bk)=>{const m={"ml":"不讓分","spread_1.5":"讓1.5","spread_2.5":"讓2.5","total_7.5":"大小7.5","total_8.5":"大小8.5","total_9.5":"大小9.5"};return m[bk]||bk};
+
+  const generate=(excl)=>{
+    const ex=excl||excludes;
+    const r=generateRecommendations(matchups,ex);
     setState(s=>({...s,result:r}));
+  };
+
+  const excludeLeg=(m,btKey)=>{
+    const mid=matchupId(m);
+    const next=new Set(excludes);
+    next.add(mid+"::"+btKey);
+    // Cascade: total lines
+    if(btKey==="total_9.5"){next.add(mid+"::total_8.5");next.add(mid+"::total_7.5")}
+    if(btKey==="total_8.5"){next.add(mid+"::total_7.5")}
+    setExcludes(next);
+    generate(next);
+  };
+
+  const restoreExclude=(exKey)=>{
+    const next=new Set(excludes);
+    next.delete(exKey);
+    setExcludes(next);
+    generate(next);
+  };
+
+  const clearExcludes=()=>{
+    setExcludes(new Set());
+    generate(new Set());
   };
 
   const saveApiKey=async(k)=>{
@@ -2427,8 +2469,9 @@ function RecommendPanel({matchups,uid,state,setState}){
     const odds=legOdds;
     const tagBg=isYolo?"rgba(139,92,246,0.15)":"rgba(245,158,11,0.12)";
     const tagCol=isYolo?"#a78bfa":C.acc;
-    return<div key={li} style={{background:C.bg,borderRadius:8,padding:"10px 12px",border:`1px solid ${C.bd}`,marginBottom:6}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+    return<div key={li} style={{background:C.bg,borderRadius:8,padding:"10px 12px",border:`1px solid ${C.bd}`,marginBottom:6,position:"relative"}}>
+      <button onClick={()=>excludeLeg(m,leg.btKey)} title="排除此盤口" style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:C.m,cursor:"pointer",fontSize:14,padding:0,outline:"none",lineHeight:1}}>✕</button>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,paddingRight:20}}>
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:C.m,fontWeight:700}}>L{li+1}</span>
           <span style={{fontSize:13,fontWeight:600}}>{awayZh} @ {homeZh}</span>
@@ -2542,6 +2585,25 @@ function RecommendPanel({matchups,uid,state,setState}){
       {oddsError&&<div style={{fontSize:11,color:C.r,marginTop:6}}>{oddsError}</div>}
       {oddsData&&<div style={{fontSize:11,color:C.g,marginTop:6}}>✓ 已抓取 {oddsData.length} 場 · {oddsTime}</div>}
     </div>
+
+    {/* Excluded list */}
+    {excludes.size>0&&<div style={{background:C.card,borderRadius:10,padding:"10px 14px",border:`1px solid ${C.bd}`,marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <span style={{fontSize:12,fontWeight:600,color:C.d}}>已排除 ({excludes.size})</span>
+        <button onClick={clearExcludes} style={{background:"none",border:"none",color:C.m,cursor:"pointer",fontSize:11}}>全部還原</button>
+      </div>
+      <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+        {[...excludes].map(ex=>{
+          const[mid,bk]=ex.split("::");
+          const mLabel=matchups.find(m=>matchupId(m)===mid);
+          const teamLabel=mLabel?`${mLabel.away_zh||""}@${mLabel.home_zh||""}`:(mid||"");
+          return<span key={ex} style={{display:"inline-flex",alignItems:"center",gap:4,background:C.bg,border:`1px solid ${C.bd}`,borderRadius:6,padding:"3px 8px",fontSize:11}}>
+            <span style={{color:C.d}}>{teamLabel} {btLabelForEx(bk)}</span>
+            <button onClick={()=>restoreExclude(ex)} style={{background:"none",border:"none",color:C.acc,cursor:"pointer",fontSize:12,padding:0,lineHeight:1}}>↩</button>
+          </span>;
+        })}
+      </div>
+    </div>}
 
     {/* Results */}
     {result&&<div>
