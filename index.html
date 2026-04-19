@@ -2109,56 +2109,177 @@ function scorePick(matchup,btKey){
   };
 }
 
-function generateRecommendations(matchups,numBets,legsPerBet){
-  // Score every (matchup, bet_type) combination
-  const allPicks=[];
+// ─── YOLO Pick Scoring (current season data only) ───
+function scoreYoloPick(matchup,btKey){
+  const bt=matchup.bet_types?.[btKey];
+  if(!bt||!bt.predicted||bt.predicted==="even")return null;
+  if(bt.signal_conflict===true)return null;
+  // Only high-odds bet types for YOLO
+  if(!["spread_2.5","total_9.5"].includes(btKey))return null;
+
+  const tc=matchup.team_comparisons||{};
+  const sc=matchup.sp_comparisons||{};
+  const v=matchup.venue||{};
+  let score=0;
+
+  if(btKey==="spread_2.5"){
+    // Directional: we want a strong team crushing a weak one
+    const predicted=bt.predicted; // "away" or "home"
+    const strong=predicted==="away"?"away":"home";
+    const weak=predicted==="away"?"home":"away";
+
+    // Run diff gap (bigger = more likely blowout)
+    const rdS=tc.run_diff_per_game?.[strong]||0;
+    const rdW=tc.run_diff_per_game?.[weak]||0;
+    const rdGap=rdS-rdW;
+    score+=rdGap*15; // ~3.0 gap → +45
+
+    // OPS gap (batting power)
+    const opsS=tc.ops?.[strong]||0;
+    const opsW=tc.ops?.[weak]||0;
+    score+=(opsS-opsW)*200; // ~0.15 gap → +30
+
+    // ERA gap (weak team's pitching is bad)
+    const eraW=tc.era?.[weak]||4;
+    const eraS=tc.era?.[strong]||4;
+    score+=(eraW-eraS)*8; // ~1.5 gap → +12
+
+    // SP recent: weak team's SP is struggling
+    const spRecentWeak=matchup[`${weak}_sp_recent`]||[];
+    if(spRecentWeak.length>0){
+      let totalIP=0,totalER=0;
+      spRecentWeak.forEach(s=>{totalIP+=parseFloat(s.ip)||0;totalER+=s.er||0});
+      if(totalIP>0){
+        const recentERA=totalER/totalIP*9;
+        score+=Math.max(0,(recentERA-4))*5; // ERA>4 adds points
+      }
+    }
+    // SP recent: strong team's SP is solid
+    const spRecentStrong=matchup[`${strong}_sp_recent`]||[];
+    if(spRecentStrong.length>0){
+      let totalIP=0,totalER=0;
+      spRecentStrong.forEach(s=>{totalIP+=parseFloat(s.ip)||0;totalER+=s.er||0});
+      if(totalIP>0){
+        const recentERA=totalER/totalIP*9;
+        score+=Math.max(0,(4-recentERA))*5; // ERA<4 adds points
+      }
+    }
+
+    // Bullpen fatigue on weak side
+    const bpW=tc.bp_fatigue?.[weak]||0;
+    if(bpW>=1.0)score+=15;
+
+    // Confidence bonus from model
+    if(bt.confidence==="high")score+=10;
+
+  }else if(btKey==="total_9.5"){
+    // We want high-scoring games
+    const rpgA=tc.runs_per_game?.away||0;
+    const rpgH=tc.runs_per_game?.home||0;
+    const combinedRPG=rpgA+rpgH;
+    score+=(combinedRPG-8)*12; // combined RPG > 8 → positive
+
+    // Both teams have high OPS
+    const opsA=tc.ops?.away||0;
+    const opsH=tc.ops?.home||0;
+    score+=((opsA+opsH)/2-0.7)*300; // avg OPS > .700 → positive
+
+    // Both teams ERA is high (bad pitching)
+    const eraA=tc.era?.away||4;
+    const eraH=tc.era?.home||4;
+    score+=((eraA+eraH)/2-3.8)*10;
+
+    // Park factor boost
+    const pf=v.park_factor||1.0;
+    score+=(pf-1.0)*150; // Coors 1.276 → +41
+
+    // SP recent: both SPs are shaky
+    ["away","home"].forEach(side=>{
+      const spRecent=matchup[`${side}_sp_recent`]||[];
+      if(spRecent.length>0){
+        let totalIP=0,totalER=0;
+        spRecent.forEach(s=>{totalIP+=parseFloat(s.ip)||0;totalER+=s.er||0});
+        if(totalIP>0){
+          const recentERA=totalER/totalIP*9;
+          score+=Math.max(0,(recentERA-4))*4;
+        }
+      }
+    });
+
+    // Bullpen fatigue on both sides
+    const bpA=tc.bp_fatigue?.away||0;
+    const bpH=tc.bp_fatigue?.home||0;
+    if(bpA>=1.0)score+=10;
+    if(bpH>=1.0)score+=10;
+
+    // Only pick "over" for total_9.5
+    if(bt.predicted!=="over")score-=30;
+  }
+
+  if(score<=0)return null;
+  return{matchup,btKey,bt,score,bestHitRate:0,bestMinOdds:null,filterCount:0,isYolo:true};
+}
+
+function generateRecommendations(matchups){
+  const matchupId=(m)=>`${m.away}@${m.home}`;
+
+  // ═══ A區：穩健推薦 4×串2關 (10年指標) ═══
+  const stablePicks=[];
   matchups.forEach(m=>{
-    const btKeys=Object.keys(m.bet_types||{});
-    btKeys.forEach(k=>{
+    Object.keys(m.bet_types||{}).forEach(k=>{
       const p=scorePick(m,k);
-      if(p&&p.score>0)allPicks.push(p);
+      if(p&&p.score>0)stablePicks.push(p);
     });
   });
+  stablePicks.sort((a,b)=>b.score-a.score);
 
-  // Sort by score descending
-  allPicks.sort((a,b)=>b.score-a.score);
-
-  const matchupId=(m)=>`${m.away}@${m.home}`;
-  const usedPicks=new Set(); // matchupId + "::" + btKey
-
-  // Build parlays greedily.
-  // Rules:
-  // - Within a single parlay, no two legs from the same matchup (台彩規則).
-  // - Top 5% picks: same matchup different bet types CAN appear across DIFFERENT parlays.
-  // - Non-Top-5% picks: same matchup only appears ONCE across ALL parlays.
-  //   (Also blocked if that matchup was already used by a Top5% pick.)
-  const usedMatchupsGlobal=new Set(); // tracks ALL matchups used
-  const parlays=[];
-  for(let i=0;i<numBets;i++){
+  const usedPicks=new Set();
+  const usedMatchupsGlobal=new Set();
+  const stableParlays=[];
+  for(let i=0;i<4;i++){
     const legs=[];
-    const usedMatchupsInParlay=new Set();
-    for(const pick of allPicks){
-      if(legs.length>=legsPerBet)break;
+    const usedInParlay=new Set();
+    for(const pick of stablePicks){
+      if(legs.length>=2)break;
       const mid=matchupId(pick.matchup);
       const pid=mid+"::"+pick.btKey;
       if(usedPicks.has(pid))continue;
-      if(usedMatchupsInParlay.has(mid))continue;
+      if(usedInParlay.has(mid))continue;
       const isTop5=pick.bt.is_top_5_pct;
-      // Non-top5: blocked if matchup appeared anywhere (including via Top5%)
       if(!isTop5&&usedMatchupsGlobal.has(mid))continue;
       legs.push(pick);
       usedPicks.add(pid);
-      usedMatchupsInParlay.add(mid);
+      usedInParlay.add(mid);
       usedMatchupsGlobal.add(mid);
     }
-    if(legs.length===legsPerBet){
-      // Combined breakeven: sqrt(product of per-leg breakevens)
+    if(legs.length===2){
       const product=legs.reduce((acc,l)=>acc*(l.bestMinOdds||4),1);
-      const combinedMinOdds=Math.sqrt(product);
-      parlays.push({legs,combinedMinOdds});
+      stableParlays.push({legs,combinedMinOdds:Math.sqrt(product)});
     }
   }
-  return{parlays,totalAvailable:allPicks.length};
+
+  // ═══ B區：高賠博弈 1×串5關 (本季數據) ═══
+  const yoloPicks=[];
+  matchups.forEach(m=>{
+    ["spread_2.5","total_9.5"].forEach(k=>{
+      const p=scoreYoloPick(m,k);
+      if(p)yoloPicks.push(p);
+    });
+  });
+  yoloPicks.sort((a,b)=>b.score-a.score);
+
+  const yoloLegs=[];
+  const yoloUsed=new Set();
+  for(const pick of yoloPicks){
+    if(yoloLegs.length>=5)break;
+    const mid=matchupId(pick.matchup);
+    if(yoloUsed.has(mid))continue; // 台彩同場不能放同一單
+    yoloLegs.push(pick);
+    yoloUsed.add(mid);
+  }
+  const yoloParlay=yoloLegs.length>=3?{legs:yoloLegs,combinedMinOdds:null}:null;
+
+  return{stableParlays,yoloParlay,totalStable:stablePicks.length,totalYolo:yoloPicks.length};
 }
 
 // ─── Odds API (the-odds-api.com) ───
@@ -2255,71 +2376,41 @@ function SpRecentPanel({away,home,awayZh,homeZh,awayRecent,homeRecent,collapsibl
 // ─── Recommend Panel ───
 function RecommendPanel({matchups,uid,state,setState}){
   const mono={fontFamily:"'JetBrains Mono',monospace"};
-  const numBets=state.numBets;
-  const legsPerBet=state.legsPerBet;
   const result=state.result;
   const oddsData=state.oddsData;
   const oddsTime=state.oddsTime;
-  const setNumBets=v=>setState(s=>({...s,numBets:v}));
-  const setLegsPerBet=v=>setState(s=>({...s,legsPerBet:v}));
   const[apiKey,setApiKey]=useState(()=>load("odds-api-key","")||"");
   const[oddsLoading,setOddsLoading]=useState(false);
   const[oddsError,setOddsError]=useState("");
   const[showKeyInput,setShowKeyInput]=useState(false);
 
-  // Sync API key from Firestore on mount (cross-device)
   useEffect(()=>{
     if(!uid)return;
     const ref=db.collection("users").doc(uid).collection("meta").doc("oddsApiKey");
     const unsub=ref.onSnapshot(snap=>{
-      if(snap.exists){
-        const k=snap.data().key;
-        if(k&&k!==apiKey){
-          setApiKey(k);
-          save("odds-api-key",k);
-        }
-      }
+      if(snap.exists){const k=snap.data().key;if(k&&k!==apiKey){setApiKey(k);save("odds-api-key",k)}}
     },err=>console.error("Odds key sync error:",err));
     return()=>unsub();
   },[uid]);
 
   const generate=()=>{
-    const nb=Math.max(1,Math.min(10,Number(numBets)||1));
-    const lp=Math.max(1,Math.min(5,Number(legsPerBet)||1));
-    const r=generateRecommendations(matchups,nb,lp);
-    r.numBets=nb;
-    r.legsPerBet=lp;
-    setState(s=>({...s,result:r,numBets:String(nb),legsPerBet:String(lp)}));
-    save("reco-numBets",String(nb));
-    save("reco-legs",String(lp));
+    const r=generateRecommendations(matchups);
+    setState(s=>({...s,result:r}));
   };
 
   const saveApiKey=async(k)=>{
-    setApiKey(k);
-    save("odds-api-key",k);
-    if(uid){
-      try{
-        await db.collection("users").doc(uid).collection("meta").doc("oddsApiKey").set({
-          key:k,
-          updatedAt:new Date().toISOString()
-        });
-      }catch(e){console.error("Save odds key error:",e)}
-    }
+    setApiKey(k);save("odds-api-key",k);
+    if(uid){try{await db.collection("users").doc(uid).collection("meta").doc("oddsApiKey").set({key:k,updatedAt:new Date().toISOString()})}catch(e){}}
   };
 
   const fetchOdds=async()=>{
     if(!apiKey.trim()){setOddsError("請先輸入 API key");setShowKeyInput(true);return}
     setOddsLoading(true);setOddsError("");
     try{
-      const url=`https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/?apiKey=${apiKey.trim()}&regions=us&markets=h2h,spreads,totals&oddsFormat=decimal`;
-      const res=await fetch(url);
-      if(!res.ok){
-        const text=await res.text();
-        throw new Error(`HTTP ${res.status}: ${text.slice(0,100)}`);
-      }
+      const res=await fetch(`https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/?apiKey=${apiKey.trim()}&regions=us&markets=h2h,spreads,totals&oddsFormat=decimal`);
+      if(!res.ok)throw new Error(`HTTP ${res.status}`);
       const json=await res.json();
-      const t=new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei"});
-      setState(s=>({...s,oddsData:json,oddsTime:t}));
+      setState(s=>({...s,oddsData:json,oddsTime:new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei"})}));
     }catch(e){setOddsError("抓取失敗："+e.message)}
     setOddsLoading(false);
   };
@@ -2327,156 +2418,154 @@ function RecommendPanel({matchups,uid,state,setState}){
   const btLabelMap={};
   BET_TYPES.forEach(b=>{btLabelMap[b.key]=b.short});
 
+  // Render a single leg card
+  const renderLeg=(leg,li,legOdds,isYolo)=>{
+    const m=leg.matchup;const bt=leg.bt;
+    const awayZh=m.away_zh||m.away;const homeZh=m.home_zh||m.home;
+    const predictedZh=formatPrediction(bt.predicted,awayZh,homeZh);
+    const btShort=btLabelMap[leg.btKey]||leg.btKey;
+    const odds=legOdds;
+    const tagBg=isYolo?"rgba(139,92,246,0.15)":"rgba(245,158,11,0.12)";
+    const tagCol=isYolo?"#a78bfa":C.acc;
+    return<div key={li} style={{background:C.bg,borderRadius:8,padding:"10px 12px",border:`1px solid ${C.bd}`,marginBottom:6}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+          <span style={{fontSize:11,color:C.m,fontWeight:700}}>L{li+1}</span>
+          <span style={{fontSize:13,fontWeight:600}}>{awayZh} @ {homeZh}</span>
+          <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:tagBg,color:tagCol,fontWeight:600}}>{btShort}</span>
+          {!isYolo&&(bt.is_top_5_pct?<span style={{fontSize:10,color:C.acc,fontWeight:700}}>🔥Top5%</span>:bt.is_top_10_pct&&<span style={{fontSize:10,color:C.g,fontWeight:700}}>⭐Top10%</span>)}
+        </div>
+        <span style={{fontSize:11,color:C.d,...mono}}>分 {leg.score.toFixed(0)}</span>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12}}>
+        <span style={{color:C.d}}>預測 <span style={{color:isYolo?"#a78bfa":C.g,fontWeight:700}}>{predictedZh}</span></span>
+        {!isYolo&&<span style={{color:C.d}}>
+          信心 {confidenceStars(bt.confidence)} <span style={{color:C.m}}>·</span>
+          {leg.filterCount>0?<> 符合 {leg.filterCount} 個篩選</>:" 無符合篩選"}
+        </span>}
+      </div>
+      {!isYolo&&leg.bestHitRate>0&&<div style={{fontSize:11,color:C.d,marginTop:2,...mono}}>
+        最佳篩選歷史命中 <span style={{color:C.g,fontWeight:700}}>{leg.bestHitRate.toFixed(1)}%</span>
+        {leg.bestMinOdds&&<> · 該腳最低賠率 <span style={{color:C.acc}}>{leg.bestMinOdds.toFixed(2)}</span></>}
+      </div>}
+      {isYolo&&(()=>{
+        const tc=m.team_comparisons||{};
+        const rpgA=tc.runs_per_game?.away;const rpgH=tc.runs_per_game?.home;
+        const opsA=tc.ops?.away;const opsH=tc.ops?.home;
+        return<div style={{fontSize:11,color:C.d,marginTop:4,...mono}}>
+          RPG {rpgA?.toFixed(1)||"?"}/{rpgH?.toFixed(1)||"?"} · OPS {opsA?.toFixed(3)||"?"}/{opsH?.toFixed(3)||"?"}
+          {m.venue?.park_factor&&<> · PF {m.venue.park_factor.toFixed(3)}</>}
+        </div>;
+      })()}
+      {oddsData&&<div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.bd}`,fontSize:11,...mono}}>
+        {odds?<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:C.b}}>🌏 國際盤</span>
+          <span>
+            <span style={{color:C.d}}>均值 </span><span style={{color:C.t,fontWeight:700}}>{odds.avg.toFixed(2)}</span>
+            <span style={{color:C.m}}> · </span>
+            <span style={{color:C.d}}>最佳 </span><span style={{color:C.g,fontWeight:700}}>{odds.best.toFixed(2)}</span>
+            <span style={{color:C.m,marginLeft:4}}>({odds.count}家)</span>
+          </span>
+        </div>:<div style={{color:C.m}}>🌏 國際盤：無對應盤口</div>}
+      </div>}
+      <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent} collapsible/>
+    </div>;
+  };
+
+  // Render a parlay card
+  const renderParlay=(parlay,pi,title,titleColor,borderColor,bgColor,isYolo)=>{
+    const avgScore=parlay.legs.reduce((a,l)=>a+l.score,0)/parlay.legs.length;
+    const legOdds=parlay.legs.map(l=>findLegOdds(l,oddsData));
+    const allMatched=legOdds.every(o=>o!==null);
+    let combinedAvg=null,combinedBest=null;
+    if(oddsData&&allMatched){
+      combinedAvg=legOdds.reduce((a,o)=>a*o.avg,1);
+      combinedBest=legOdds.reduce((a,o)=>a*o.best,1);
+    }
+    return<div key={pi} style={{background:bgColor,borderRadius:10,padding:14,border:`2px solid ${borderColor}`,marginBottom:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div style={{fontSize:14,fontWeight:700,color:titleColor}}>{title}</div>
+        <div style={{fontSize:11,color:C.d}}>平均分數 <span style={{...mono,color:C.t,fontWeight:700}}>{avgScore.toFixed(0)}</span></div>
+      </div>
+      {parlay.legs.map((leg,li)=>renderLeg(leg,li,legOdds[li],isYolo))}
+      {/* Summary */}
+      <div style={{borderTop:`1px solid ${C.bd}`,paddingTop:8,marginTop:6}}>
+        {!isYolo&&parlay.combinedMinOdds&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:12,color:C.d}}>損益平衡賠率</span>
+          <span style={{fontSize:15,fontWeight:700,...mono,color:C.acc}}>{parlay.combinedMinOdds.toFixed(2)}</span>
+        </div>}
+        {oddsData&&allMatched&&<>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+            <span style={{fontSize:12,color:C.b}}>🌏 合計賠率 (均值)</span>
+            <span style={{fontSize:15,fontWeight:700,...mono,color:C.t}}>{combinedAvg.toFixed(2)}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:2}}>
+            <span style={{fontSize:11,color:C.d}}>合計賠率 (最佳)</span>
+            <span style={{fontSize:13,fontWeight:600,...mono,color:C.g}}>{combinedBest.toFixed(2)}</span>
+          </div>
+          {isYolo&&<div style={{fontSize:11,color:"#a78bfa",marginTop:4,textAlign:"center",...mono}}>
+            下 $100 最佳可回 ${Math.round(combinedBest*100).toLocaleString()}
+          </div>}
+        </>}
+        {oddsData&&!allMatched&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>部分腳位無國際盤對應</div>}
+      </div>
+    </div>;
+  };
+
   return<div>
     {/* Intro */}
     <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
       <div style={{fontSize:13,fontWeight:700,color:C.acc,marginBottom:8}}>🎰 組合推薦</div>
       <div style={{fontSize:12,color:C.d,lineHeight:1.6}}>
-        從今日所有場次中，綜合「指標驗證」「可獲利篩選」「複合分數投票」計算每場的信心分數，<br/>
-        自動挑出最強的幾場並組成串關。
+        <span style={{color:C.g}}>A 穩健推薦</span>：4 單 × 串 2 關，依 10 年歷史指標計算信心分數<br/>
+        <span style={{color:"#a78bfa"}}>B 高賠博弈</span>：1 單 × 串 5 關，依本季球隊火力 + 牛棚 + 先發近況，偏重讓分 2.5 / 大分 9.5
       </div>
     </div>
 
-    {/* Inputs */}
-    <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-        <Field label="今天要下幾單" style={{marginBottom:0}}>
-          <Inp value={numBets} onChange={setNumBets} type="number" mono placeholder="1-10"/>
-        </Field>
-        <Field label="每單串幾關" style={{marginBottom:0}}>
-          <Inp value={legsPerBet} onChange={setLegsPerBet} type="number" mono placeholder="1-5"/>
-        </Field>
-      </div>
-      <button onClick={generate} disabled={!matchups||matchups.length===0} style={{width:"100%",padding:12,borderRadius:8,border:"none",fontSize:14,fontWeight:700,background:matchups&&matchups.length>0?C.acc:C.m,color:matchups&&matchups.length>0?"#000":C.d,cursor:matchups&&matchups.length>0?"pointer":"default",outline:"none"}}>
-        生成推薦
-      </button>
-    </div>
+    {/* Generate button */}
+    <button onClick={generate} disabled={!matchups||matchups.length===0} style={{width:"100%",padding:14,borderRadius:10,border:"none",fontSize:15,fontWeight:700,background:matchups&&matchups.length>0?C.acc:C.m,color:matchups&&matchups.length>0?"#000":C.d,cursor:matchups&&matchups.length>0?"pointer":"default",outline:"none",marginBottom:12}}>
+      一鍵生成推薦（4 穩 + 1 博）
+    </button>
 
-    {/* International Odds Section */}
+    {/* International Odds */}
     <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-        <div style={{fontSize:13,fontWeight:700,color:C.b}}>🌏 國際盤賠率 (the-odds-api.com)</div>
+        <div style={{fontSize:13,fontWeight:700,color:C.b}}>🌏 國際盤賠率</div>
         <button onClick={()=>setShowKeyInput(!showKeyInput)} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:11}}>{apiKey?"已設定 ✓":"設定 API Key"}</button>
       </div>
       {showKeyInput&&<div style={{marginBottom:10}}>
         <Inp value={apiKey} onChange={saveApiKey} placeholder="貼上 the-odds-api.com 的 API key" mono/>
-        <div style={{fontSize:10,color:C.m,marginTop:4}}>Key 只存在本機瀏覽器，不會上傳到雲端</div>
       </div>}
       <button onClick={fetchOdds} disabled={oddsLoading||!apiKey} style={{width:"100%",padding:10,borderRadius:8,border:`1px solid ${C.b}`,background:oddsLoading||!apiKey?"transparent":"rgba(59,130,246,0.1)",color:oddsLoading||!apiKey?C.m:C.b,fontSize:13,fontWeight:600,cursor:oddsLoading||!apiKey?"default":"pointer",outline:"none"}}>
         {oddsLoading?"抓取中...":"抓取國際盤賠率"}
       </button>
       {oddsError&&<div style={{fontSize:11,color:C.r,marginTop:6}}>{oddsError}</div>}
-      {oddsData&&<div style={{fontSize:11,color:C.g,marginTop:6}}>✓ 已抓取 {oddsData.length} 場比賽賠率 · {oddsTime}</div>}
+      {oddsData&&<div style={{fontSize:11,color:C.g,marginTop:6}}>✓ 已抓取 {oddsData.length} 場 · {oddsTime}</div>}
     </div>
 
     {/* Results */}
     {result&&<div>
-      {result.parlays.length===0?<div style={{textAlign:"center",padding:30,color:C.d,fontSize:12}}>
-        可用場次不足（需要 {result.numBets*result.legsPerBet} 場，目前有 {result.totalAvailable} 場有有效預測）
+      {/* A: Stable parlays */}
+      <div style={{fontSize:13,fontWeight:700,color:C.g,marginBottom:8}}>🛡️ A 穩健推薦 · 串 2 關 × 4 單</div>
+      {result.stableParlays.length===0?<div style={{textAlign:"center",padding:20,color:C.d,fontSize:12,marginBottom:12}}>
+        穩健場次不足（可用 {result.totalStable} 場）
       </div>:<>
-        <div style={{fontSize:11,color:C.d,marginBottom:10}}>
-          從 {result.totalAvailable} 場有效場次中挑出 {result.numBets*result.legsPerBet} 場，組成 {result.numBets} 單 × 串 {result.legsPerBet} 關
-        </div>
-        {result.parlays.map((parlay,pi)=>{
-          const avgScore=parlay.legs.reduce((a,l)=>a+l.score,0)/parlay.legs.length;
-          const anyTop5=parlay.legs.some(l=>l.bt.is_top_5_pct);
-          const allTop10=parlay.legs.every(l=>l.bt.is_top_10_pct||l.bt.is_top_5_pct);
-
-          // Compute parlay combined odds from fetched data
-          const legOdds=parlay.legs.map(l=>findLegOdds(l,oddsData));
-          const allMatched=legOdds.every(o=>o!==null);
-          let combinedAvg=null,combinedBest=null;
-          if(oddsData&&allMatched){
-            combinedAvg=legOdds.reduce((a,o)=>a*o.avg,1);
-            combinedBest=legOdds.reduce((a,o)=>a*o.best,1);
-          }
-          const positiveEV=combinedAvg!=null&&combinedAvg>parlay.combinedMinOdds;
-
-          const cardBdr=anyTop5?C.acc:allTop10?C.g:C.acc;
-          const cardBg=anyTop5?"rgba(245,158,11,0.06)":allTop10?"rgba(16,185,129,0.06)":C.card;
-          return<div key={pi} style={{background:cardBg,borderRadius:10,padding:14,border:`${(anyTop5||allTop10)?2:1}px solid ${cardBdr}`,marginBottom:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div style={{fontSize:14,fontWeight:700,color:anyTop5?C.acc:allTop10?C.g:C.acc}}>
-                {anyTop5?"🔥 ":(allTop10?"⭐ ":"")}第 {pi+1} 單 · 串 {parlay.legs.length} 關
-              </div>
-              <div style={{fontSize:11,color:C.d}}>平均分數 <span style={{...mono,color:C.t,fontWeight:700}}>{avgScore.toFixed(0)}</span></div>
-            </div>
-
-            {parlay.legs.map((leg,li)=>{
-              const m=leg.matchup;
-              const bt=leg.bt;
-              const awayZh=m.away_zh||m.away;
-              const homeZh=m.home_zh||m.home;
-              const predictedZh=formatPrediction(bt.predicted,awayZh,homeZh);
-              const btShort=btLabelMap[leg.btKey]||leg.btKey;
-              const odds=legOdds[li];
-              return<div key={li} style={{background:C.bg,borderRadius:8,padding:"10px 12px",border:`1px solid ${C.bd}`,marginBottom:6}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                    <span style={{fontSize:11,color:C.m,fontWeight:700}}>L{li+1}</span>
-                    <span style={{fontSize:13,fontWeight:600}}>{awayZh} @ {homeZh}</span>
-                    <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:C.accD,color:C.acc,fontWeight:600}}>{btShort}</span>
-                    {bt.is_top_5_pct?<span style={{fontSize:10,color:C.acc,fontWeight:700}}>🔥Top5%</span>:bt.is_top_10_pct&&<span style={{fontSize:10,color:C.g,fontWeight:700}}>⭐Top10%</span>}
-                  </div>
-                  <span style={{fontSize:11,color:C.d,...mono}}>分 {leg.score.toFixed(0)}</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12}}>
-                  <span style={{color:C.d}}>預測 <span style={{color:C.g,fontWeight:700}}>{predictedZh}</span></span>
-                  <span style={{color:C.d}}>
-                    信心 {confidenceStars(bt.confidence)} <span style={{color:C.m}}>·</span>
-                    {leg.filterCount>0?<> 符合 {leg.filterCount} 個篩選</>:" 無符合篩選"}
-                  </span>
-                </div>
-                {leg.bestHitRate>0&&<div style={{fontSize:11,color:C.d,marginTop:2,...mono}}>
-                  最佳篩選歷史命中 <span style={{color:C.g,fontWeight:700}}>{leg.bestHitRate.toFixed(1)}%</span>
-                  {leg.bestMinOdds&&<> · 該腳最低賠率 <span style={{color:C.acc}}>{leg.bestMinOdds.toFixed(2)}</span></>}
-                </div>}
-                {oddsData&&<div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.bd}`,fontSize:11,...mono}}>
-                  {odds?<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{color:C.b}}>🌏 國際盤</span>
-                    <span>
-                      <span style={{color:C.d}}>均值 </span><span style={{color:C.t,fontWeight:700}}>{odds.avg.toFixed(2)}</span>
-                      <span style={{color:C.m}}> · </span>
-                      <span style={{color:C.d}}>最佳 </span><span style={{color:C.g,fontWeight:700}}>{odds.best.toFixed(2)}</span>
-                      <span style={{color:C.m,marginLeft:4}}>({odds.count}家)</span>
-                    </span>
-                  </div>:<div style={{color:C.m}}>🌏 國際盤：此盤口無對應 (通常是因為主盤口線與 {btShort} 不同)</div>}
-                </div>}
-                {/* SP Recent Starts */}
-                <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent} collapsible/>
-              </div>;
-            })}
-
-            {/* Parlay summary */}
-            <div style={{borderTop:`1px solid ${C.bd}`,paddingTop:8,marginTop:6}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:12,color:C.d}}>合計最低賠率 (損益平衡)</span>
-                <span style={{fontSize:15,fontWeight:700,...mono,color:C.acc}}>{parlay.combinedMinOdds.toFixed(2)}</span>
-              </div>
-              {oddsData&&allMatched&&<>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
-                  <span style={{fontSize:12,color:C.b}}>🌏 國際盤合計 (均值)</span>
-                  <span style={{fontSize:15,fontWeight:700,...mono,color:positiveEV?C.g:C.r}}>{combinedAvg.toFixed(2)} {positiveEV?"✓":"✗"}</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:2}}>
-                  <span style={{fontSize:11,color:C.d}}>國際盤合計 (最佳)</span>
-                  <span style={{fontSize:13,fontWeight:600,...mono,color:combinedBest>parlay.combinedMinOdds?C.g:C.r}}>{combinedBest.toFixed(2)}</span>
-                </div>
-                <div style={{fontSize:10,color:positiveEV?C.g:C.r,marginTop:4,textAlign:"right",fontWeight:600}}>
-                  {positiveEV?`正 EV · 國際盤比損益平衡高 ${((combinedAvg/parlay.combinedMinOdds-1)*100).toFixed(1)}%`:`負 EV · 國際盤比損益平衡低 ${((1-combinedAvg/parlay.combinedMinOdds)*100).toFixed(1)}%`}
-                </div>
-              </>}
-              {oddsData&&!allMatched&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>
-                部分腳位無國際盤對應 · 以損益平衡為參考
-              </div>}
-              {!oddsData&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>
-                合計賠率 {">"} {parlay.combinedMinOdds.toFixed(2)} 才有正期望值
-              </div>}
-            </div>
-          </div>;
+        {result.stableParlays.map((p,i)=>{
+          const anyTop5=p.legs.some(l=>l.bt.is_top_5_pct);
+          const allTop10=p.legs.every(l=>l.bt.is_top_10_pct||l.bt.is_top_5_pct);
+          const icon=anyTop5?"🔥 ":allTop10?"⭐ ":"";
+          return renderParlay(p,i,`${icon}第 ${i+1} 單 · 串 2 關`,anyTop5?C.acc:allTop10?C.g:C.acc,anyTop5?C.acc:allTop10?C.g:C.bd,anyTop5?"rgba(245,158,11,0.06)":allTop10?"rgba(16,185,129,0.06)":C.card,false);
         })}
-
       </>}
+
+      {/* B: YOLO parlay */}
+      <div style={{fontSize:13,fontWeight:700,color:"#a78bfa",marginTop:16,marginBottom:8}}>🎲 B 高賠博弈 · 串 5 關</div>
+      <div style={{fontSize:11,color:C.d,marginBottom:8,lineHeight:1.5}}>
+        ⚠️ 風險極高 · 建議固定 $100 · 依本季球隊火力、牛棚疲勞、先發近況選出高賠組合
+      </div>
+      {!result.yoloParlay?<div style={{textAlign:"center",padding:20,color:C.d,fontSize:12}}>
+        高賠場次不足（可用 {result.totalYolo} 場，需至少 3 場）
+      </div>:renderParlay(result.yoloParlay,99,"🎲 高賠一搏 · 串 "+result.yoloParlay.legs.length+" 關","#a78bfa","#7c3aed","rgba(139,92,246,0.06)",true)}
     </div>}
   </div>;
 }
