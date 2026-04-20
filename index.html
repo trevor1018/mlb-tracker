@@ -617,9 +617,14 @@ function AddBetView({addBet,uid}){
       </div>
       {scanResults.map((bet,bi)=>{
         const betType=bet.legs_count>1?`串${bet.legs_count}關`:"單場";
+        const totalOdds=bet.legs.reduce((a,l)=>a*(Number(l.odds)||1),1);
+        const payout=Math.round((bet.amount||100)*totalOdds);
         return<div key={bi} style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:6}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-            <span style={{fontSize:12,fontWeight:600}}>{betType} · {bet.date} · NT${bet.amount}</span>
+            <div>
+              <span style={{fontSize:12,fontWeight:600}}>{betType} · {bet.date} · NT${bet.amount}</span>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:C.acc,marginLeft:8}}>×{totalOdds.toFixed(2)} = <span style={{color:C.g,fontWeight:700}}>${payout.toLocaleString()}</span></span>
+            </div>
             <button onClick={()=>applyScanBet(bet)} style={{background:C.acc,border:"none",borderRadius:6,padding:"4px 10px",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none"}}>填入表單</button>
           </div>
           {bet.legs.map((l,li)=>{
