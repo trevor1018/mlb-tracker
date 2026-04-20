@@ -363,13 +363,17 @@ function determineResult(leg,hs,as){
   }
   return"pending";
 }
+const ML_GLOBAL={normal:"不讓分",handi:"讓分",total:"大小分",team_total_home:"主隊大小",team_total_away:"客隊大小",margin:"勝分差"};
 function fmtLine(market,line){
   if(market==="margin"){if(line==="3+")return" >2分";return line?` ${line}分`:"";}
   return line?` ${line}`:"";
 }
 function calcPayout(bet){
-  const legs=bet.legs,all=legs.every(l=>l.result!=="pending"),any=legs.some(l=>l.result==="lose");
-  if(!all)return{status:"pending",profit:0};if(any)return{status:"lose",profit:-bet.amount};
+  const legs=bet.legs;
+  const anyLose=legs.some(l=>l.result==="lose");
+  if(anyLose)return{status:"lose",profit:-bet.amount};
+  const allSettled=legs.every(l=>l.result!=="pending");
+  if(!allSettled)return{status:"pending",profit:0};
   const e=legs.reduce((a,l)=>a*(l.result==="push"?1:l.odds),1);
   return{status:"win",profit:Math.round(bet.amount*e)-bet.amount};
 }
@@ -628,7 +632,7 @@ function AddBetView({addBet,uid}){
             <button onClick={()=>applyScanBet(bet)} style={{background:C.acc,border:"none",borderRadius:6,padding:"4px 10px",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none"}}>填入表單</button>
           </div>
           {bet.legs.map((l,li)=>{
-            const ML={normal:"不讓分",handi:"讓分",total:"大小分",team_total_home:"主隊大小",team_total_away:"客隊大小",margin:"勝分差"};
+            const ML=ML_GLOBAL;
             const selLabel=l.selection==="home"?l.home:l.selection==="away"?l.away:l.selection==="over"?"大":"小";
             return<div key={li} style={{fontSize:11,color:C.d,padding:"3px 0",borderTop:li?`1px solid ${C.bd}`:"none"}}>
               <span style={{color:C.t}}>{l.away} @ {l.home}</span>
@@ -699,7 +703,7 @@ function LegEdit({leg,idx,onChange,onRemove,canRemove}){
 // ═══════════════════════════════════════
 function HistView({bets,updateBet,deleteBet}){
   const[filter,setFilter]=useState("all");
-  const ML={normal:"不讓分",handi:"讓分",total:"大小分",team_total_home:"主隊大小",team_total_away:"客隊大小",margin:"勝分差"};
+  const ML=ML_GLOBAL;
   const filtered=bets.filter(b=>filter==="all"||calcPayout(b).status===filter);
   if(!bets.length)return<div style={{textAlign:"center",padding:"60px 20px",color:C.d}}><div style={{fontSize:40,marginBottom:12}}>📋</div><div>尚無投注紀錄</div></div>;
   return<div>
@@ -1128,7 +1132,7 @@ function StatsView({bets,games}){
   // --- Bet stats ---
   const mono={fontFamily:"'JetBrains Mono',monospace"};
   const settled=bets.filter(b=>calcPayout(b).status!=="pending");
-  const ML={normal:"不讓分",handi:"讓分",total:"大小分",team_total_home:"主隊大小",team_total_away:"客隊大小",margin:"勝分差"};
+  const ML=ML_GLOBAL;
 
   // Bet-level stats (注單層：整注贏/輸)
   const betWins=settled.filter(b=>calcPayout(b).status==="win").length;
