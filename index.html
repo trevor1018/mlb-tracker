@@ -2317,8 +2317,10 @@ function generateRecommendations(matchups,excludes){
       usedMatchupsGlobal.add(mid);
     }
     if(legs.length===2){
-      const product=legs.reduce((acc,l)=>acc*(l.bestMinOdds||4),1);
-      stableParlays.push({legs,combinedMinOdds:product});
+      // Each leg's bestMinOdds is 1/hit_rate² (already a 2-leg parlay BE value).
+    // True 2-leg BE = 1/(hr_A × hr_B) = sqrt(1/hr_A² × 1/hr_B²) = sqrt(product).
+    const product=legs.reduce((acc,l)=>acc*(l.bestMinOdds||4),1);
+      stableParlays.push({legs,combinedMinOdds:Math.sqrt(product)});
     }
   }
 
