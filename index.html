@@ -1364,7 +1364,7 @@ function StatsView({bets,games}){
             const avgOdds=m.t?m.oddsSum/m.t:0;
             const sortedLegs=[...m.legs].sort((a,b)=>(a.date||"").localeCompare(b.date||""));
             const recentLegs=sortedLegs.slice(-10);
-            const isDirectional=betMktTab==="normal"||betMktTab==="handi";
+            const isDirectional=betMktTab==="normal"||betMktTab==="handi"||betMktTab==="margin";
             return<div style={{fontSize:12,lineHeight:1.6}}>
               {/* Overall for this market */}
               <div style={{background:C.bg,borderRadius:6,padding:8,border:`1px solid ${C.bd}`,marginBottom:10}}>
@@ -1401,7 +1401,7 @@ function StatsView({bets,games}){
           if(!ad||!ad.today_matchups)return null;
           const matchups=ad.today_matchups;
           // Market key mapping from bet leg market to analysis bet_type key
-          const mktMap={normal:"ml",handi:"spread_1.5",total:"total_8.5",team_total_home:null,team_total_away:null};
+          const mktMap={normal:"ml",handi:null,total:null,team_total_home:null,team_total_away:null,margin:null};
           let followed=0,followedWin=0,against=0,againstWin=0;
           settled.forEach(b=>{
             b.legs.forEach(l=>{
@@ -1413,7 +1413,9 @@ function StatsView({bets,games}){
                 return(l.away===az&&l.home===hz)||(l.away===hz&&l.home===az);
               });
               if(!mu)return;
-              const btKey=mktMap[l.market];
+              let btKey=mktMap[l.market];
+              if(l.market==="total"&&l.line)btKey=`total_${l.line}`;
+              else if(l.market==="handi"&&l.line)btKey=`spread_${Math.abs(Number(l.line))}`;
               if(!btKey)return;
               const bt=mu.bet_types?.[btKey];
               if(!bt||!bt.predicted||bt.predicted==="even")return;
@@ -2148,114 +2150,125 @@ function scorePick(matchup,btKey){
 }
 
 // ─── YOLO Pick Scoring (current season data only) ───
+// Candidates: spread_1.5 (65.2% HR), spread_2.5 (63.3% HR), total_9.5 over (65.5% HR)
+// spread_1.5 added: better hit rate than spread_2.5, increases pool size
+// total_9.5: always bet "over" based on scoring environment — ignores 10yr model direction
 function scoreYoloPick(matchup,btKey){
   const bt=matchup.bet_types?.[btKey];
   if(!bt||!bt.predicted||bt.predicted==="even")return null;
   if(bt.signal_conflict===true)return null;
-  // Only high-odds bet types for YOLO
-  if(!["spread_2.5","total_9.5"].includes(btKey))return null;
+  if(!["spread_1.5","spread_2.5","total_9.5"].includes(btKey))return null;
 
   const tc=matchup.team_comparisons||{};
-  const sc=matchup.sp_comparisons||{};
   const v=matchup.venue||{};
   let score=0;
+  let effectivePredicted=bt.predicted;
 
-  if(btKey==="spread_2.5"){
-    // Directional: we want a strong team crushing a weak one
-    const predicted=bt.predicted; // "away" or "home"
+  const rf=matchup.team_recent_form;
+
+  if(btKey==="spread_2.5"||btKey==="spread_1.5"){
+    // Strong team dominating weak team; spread_1.5 has higher HR (65.2% vs 63.3%)
+    // so gets a +15 baseline bonus to surface when spread_2.5 scores are marginal
+    const predicted=bt.predicted;
     const strong=predicted==="away"?"away":"home";
     const weak=predicted==="away"?"home":"away";
 
-    // Run diff gap (bigger = more likely blowout)
     const rdS=tc.run_diff_per_game?.[strong]||0;
     const rdW=tc.run_diff_per_game?.[weak]||0;
-    const rdGap=rdS-rdW;
-    score+=rdGap*15; // ~3.0 gap → +45
+    score+=(rdS-rdW)*(btKey==="spread_1.5"?14:15);
 
-    // OPS gap (batting power)
     const opsS=tc.ops?.[strong]||0;
     const opsW=tc.ops?.[weak]||0;
-    score+=(opsS-opsW)*200; // ~0.15 gap → +30
+    score+=(opsS-opsW)*200;
 
-    // ERA gap (weak team's pitching is bad)
     const eraW=tc.era?.[weak]||4;
     const eraS=tc.era?.[strong]||4;
-    score+=(eraW-eraS)*8; // ~1.5 gap → +12
+    score+=(eraW-eraS)*8;
 
-    // SP recent: weak team's SP is struggling
     const spRecentWeak=matchup[`${weak}_sp_recent`]||[];
     if(spRecentWeak.length>0){
       let totalIP=0,totalER=0;
       spRecentWeak.forEach(s=>{totalIP+=parseFloat(s.ip)||0;totalER+=s.er||0});
-      if(totalIP>0){
-        const recentERA=totalER/totalIP*9;
-        score+=Math.max(0,(recentERA-4))*5; // ERA>4 adds points
-      }
+      if(totalIP>0)score+=Math.max(0,(totalER/totalIP*9-4))*5;
     }
-    // SP recent: strong team's SP is solid
     const spRecentStrong=matchup[`${strong}_sp_recent`]||[];
     if(spRecentStrong.length>0){
       let totalIP=0,totalER=0;
       spRecentStrong.forEach(s=>{totalIP+=parseFloat(s.ip)||0;totalER+=s.er||0});
-      if(totalIP>0){
-        const recentERA=totalER/totalIP*9;
-        score+=Math.max(0,(4-recentERA))*5; // ERA<4 adds points
-      }
+      if(totalIP>0)score+=Math.max(0,(4-totalER/totalIP*9))*5;
     }
 
-    // Bullpen fatigue on weak side
     const bpW=tc.bp_fatigue?.[weak]||0;
     if(bpW>=1.0)score+=15;
-
-    // Confidence bonus from model
     if(bt.confidence==="high")score+=10;
 
+    // Recent form (last 15 games): blowout history validates YOLO-style spread picks
+    if(rf?.[strong]?.blowout_win_rate!=null){
+      score+=Math.max(0,(rf[strong].blowout_win_rate-0.3))*50; // 0.5 → +10
+    }
+    if(rf?.[weak]?.blowout_loss_rate!=null){
+      score+=Math.max(0,(rf[weak].blowout_loss_rate-0.3))*40;
+    }
+    // Recent run differential edge (complements season-long rd_gap)
+    if(rf?.[strong]&&rf?.[weak]){
+      const rrdS=(rf[strong].runs_per_game||0)-(rf[strong].ra_per_game||0);
+      const rrdW=(rf[weak].runs_per_game||0)-(rf[weak].ra_per_game||0);
+      score+=(rrdS-rrdW)*5;
+    }
+
+    if(btKey==="spread_1.5")score+=15;
+
   }else if(btKey==="total_9.5"){
-    // We want high-scoring games
+    effectivePredicted="over";
+
     const rpgA=tc.runs_per_game?.away||0;
     const rpgH=tc.runs_per_game?.home||0;
-    const combinedRPG=rpgA+rpgH;
-    score+=(combinedRPG-8)*12; // combined RPG > 8 → positive
+    score+=(rpgA+rpgH-8)*18;
 
-    // Both teams have high OPS
     const opsA=tc.ops?.away||0;
     const opsH=tc.ops?.home||0;
-    score+=((opsA+opsH)/2-0.7)*300; // avg OPS > .700 → positive
+    score+=((opsA+opsH)/2-0.7)*400;
 
-    // Both teams ERA is high (bad pitching)
     const eraA=tc.era?.away||4;
     const eraH=tc.era?.home||4;
-    score+=((eraA+eraH)/2-3.8)*10;
+    score+=((eraA+eraH)/2-3.8)*15;
 
-    // Park factor boost
     const pf=v.park_factor||1.0;
-    score+=(pf-1.0)*150; // Coors 1.276 → +41
+    score+=(pf-1.0)*200;
 
-    // SP recent: both SPs are shaky
     ["away","home"].forEach(side=>{
       const spRecent=matchup[`${side}_sp_recent`]||[];
       if(spRecent.length>0){
         let totalIP=0,totalER=0;
         spRecent.forEach(s=>{totalIP+=parseFloat(s.ip)||0;totalER+=s.er||0});
-        if(totalIP>0){
-          const recentERA=totalER/totalIP*9;
-          score+=Math.max(0,(recentERA-4))*4;
-        }
+        if(totalIP>0)score+=Math.max(0,(totalER/totalIP*9-4))*5;
       }
     });
 
-    // Bullpen fatigue on both sides
     const bpA=tc.bp_fatigue?.away||0;
     const bpH=tc.bp_fatigue?.home||0;
     if(bpA>=1.0)score+=10;
     if(bpH>=1.0)score+=10;
 
-    // Only pick "over" for total_9.5
-    if(bt.predicted!=="over")score-=30;
+    // Expected total: the strongest single signal (Poisson-based projection)
+    // Today's range 4.9–9.0, avg ~6.5; 8.0+ is strong over signal
+    const et=matchup.expected_total;
+    if(et!=null){
+      score+=Math.max(0,(et-7))*25; // 8.0 → +25, 9.0 → +50
+      if(et<6)score-=15; // projects under → penalize
+    }
+
+    // Recent over 9.5 rate: validates trend beyond season averages
+    if(rf?.away?.over_9_5_rate!=null&&rf?.home?.over_9_5_rate!=null){
+      const avgOver=(rf.away.over_9_5_rate+rf.home.over_9_5_rate)/2;
+      score+=(avgOver-0.45)*70; // 0.55 → +7, 0.65 → +14
+    }
+
+    score+=20;
   }
 
-  if(score<=0)return null;
-  return{matchup,btKey,bt,score,bestHitRate:0,bestMinOdds:null,filterCount:0,isYolo:true};
+  if(score<=20)return null;
+  return{matchup,btKey,bt:{...bt,predicted:effectivePredicted},score,bestHitRate:0,bestMinOdds:null,filterCount:0,isYolo:true};
 }
 
 // Cascade exclusion: excluding total_9.5 for a matchup also excludes 8.5 and 7.5
@@ -2305,14 +2318,14 @@ function generateRecommendations(matchups,excludes){
     }
     if(legs.length===2){
       const product=legs.reduce((acc,l)=>acc*(l.bestMinOdds||4),1);
-      stableParlays.push({legs,combinedMinOdds:Math.sqrt(product)});
+      stableParlays.push({legs,combinedMinOdds:product});
     }
   }
 
   // ═══ B區：高賠博弈 1×串5關 (本季數據) ═══
   const yoloPicks=[];
   matchups.forEach(m=>{
-    ["spread_2.5","total_9.5"].forEach(k=>{
+    ["spread_1.5","spread_2.5","total_9.5"].forEach(k=>{
       if(blocked.has(matchupId(m)+"::"+k))return;
       const p=scoreYoloPick(m,k);
       if(p)yoloPicks.push(p);
@@ -2531,12 +2544,30 @@ function RecommendPanel({matchups,uid,state,setState}){
       </div>}
       {isYolo&&(()=>{
         const tc=m.team_comparisons||{};
-        const rpgA=tc.runs_per_game?.away;const rpgH=tc.runs_per_game?.home;
-        const opsA=tc.ops?.away;const opsH=tc.ops?.home;
-        return<div style={{fontSize:11,color:C.d,marginTop:4,...mono}}>
-          RPG {rpgA?.toFixed(1)||"?"}/{rpgH?.toFixed(1)||"?"} · OPS {opsA?.toFixed(3)||"?"}/{opsH?.toFixed(3)||"?"}
-          {m.venue?.park_factor&&<> · PF {m.venue.park_factor.toFixed(3)}</>}
-        </div>;
+        const rf=m.team_recent_form;
+        if(leg.btKey==="total_9.5"){
+          const et=m.expected_total;
+          const avgOver=rf?.away?.over_9_5_rate!=null&&rf?.home?.over_9_5_rate!=null?(rf.away.over_9_5_rate+rf.home.over_9_5_rate)/2:null;
+          return<div style={{fontSize:11,color:C.d,marginTop:4,...mono}}>
+            {et!=null&&<>預期總分 <span style={{color:et>=8.5?C.g:et>=7.5?C.acc:C.d,fontWeight:700}}>{et.toFixed(2)}</span> · </>}
+            {m.venue?.park_factor&&<>PF {m.venue.park_factor.toFixed(3)}</>}
+            {avgOver!=null&&<><br/>近15場 Over9.5 均值 <span style={{color:avgOver>=0.5?C.g:C.d,fontWeight:700}}>{(avgOver*100).toFixed(0)}%</span>
+              {rf?.away?.over_9_5_rate!=null&&<> (客{(rf.away.over_9_5_rate*100).toFixed(0)}%/主{(rf.home.over_9_5_rate*100).toFixed(0)}%)</>}
+            </>}
+          </div>;
+        }else{
+          // spread pick: show recent blowout signal
+          const predicted=leg.bt.predicted;
+          const strong=predicted;const weak=predicted==="away"?"home":"away";
+          const bwS=rf?.[strong]?.blowout_win_rate;
+          const blW=rf?.[weak]?.blowout_loss_rate;
+          const rpgA=tc.runs_per_game?.away;const rpgH=tc.runs_per_game?.home;
+          return<div style={{fontSize:11,color:C.d,marginTop:4,...mono}}>
+            RPG {rpgA?.toFixed(1)||"?"}/{rpgH?.toFixed(1)||"?"}
+            {m.venue?.park_factor&&<> · PF {m.venue.park_factor.toFixed(3)}</>}
+            {(bwS!=null||blW!=null)&&<><br/>近15場 強隊勝≥3分 <span style={{color:bwS>=0.4?C.g:C.d,fontWeight:700}}>{bwS!=null?(bwS*100).toFixed(0)+"%":"?"}</span> · 弱隊輸≥3分 <span style={{color:blW>=0.4?C.g:C.d,fontWeight:700}}>{blW!=null?(blW*100).toFixed(0)+"%":"?"}</span></>}
+          </div>;
+        }
       })()}
       {oddsData&&<div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.bd}`,fontSize:11,...mono}}>
         {odds?<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>

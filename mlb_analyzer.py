@@ -176,6 +176,19 @@ TEAM_ZH = {
     "Toronto Blue Jays": "藍鳥", "Washington Nationals": "國民",
 }
 
+# 指標名 → snapshot 欄位名稱對照 (單一指標回測與分層回測共用)
+STAT_KEY_MAP = {
+    "ops": "ops", "slg": "slg", "obp": "obp", "avg": "avg",
+    "runs_pg": "runs_per_game", "hr_pg": "hr_per_game",
+    "bb_rate": "bb_rate", "so_rate": "so_rate",
+    "era": "era", "whip": "whip", "fip": "fip",
+    "k9": "k9", "bb9": "bb9", "k_bb_ratio": "k_bb_ratio",
+    "ra_pg": "ra_per_game", "bp_fatigue": "bp_fatigue",
+    "win_pct": "win_pct", "run_diff_pg": "run_diff_per_game", "pyth_pct": "pyth_pct",
+    "sp_era": "sp_era", "sp_whip": "sp_whip", "sp_fip": "sp_fip",
+    "sp_k9": "sp_k9", "sp_bb9": "sp_bb9", "sp_k_bb": "sp_k_bb", "sp_hr9": "sp_hr9",
+}
+
 
 # ═══════════════════════════════════════════
 # 進度條
@@ -1209,7 +1222,7 @@ def run_correlation_analysis(games):
 
     # 載入天氣快取 & park factors
     weather_cache = load_weather_cache()
-    pf_all, _ = compute_park_factors(games, min_home_games=50)
+    pf_all, league_rpg = compute_park_factors(games, min_home_games=50)
     print(f"  天氣快取: {len(weather_cache)} 場, Park factors: {len(pf_all)} 球場")
 
     # 累積追蹤器 - 每季獨立 (避免跨季污染)
@@ -1403,19 +1416,6 @@ def run_correlation_analysis(games):
             if predicted == m[out_key]:
                 correct += 1
         return correct, total
-
-    # 指標名 -> snap 內的 key (用於查 stat_means)
-    STAT_KEY_MAP = {
-        "ops": "ops", "slg": "slg", "obp": "obp", "avg": "avg",
-        "runs_pg": "runs_per_game", "hr_pg": "hr_per_game",
-        "bb_rate": "bb_rate", "so_rate": "so_rate",
-        "era": "era", "whip": "whip", "fip": "fip",
-        "k9": "k9", "bb9": "bb9", "k_bb_ratio": "k_bb_ratio",
-        "ra_pg": "ra_per_game", "bp_fatigue": "bp_fatigue",
-        "win_pct": "win_pct", "run_diff_pg": "run_diff_per_game", "pyth_pct": "pyth_pct",
-        "sp_era": "sp_era", "sp_whip": "sp_whip", "sp_fip": "sp_fip",
-        "sp_k9": "sp_k9", "sp_bb9": "sp_bb9", "sp_k_bb": "sp_k_bb", "sp_hr9": "sp_hr9",
-    }
 
     def test_total(matchups, stat_name, getter, total_direction, source, bet_type):
         """測試 total 指標對大小分的命中率 (用 baseline 加總均值預測)"""
@@ -1698,11 +1698,9 @@ def run_correlation_analysis(games):
         bucket_thresholds_all[bt_key] = b_thresh
         profitable_filters_all[bt_key] = b_profit
 
-    # === 計算 park factors ===
-    pf, league_rpg = compute_park_factors(games, min_home_games=50)
-    print(f"\n  Park factors ({len(pf)} 球場, 聯盟平均 {league_rpg:.2f} rpg)")
-    # 前 5 / 後 5
-    sorted_pf = sorted(pf.items(), key=lambda x: -x[1])
+    # === Park factors 摘要顯示 ===
+    print(f"\n  Park factors ({len(pf_all)} 球場, 聯盟平均 {league_rpg:.2f} rpg)")
+    sorted_pf = sorted(pf_all.items(), key=lambda x: -x[1])
     for team, factor in sorted_pf[:3]:
         print(f"    ▲ {TEAM_ZH.get(team, team)}: {factor:.3f}")
     print(f"    ...")
@@ -1721,7 +1719,7 @@ def run_correlation_analysis(games):
             'stat_stds': stat_stds,
             'bucket_thresholds': bucket_thresholds_all,
             'profitable_filters': profitable_filters_all,
-            'park_factors': pf,
+            'park_factors': pf_all,
         })
 
     return results, trackers
@@ -1733,17 +1731,6 @@ def run_correlation_analysis(games):
 def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_key, bet_type,
                                       stat_means, stat_stds):
     """對單一 bet type 做分層回測"""
-    STAT_KEY_MAP = {
-        "ops": "ops", "slg": "slg", "obp": "obp", "avg": "avg",
-        "runs_pg": "runs_per_game", "hr_pg": "hr_per_game",
-        "bb_rate": "bb_rate", "so_rate": "so_rate",
-        "era": "era", "whip": "whip", "fip": "fip",
-        "k9": "k9", "bb9": "bb9", "k_bb_ratio": "k_bb_ratio",
-        "ra_pg": "ra_per_game", "bp_fatigue": "bp_fatigue",
-        "win_pct": "win_pct", "run_diff_pg": "run_diff_per_game", "pyth_pct": "pyth_pct",
-        "sp_era": "sp_era", "sp_whip": "sp_whip", "sp_fip": "sp_fip",
-        "sp_k9": "sp_k9", "sp_bb9": "sp_bb9", "sp_k_bb": "sp_k_bb", "sp_hr9": "sp_hr9",
-    }
     out_key = f'out_{bet_type_key}'
     print(f"目標: 找出命中率 >= 58% 的場次篩選條件\n")
 
@@ -2103,6 +2090,8 @@ def save_baseline(data):
     for bt_key, bt_data in bet_types_data.items():
         n_filters = len(bt_data['profitable_filters'])
         print(f"   {bt_data['name']:<12s}: {len(bt_data['indicator_ranking'])} 指標, {n_filters} 個正 EV 篩選")
+
+
 def load_baseline():
     """載入 10 年 baseline"""
     path = os.path.join(CACHE_DIR, BASELINE_FILE)
@@ -2306,6 +2295,132 @@ def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
     return scores
 
 
+def compute_team_recent_form(games, team_name, before_date, n=15):
+    """回傳球隊 before_date 之前最近 n 場比賽的表現摘要。
+    不足 n 場就用全部可用場次；完全沒有比賽回傳 None。
+    """
+    team_games = []
+    for g in games:
+        if g.date >= before_date:
+            continue
+        if g.away_name == team_name:
+            team_games.append(('away', g))
+        elif g.home_name == team_name:
+            team_games.append(('home', g))
+    if not team_games:
+        return None
+
+    team_games.sort(key=lambda x: (x[1].date, x[1].game_pk))
+    recent = team_games[-n:]
+
+    total_rs = total_ra = 0
+    total_ab = total_h = total_2b = total_3b = total_hr = 0
+    total_bb = total_hbp = total_sf = 0
+    over_9_5 = blowout_wins = blowout_losses = 0
+
+    for side, g in recent:
+        if side == 'away':
+            stats = g.away_stats; rs = g.away_score; ra = g.home_score
+        else:
+            stats = g.home_stats; rs = g.home_score; ra = g.away_score
+        total_rs += rs
+        total_ra += ra
+        total_ab += stats.ab
+        total_h += stats.h
+        total_2b += stats.doubles
+        total_3b += stats.triples
+        total_hr += stats.hr
+        total_bb += stats.bb
+        total_hbp += stats.hbp
+        total_sf += stats.sf
+        if (rs + ra) > 9.5:
+            over_9_5 += 1
+        diff = rs - ra
+        if diff >= 3:
+            blowout_wins += 1
+        elif diff <= -3:
+            blowout_losses += 1
+
+    ng = len(recent)
+    reach = total_h + total_bb + total_hbp
+    pa = total_ab + total_bb + total_hbp + total_sf
+    obp = reach / pa if pa > 0 else 0
+    tb = total_h + total_2b + 2 * total_3b + 3 * total_hr
+    slg = tb / total_ab if total_ab > 0 else 0
+
+    return {
+        'games': ng,
+        'runs_per_game': round(total_rs / ng, 2),
+        'ra_per_game': round(total_ra / ng, 2),
+        'ops': round(obp + slg, 3),
+        'over_9_5_rate': round(over_9_5 / ng, 3),
+        'blowout_win_rate': round(blowout_wins / ng, 3),
+        'blowout_loss_rate': round(blowout_losses / ng, 3),
+    }
+
+
+def compute_expected_total(away_form, home_form, away_sp_recent, home_sp_recent,
+                            away_snap, home_snap, park_factor, weather, is_dome):
+    """Poisson 風格預期總分:
+       away_offense = mean(away 近期 RPG, home SP 預期 RA9 × 4.5/9)
+       home_offense = mean(home 近期 RPG, away SP 預期 RA9 × 4.5/9)
+       total = (away_offense + home_offense) × park_factor × weather_factor
+       clamp [4.0, 14.0]
+    """
+    def team_rpg(form, snap):
+        if form and form.get('games', 0) > 0:
+            return form['runs_per_game']
+        return snap.get('runs_per_game', 4.5)
+
+    def sp_ra9(sp_recent, fallback_era):
+        # 累計 ER/IP × 9; 少於 3 場退回球隊 ERA
+        if not sp_recent or len(sp_recent) < 3:
+            return fallback_era
+        total_er = 0
+        total_outs = 0
+        for s in sp_recent:
+            total_er += int(s.get('er', 0) or 0)
+            total_outs += parse_ip(s.get('ip', '0'))
+        if total_outs == 0:
+            return fallback_era
+        return (total_er / (total_outs / 3)) * 9
+
+    away_rpg = team_rpg(away_form, away_snap)
+    home_rpg = team_rpg(home_form, home_snap)
+    away_sp_ra9 = sp_ra9(away_sp_recent, away_snap.get('era', 4.5))
+    home_sp_ra9 = sp_ra9(home_sp_recent, home_snap.get('era', 4.5))
+
+    # 4.5/9 = SP 平均負擔的局數佔比 (約 5 局)
+    away_offense = (away_rpg + home_sp_ra9 * 4.5 / 9) / 2
+    home_offense = (home_rpg + away_sp_ra9 * 4.5 / 9) / 2
+    base = away_offense + home_offense
+
+    # 天氣修正 (僅開放式球場 + 風速 > 10mph)
+    weather_adj = 1.0
+    if not is_dome and weather and weather.get('wind_mph') is not None:
+        wind_mph = weather['wind_mph']
+        wind_dir = weather.get('wind_dir_deg')
+        if wind_mph > 10 and wind_dir is not None:
+            # 粗略方位假設 (無球場確切朝向資料):
+            #   南-西風 (135°-270°) = 多數球場為順風 (吹向外野)
+            #   北風 (315°-45° wrap) = 多數球場為逆風 (吹向內野)
+            if 135 <= wind_dir <= 270:
+                weather_adj = 1.05
+            elif wind_dir >= 315 or wind_dir <= 45:
+                weather_adj = 0.95
+
+    expected = base * park_factor * weather_adj
+    expected_clamped = max(4.0, min(14.0, expected))
+
+    breakdown = {
+        'away_offense': round(away_offense, 2),
+        'home_offense': round(home_offense, 2),
+        'park_adj': round(park_factor, 3),
+        'weather_adj': round(weather_adj, 3),
+    }
+    return round(expected_clamped, 2), breakdown
+
+
 def generate_daily_analysis(games, target_date=None, top5_only=False):
     """daily 主流程：用當季數據 + 10 年 baseline 產出指定日期的比賽分析 JSON
 
@@ -2332,10 +2447,11 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
     # 計算當季均值 (用於大小分 z-score 修正)
     current_season_means = {}
     all_snaps = [t.snapshot(today) for t in team_trackers.values()]
-    for key in all_snaps[0]:
-        vals = [s[key] for s in all_snaps if isinstance(s[key], (int, float))]
-        if vals:
-            current_season_means[('team', key)] = sum(vals) / len(vals)
+    if all_snaps:
+        for key in all_snaps[0]:
+            vals = [s[key] for s in all_snaps if isinstance(s[key], (int, float))]
+            if vals:
+                current_season_means[('team', key)] = sum(vals) / len(vals)
     all_sp_snaps = [p.snapshot() for p in pitcher_trackers.values() if p.starts >= MIN_STARTS]
     if all_sp_snaps:
         for key in all_sp_snaps[0]:
@@ -2394,9 +2510,9 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
             pf = park_factors.get(home_team, 1.0)  # 主場球隊的 park factor
             is_dome = venue_info.get('roof', 'Open') in ('Dome', 'Retractable')
 
-            # 天氣查詢 (Open-Meteo forecast)
+            # 天氣查詢 (Open-Meteo forecast)，室內球場跳過
             weather = None
-            if venue_info.get('lat') and venue_info.get('lon'):
+            if venue_info.get('lat') and venue_info.get('lon') and not is_dome:
                 weather = fetch_game_weather(
                     venue_info['lat'], venue_info['lon'], today,
                     game_hour=19, is_forecast=True
@@ -2675,6 +2791,16 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
             any_top_10 = any(bt.get('is_top_10_pct') for bt in bet_type_analysis.values())
             any_top_5 = any(bt.get('is_top_5_pct') for bt in bet_type_analysis.values())
 
+            # 近 15 場表現 (用於前端 YOLO total picker 驗證趨勢)
+            away_form = compute_team_recent_form(games, away_team, today, n=15)
+            home_form = compute_team_recent_form(games, home_team, today, n=15)
+
+            # 預期總分 (Poisson 風格, 含 PF + 天氣修正)
+            expected_total_val, expected_total_breakdown = compute_expected_total(
+                away_form, home_form, away_sp_recent, home_sp_recent,
+                away_snap, home_snap, pf, weather, is_dome,
+            )
+
             matchup_data = {
                 'away': away_team, 'away_zh': away_zh,
                 'home': home_team, 'home_zh': home_zh,
@@ -2693,6 +2819,12 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 'weather': weather,
                 'team_comparisons': team_comparisons,
                 'sp_comparisons': sp_comparisons,
+                'team_recent_form': {
+                    'away': away_form,
+                    'home': home_form,
+                },
+                'expected_total': expected_total_val,
+                'expected_total_breakdown': expected_total_breakdown,
                 'away_edges': away_edges,
                 'home_edges': home_edges,
                 'any_top_5_pct': any_top_5,
