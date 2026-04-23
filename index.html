@@ -2101,6 +2101,78 @@ function MatchupCardV3({m}){
   </div>;
 }
 
+// ─── Poisson Monte Carlo (真實串關勝率) ───
+// Knuth's algorithm for Poisson sampling (OK for λ < 30, which covers MLB scoring)
+function samplePoisson(lambda){
+  if(lambda<=0)return 0;
+  const L=Math.exp(-lambda);
+  let k=0,p=1;
+  while(p>L){k++;p*=Math.random()}
+  return k-1;
+}
+
+// Estimate per-team expected runs for a matchup, falling back gracefully
+function estimateLambdas(matchup){
+  const bd=matchup.expected_total_breakdown||{};
+  const tc=matchup.team_comparisons||{};
+  const et=matchup.expected_total;
+  const pf=matchup.venue?.park_factor||1.0;
+  const wx=bd.weather_adj||1.0;
+  let aL=bd.away_offense,hL=bd.home_offense;
+  if(aL==null)aL=(tc.runs_per_game?.away||4.5)*pf*wx;
+  if(hL==null)hL=(tc.runs_per_game?.home||4.5)*pf*wx;
+  if(et!=null){
+    // Blend with expected_total to align total projections
+    const scale=et/(aL+hL);
+    aL*=scale;hL*=scale;
+  }
+  return[Math.max(0.3,aL),Math.max(0.3,hL)];
+}
+
+// Simulate one leg's hit rate using Poisson scoring
+function simulateLegWinRate(leg,trials){
+  const[aL,hL]=estimateLambdas(leg.matchup);
+  const btKey=leg.btKey;
+  const predicted=leg.bt.predicted;
+  let hits=0;
+  for(let i=0;i<trials;i++){
+    const as=samplePoisson(aL);
+    const hs=samplePoisson(hL);
+    let won=false;
+    if(btKey==="ml"){
+      won=predicted==="away"?as>hs:hs>as;
+    }else if(btKey.startsWith("spread_")){
+      const line=parseFloat(btKey.split("_")[1]);
+      const margin=predicted==="away"?as-hs:hs-as;
+      won=margin>line;
+    }else if(btKey.startsWith("total_")){
+      const line=parseFloat(btKey.split("_")[1]);
+      const total=as+hs;
+      won=predicted==="over"?total>line:total<line;
+    }
+    if(won)hits++;
+  }
+  return hits/trials;
+}
+
+// Full parlay simulation: returns per-leg probs + combined probability (independent)
+function simulateParlay(legs,trials=5000){
+  const legProbs=legs.map(l=>simulateLegWinRate(l,trials));
+  const combined=legProbs.reduce((a,p)=>a*p,1);
+  return{legProbs,combined};
+}
+
+// Kelly criterion bet sizing
+// Returns recommended stake (rounded); fraction < 1 applies fractional Kelly for safety
+function kellyStake(bankroll,winProb,decimalOdds,fraction=0.5){
+  if(!bankroll||bankroll<=0||!winProb||!decimalOdds||decimalOdds<=1)return 0;
+  const b=decimalOdds-1;
+  const edge=b*winProb-(1-winProb);
+  if(edge<=0)return 0;
+  const f=edge/b*fraction;
+  return Math.max(0,Math.round(bankroll*f));
+}
+
 // ─── Recommendation Scoring ───
 function scorePick(matchup,btKey){
   const bt=matchup.bet_types?.[btKey];
@@ -2451,6 +2523,9 @@ function RecommendPanel({matchups,uid,state,setState}){
   const[oddsError,setOddsError]=useState("");
   const[showKeyInput,setShowKeyInput]=useState(false);
   const[excludes,setExcludes]=useState(()=>new Set());
+  const[bankroll,setBankroll]=useState(()=>Number(load("bankroll-ntd",10000))||10000);
+  const[showBankrollInput,setShowBankrollInput]=useState(false);
+  const saveBankroll=(v)=>{const n=Number(v)||0;setBankroll(n);save("bankroll-ntd",n)};
 
   useEffect(()=>{
     if(!uid)return;
@@ -2596,6 +2671,20 @@ function RecommendPanel({matchups,uid,state,setState}){
       combinedAvg=legOdds.reduce((a,o)=>a*o.avg,1);
       combinedBest=legOdds.reduce((a,o)=>a*o.best,1);
     }
+    // Monte Carlo true win rate (cached on parlay object to avoid re-sim each render)
+    if(!parlay._mc){
+      parlay._mc=simulateParlay(parlay.legs,isYolo?3000:5000);
+    }
+    const mc=parlay._mc;
+    // Kelly bet size — prefer best available odds, fall back to estimates
+    // A 區: combinedMinOdds × 1.3 (BE × typical edge); B 區: product of typical odds per bet type
+    const typicalOdds={"spread_1.5":2.3,"spread_2.5":2.55,"total_9.5":2.40,"total_8.5":2.15,"total_7.5":1.95,"ml":1.85};
+    const fallbackOdds=isYolo?parlay.legs.reduce((a,l)=>a*(typicalOdds[l.btKey]||2.2),1):(parlay.combinedMinOdds?parlay.combinedMinOdds*1.3:null);
+    const kellyOdds=combinedBest||combinedAvg||fallbackOdds;
+    const kellyAmount=kellyOdds?kellyStake(bankroll,mc.combined,kellyOdds,0.5):0;
+    const fullKelly=kellyOdds?kellyStake(bankroll,mc.combined,kellyOdds,1.0):0;
+    const kellyEV=kellyOdds?(mc.combined*kellyOdds-1)*100:0;
+
     return<div key={pi} style={{background:bgColor,borderRadius:10,padding:14,border:`2px solid ${borderColor}`,marginBottom:10}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
         <div style={{fontSize:14,fontWeight:700,color:titleColor}}>{title}</div>
@@ -2608,6 +2697,14 @@ function RecommendPanel({matchups,uid,state,setState}){
           <span style={{fontSize:12,color:C.d}}>損益平衡賠率</span>
           <span style={{fontSize:15,fontWeight:700,...mono,color:C.acc}}>{parlay.combinedMinOdds.toFixed(2)}</span>
         </div>}
+        {/* Monte Carlo win rate */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+          <span style={{fontSize:12,color:C.d}}>🎲 真實勝率 (Poisson 模擬)</span>
+          <span style={{fontSize:15,fontWeight:700,...mono,color:mc.combined>=0.2?C.g:mc.combined>=0.1?C.acc:C.r}}>{(mc.combined*100).toFixed(1)}%</span>
+        </div>
+        <div style={{fontSize:10,color:C.m,marginTop:2,...mono}}>
+          每腳: {mc.legProbs.map(p=>(p*100).toFixed(0)+"%").join(" × ")}
+        </div>
         {oddsData&&allMatched&&<>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
             <span style={{fontSize:12,color:C.b}}>🌏 合計賠率 (均值)</span>
@@ -2617,11 +2714,23 @@ function RecommendPanel({matchups,uid,state,setState}){
             <span style={{fontSize:11,color:C.d}}>合計賠率 (最佳)</span>
             <span style={{fontSize:13,fontWeight:600,...mono,color:C.g}}>{combinedBest.toFixed(2)}</span>
           </div>
-          {isYolo&&<div style={{fontSize:11,color:"#a78bfa",marginTop:4,textAlign:"center",...mono}}>
-            下 $100 最佳可回 ${Math.round(combinedBest*100).toLocaleString()}
-          </div>}
         </>}
-        {oddsData&&!allMatched&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>部分腳位無國際盤對應</div>}
+        {/* Kelly bet sizing */}
+        {kellyOdds&&<div style={{marginTop:8,paddingTop:8,borderTop:`1px dashed ${C.bd}`}}>
+          {kellyAmount>0?<>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:12,color:C.d}}>💰 建議下注 (半 Kelly)</span>
+              <span style={{fontSize:16,fontWeight:700,...mono,color:C.acc}}>NT${kellyAmount.toLocaleString()}</span>
+            </div>
+            <div style={{fontSize:10,color:C.m,marginTop:2,...mono}}>
+              EV {kellyEV>=0?"+":""}{kellyEV.toFixed(1)}% · 滿 Kelly NT${fullKelly.toLocaleString()} · 本金 NT${bankroll.toLocaleString()}
+            </div>
+          </>:<div style={{fontSize:11,color:C.r,textAlign:"center"}}>
+            ⚠ 負期望值 (EV {kellyEV.toFixed(1)}%)，建議跳過
+          </div>}
+        </div>}
+        {oddsData&&!allMatched&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>部分腳位無國際盤對應，Kelly 以估算賠率計算</div>}
+        {!oddsData&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>未抓國際盤，Kelly 以{isYolo?"各盤口典型賠率":"損益平衡賠率×1.3"}估算</div>}
       </div>
     </div>;
   };
@@ -2634,6 +2743,20 @@ function RecommendPanel({matchups,uid,state,setState}){
         <span style={{color:C.g}}>A 穩健推薦</span>：4 單 × 串 2 關，依 10 年歷史指標計算信心分數<br/>
         <span style={{color:"#a78bfa"}}>B 高賠博弈</span>：1 單 × 串 5 關，依本季球隊火力 + 牛棚 + 先發近況，偏重讓分 2.5 / 大分 9.5
       </div>
+    </div>
+
+    {/* Bankroll (for Kelly sizing) */}
+    <div style={{background:C.card,borderRadius:10,padding:"10px 14px",border:`1px solid ${C.bd}`,marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:12,color:C.d}}>💰 本金 (用於 Kelly 建議)</div>
+        <button onClick={()=>setShowBankrollInput(!showBankrollInput)} style={{background:"none",border:"none",color:C.acc,cursor:"pointer",fontSize:14,fontWeight:700,...mono}}>
+          NT${bankroll.toLocaleString()} {showBankrollInput?"▲":"▼"}
+        </button>
+      </div>
+      {showBankrollInput&&<div style={{marginTop:8}}>
+        <Inp value={bankroll} onChange={saveBankroll} type="number" mono/>
+        <div style={{fontSize:10,color:C.m,marginTop:4}}>半 Kelly 較保守 (波動較小)，滿 Kelly 成長最快但破產風險較高</div>
+      </div>}
     </div>
 
     {/* Generate button */}
