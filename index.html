@@ -170,9 +170,31 @@ function twTeam(name){
   return name;
 }
 
+// ─── 圖片壓縮：縮短邊到 1600px、JPEG quality 0.85
+// OCR.space 免費 1MB 上限，手機截圖普遍 2-5MB，不壓縮會 "Failed to fetch"
+async function compressImage(file,maxSide=1600,quality=0.85){
+  const dataUrl=await new Promise((ok,fail)=>{
+    const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=fail;r.readAsDataURL(file);
+  });
+  const img=await new Promise((ok,fail)=>{
+    const i=new Image();i.onload=()=>ok(i);i.onerror=fail;i.src=dataUrl;
+  });
+  const scale=Math.min(1,maxSide/Math.max(img.width,img.height));
+  const w=Math.round(img.width*scale),h=Math.round(img.height*scale);
+  const canvas=document.createElement("canvas");
+  canvas.width=w;canvas.height=h;
+  const ctx=canvas.getContext("2d");
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h); // 白底避免透明 JPEG 變黑
+  ctx.drawImage(img,0,0,w,h);
+  return canvas.toDataURL("image/jpeg",quality);
+}
+
 // ─── OCR via OCR.space (free 25K/month) ───
 // apikey 放 FormData 而非 header，避開 CORS preflight → 防止 "Failed to fetch"
 async function ocrImage(base64WithPrefix,apiKey){
+  // base64 字串長度 × 0.75 ≈ 解碼後 bytes；>900KB 就逼近 OCR.space 1MB 限制
+  const approxBytes=(base64WithPrefix.length-base64WithPrefix.indexOf(",")-1)*0.75;
+  if(approxBytes>1024*1024)throw new Error(`圖片壓縮後仍 ${(approxBytes/1024/1024).toFixed(2)}MB，超過 OCR.space 免費 1MB 限制`);
   const form=new FormData();
   form.append("apikey",apiKey);
   form.append("base64Image",base64WithPrefix);
@@ -183,7 +205,7 @@ async function ocrImage(base64WithPrefix,apiKey){
   try{
     res=await fetch("https://api.ocr.space/parse/image",{method:"POST",body:form});
   }catch(e){
-    throw new Error("網路錯誤或 CORS 被擋 (圖片可能 >1MB / API Key 錯誤 / 離線)");
+    throw new Error("網路錯誤或 CORS 被擋 (可能離線 / 被擴充套件擋 / 防火牆)");
   }
   if(!res.ok){
     let msg=`OCR API ${res.status}`;
@@ -526,8 +548,15 @@ function AddBetView({addBet,uid}){
       const allBets=[];
       for(let fi=0;fi<files.length;fi++){
         const file=files[fi];
-        const reader=new FileReader();
-        const dataUrl=await new Promise((ok,fail)=>{reader.onload=()=>ok(reader.result);reader.onerror=fail;reader.readAsDataURL(file)});
+        // 先壓縮到 1600px/JPEG85 再送，避免 OCR.space 1MB 限制導致 "Failed to fetch"
+        let dataUrl;
+        try{dataUrl=await compressImage(file)}
+        catch(e){throw new Error(`第 ${fi+1} 張圖片讀取失敗：${e.message||e}`)}
+        // 若還是太大，進一步降到 1200px quality 0.7
+        const approxKB=(dataUrl.length-dataUrl.indexOf(",")-1)*0.75/1024;
+        if(approxKB>900){
+          dataUrl=await compressImage(file,1200,0.7);
+        }
         const rawText=await ocrImage(dataUrl,ocrKey.trim());
         allRawText+=(fi>0?"\n--- 第 "+(fi+1)+" 張 ---\n":"")+rawText;
         if(!rawText.trim())continue;
