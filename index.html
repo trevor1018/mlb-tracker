@@ -171,14 +171,25 @@ function twTeam(name){
 }
 
 // ─── OCR via OCR.space (free 25K/month) ───
+// apikey 放 FormData 而非 header，避開 CORS preflight → 防止 "Failed to fetch"
 async function ocrImage(base64WithPrefix,apiKey){
   const form=new FormData();
+  form.append("apikey",apiKey);
   form.append("base64Image",base64WithPrefix);
   form.append("language","cht");
   form.append("isOverlayRequired","false");
   form.append("OCREngine","2");
-  const res=await fetch("https://api.ocr.space/parse/image",{method:"POST",headers:{apikey:apiKey},body:form});
-  if(!res.ok)throw new Error(`OCR API ${res.status}`);
+  let res;
+  try{
+    res=await fetch("https://api.ocr.space/parse/image",{method:"POST",body:form});
+  }catch(e){
+    throw new Error("網路錯誤或 CORS 被擋 (圖片可能 >1MB / API Key 錯誤 / 離線)");
+  }
+  if(!res.ok){
+    let msg=`OCR API ${res.status}`;
+    try{const t=await res.text();if(t)msg+=`: ${t.slice(0,200)}`}catch{}
+    throw new Error(msg);
+  }
   const data=await res.json();
   if(data.IsErroredOnProcessing)throw new Error(data.ErrorMessage?.[0]||"OCR 處理失敗");
   return(data.ParsedResults||[]).map(r=>r.ParsedText||"").join("\n");
