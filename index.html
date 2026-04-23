@@ -563,15 +563,9 @@ function AddBetView({addBet,uid}){
       const allBets=[];
       for(let fi=0;fi<files.length;fi++){
         const file=files[fi];
-        // 先壓縮到 1600px/JPEG85 再送，避免 OCR.space 1MB 限制導致 "Failed to fetch"
-        let dataUrl;
-        try{dataUrl=await compressImage(file)}
-        catch(e){throw new Error(`第 ${fi+1} 張圖片讀取失敗：${e.message||e}`)}
-        // 若還是太大，進一步降到 1200px quality 0.7
-        const approxKB=(dataUrl.length-dataUrl.indexOf(",")-1)*0.75/1024;
-        if(approxKB>900){
-          dataUrl=await compressImage(file,1200,0.7);
-        }
+        const dataUrl=await new Promise((ok,fail)=>{
+          const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=fail;r.readAsDataURL(file);
+        });
         const rawText=await ocrImage(dataUrl,ocrKey.trim());
         allRawText+=(fi>0?"\n--- 第 "+(fi+1)+" 張 ---\n":"")+rawText;
         if(!rawText.trim())continue;
