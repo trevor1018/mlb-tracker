@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-22T18:15:02.689240",
+  "generated_at": "2026-04-23T21:20:41.376109",
   "date": "2026-04-22",
   "current_season": 2026,
   "current_season_games": 353,
@@ -15,10 +15,10 @@
         "indicator_ranking": [
           {
             "name": "composite:run_diff+sp_fip+home",
-            "pct": 56.4,
-            "correct": 10923,
+            "pct": 56.5,
+            "correct": 10931,
             "total": 19363,
-            "z_score": 17.84,
+            "z_score": 17.96,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -26,9 +26,9 @@
           {
             "name": "composite:ops+whip",
             "pct": 56.1,
-            "correct": 13184,
+            "correct": 13181,
             "total": 23510,
-            "z_score": 18.64,
+            "z_score": 18.6,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -36,19 +36,29 @@
           {
             "name": "composite:pyth+ops+sp_fip+home",
             "pct": 56.1,
-            "correct": 10857,
+            "correct": 10867,
             "total": 19363,
-            "z_score": 16.9,
+            "z_score": 17.04,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
-            "name": "composite:pyth+ops+sp_fip",
+            "name": "composite:run_diff+sp_fip",
             "pct": 56.0,
-            "correct": 10844,
+            "correct": 10851,
             "total": 19363,
-            "z_score": 16.71,
+            "z_score": 16.81,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
+          },
+          {
+            "name": "composite:ops+era",
+            "pct": 55.9,
+            "correct": 13146,
+            "total": 23510,
+            "z_score": 18.14,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -64,11 +74,11 @@
             "category": "composite"
           },
           {
-            "name": "composite:run_diff+sp_fip",
+            "name": "composite:pyth+ops+sp_fip",
             "pct": 55.9,
-            "correct": 10833,
+            "correct": 10829,
             "total": 19363,
-            "z_score": 16.55,
+            "z_score": 16.49,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -84,11 +94,11 @@
             "category": "team"
           },
           {
-            "name": "composite:ops+era",
+            "name": "composite:obp+whip",
             "pct": 55.8,
-            "correct": 13109,
+            "correct": 13128,
             "total": 23510,
-            "z_score": 17.66,
+            "z_score": 17.91,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -96,9 +106,9 @@
           {
             "name": "composite:pyth+ops+fip+home",
             "pct": 55.8,
-            "correct": 13113,
+            "correct": 13127,
             "total": 23510,
-            "z_score": 17.71,
+            "z_score": 17.9,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -124,21 +134,31 @@
             "category": "team"
           },
           {
-            "name": "composite:pyth+ops+fip",
+            "name": "home_leading_series",
             "pct": 55.7,
-            "correct": 13092,
+            "correct": 3820,
+            "total": 6859,
+            "z_score": 9.43,
+            "significant": true,
+            "direction": "主隊系列賽領先",
+            "category": "situational"
+          },
+          {
+            "name": "composite:ops+fip",
+            "pct": 55.7,
+            "correct": 13090,
             "total": 23510,
-            "z_score": 17.44,
+            "z_score": 17.41,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
-            "name": "composite:obp+whip",
+            "name": "composite:pyth+ops+fip",
             "pct": 55.7,
-            "correct": 13105,
+            "correct": 13089,
             "total": 23510,
-            "z_score": 17.61,
+            "z_score": 17.4,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -146,19 +166,9 @@
           {
             "name": "composite:ops+sp_fip+home",
             "pct": 55.7,
-            "correct": 10778,
+            "correct": 10793,
             "total": 19363,
-            "z_score": 15.76,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:ops+fip",
-            "pct": 55.6,
-            "correct": 13064,
-            "total": 23510,
-            "z_score": 17.07,
+            "z_score": 15.98,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -166,19 +176,29 @@
           {
             "name": "composite:ops+sp_fip",
             "pct": 55.6,
-            "correct": 10762,
+            "correct": 10766,
             "total": 19363,
-            "z_score": 15.53,
+            "z_score": 15.59,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
             "name": "composite:run_diff+fip",
-            "pct": 55.4,
-            "correct": 13036,
+            "pct": 55.5,
+            "correct": 13049,
             "total": 23510,
-            "z_score": 16.71,
+            "z_score": 16.88,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
+          },
+          {
+            "name": "composite:slg+era",
+            "pct": 55.5,
+            "correct": 13045,
+            "total": 23510,
+            "z_score": 16.83,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -186,29 +206,19 @@
           {
             "name": "composite:run_diff+fip+home",
             "pct": 55.4,
-            "correct": 13014,
+            "correct": 13034,
             "total": 23510,
-            "z_score": 16.42,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:slg+era",
-            "pct": 55.3,
-            "correct": 13010,
-            "total": 23510,
-            "z_score": 16.37,
+            "z_score": 16.68,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
             "name": "composite:ops+sp_era+home",
-            "pct": 55.3,
-            "correct": 10714,
+            "pct": 55.4,
+            "correct": 10723,
             "total": 19363,
-            "z_score": 14.84,
+            "z_score": 14.97,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -226,9 +236,9 @@
           {
             "name": "composite:ops+sp_whip",
             "pct": 55.2,
-            "correct": 10683,
+            "correct": 10684,
             "total": 19363,
-            "z_score": 14.39,
+            "z_score": 14.41,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -256,9 +266,9 @@
           {
             "name": "composite:ops+sp_era",
             "pct": 55.1,
-            "correct": 10663,
+            "correct": 10662,
             "total": 19363,
-            "z_score": 14.11,
+            "z_score": 14.09,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -1610,40 +1620,10 @@
         "indicator_ranking": [
           {
             "name": "composite:ops+whip",
-            "pct": 55.6,
-            "correct": 13081,
-            "total": 23510,
-            "z_score": 17.3,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:pyth+ops+sp_fip",
-            "pct": 55.5,
-            "correct": 10748,
-            "total": 19363,
-            "z_score": 15.33,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:obp+whip",
             "pct": 55.4,
-            "correct": 13020,
+            "correct": 13030,
             "total": 23510,
-            "z_score": 16.5,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:ops+sp_fip",
-            "pct": 55.3,
-            "correct": 10702,
-            "total": 19363,
-            "z_score": 14.67,
+            "z_score": 16.63,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -1669,21 +1649,21 @@
             "category": "team"
           },
           {
-            "name": "composite:ops+era",
+            "name": "composite:obp+whip",
             "pct": 55.2,
-            "correct": 12982,
+            "correct": 12983,
             "total": 23510,
-            "z_score": 16.0,
+            "z_score": 16.02,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
-            "name": "composite:run_diff+sp_fip",
+            "name": "composite:pyth+ops+sp_fip",
             "pct": 55.2,
-            "correct": 10697,
+            "correct": 10691,
             "total": 19363,
-            "z_score": 14.6,
+            "z_score": 14.51,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -1699,51 +1679,61 @@
             "category": "team"
           },
           {
-            "name": "composite:run_diff+fip",
+            "name": "composite:run_diff+sp_fip",
+            "pct": 55.1,
+            "correct": 10661,
+            "total": 19363,
+            "z_score": 14.08,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
+          },
+          {
+            "name": "composite:ops+era",
             "pct": 55.0,
-            "correct": 12919,
+            "correct": 12941,
             "total": 23510,
-            "z_score": 15.18,
+            "z_score": 15.47,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
+          },
+          {
+            "name": "composite:ops+sp_fip",
+            "pct": 54.9,
+            "correct": 10638,
+            "total": 19363,
+            "z_score": 13.75,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
             "name": "composite:pyth+ops+fip",
-            "pct": 55.0,
-            "correct": 12937,
+            "pct": 54.8,
+            "correct": 12888,
             "total": 23510,
-            "z_score": 15.42,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:ops+sp_whip",
-            "pct": 55.0,
-            "correct": 10641,
-            "total": 19363,
-            "z_score": 13.79,
+            "z_score": 14.78,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
             "name": "composite:ops+fip",
-            "pct": 54.9,
-            "correct": 12909,
+            "pct": 54.7,
+            "correct": 12851,
             "total": 23510,
-            "z_score": 15.05,
+            "z_score": 14.3,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
-            "name": "composite:slg+era",
+            "name": "composite:run_diff+fip",
             "pct": 54.7,
-            "correct": 12861,
+            "correct": 12868,
             "total": 23510,
-            "z_score": 14.43,
+            "z_score": 14.52,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -1759,11 +1749,11 @@
             "category": "team"
           },
           {
-            "name": "composite:ops+sp_era",
+            "name": "composite:ops+sp_whip",
             "pct": 54.6,
-            "correct": 10569,
+            "correct": 10580,
             "total": 19363,
-            "z_score": 12.76,
+            "z_score": 12.91,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -1779,6 +1769,16 @@
             "category": "team"
           },
           {
+            "name": "composite:slg+era",
+            "pct": 54.5,
+            "correct": 12824,
+            "total": 23510,
+            "z_score": 13.94,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
+          },
+          {
             "name": "ra_pg",
             "pct": 54.4,
             "correct": 12748,
@@ -1787,6 +1787,16 @@
             "significant": true,
             "direction": "低者勝",
             "category": "team"
+          },
+          {
+            "name": "composite:ops+sp_era",
+            "pct": 54.2,
+            "correct": 10502,
+            "total": 19363,
+            "z_score": 11.79,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
           },
           {
             "name": "sp_fip",
@@ -1988,6 +1998,16 @@
             "significant": true,
             "direction": "低者勝",
             "category": "team"
+          },
+          {
+            "name": "home_leading_series",
+            "pct": 38.4,
+            "correct": 2634,
+            "total": 6859,
+            "z_score": -19.21,
+            "significant": true,
+            "direction": "主隊系列賽領先",
+            "category": "situational"
           },
           {
             "name": "home_adv",
@@ -2748,50 +2768,20 @@
         "indicator_ranking": [
           {
             "name": "composite:ops+whip",
-            "pct": 54.9,
-            "correct": 12903,
+            "pct": 54.6,
+            "correct": 12826,
             "total": 23510,
-            "z_score": 14.97,
+            "z_score": 13.97,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
             "name": "composite:pyth+ops+sp_fip",
-            "pct": 54.9,
-            "correct": 10623,
+            "pct": 54.5,
+            "correct": 10558,
             "total": 19363,
-            "z_score": 13.53,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:obp+whip",
-            "pct": 54.8,
-            "correct": 12884,
-            "total": 23510,
-            "z_score": 14.73,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:run_diff+sp_fip",
-            "pct": 54.8,
-            "correct": 10602,
-            "total": 19363,
-            "z_score": 13.23,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:ops+sp_fip",
-            "pct": 54.7,
-            "correct": 10585,
-            "total": 19363,
-            "z_score": 12.99,
+            "z_score": 12.6,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -2817,31 +2807,21 @@
             "category": "team"
           },
           {
-            "name": "composite:ops+era",
+            "name": "composite:obp+whip",
             "pct": 54.4,
-            "correct": 12798,
+            "correct": 12801,
             "total": 23510,
-            "z_score": 13.6,
+            "z_score": 13.64,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
-            "name": "composite:run_diff+fip",
+            "name": "composite:run_diff+sp_fip",
             "pct": 54.4,
-            "correct": 12781,
-            "total": 23510,
-            "z_score": 13.38,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:ops+sp_whip",
-            "pct": 54.4,
-            "correct": 10532,
+            "correct": 10530,
             "total": 19363,
-            "z_score": 12.22,
+            "z_score": 12.2,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -2857,41 +2837,51 @@
             "category": "team"
           },
           {
-            "name": "composite:pyth+ops+fip",
-            "pct": 54.3,
-            "correct": 12761,
+            "name": "composite:ops+era",
+            "pct": 54.1,
+            "correct": 12713,
             "total": 23510,
-            "z_score": 13.12,
+            "z_score": 12.5,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
-            "name": "composite:ops+fip",
-            "pct": 54.0,
-            "correct": 12693,
-            "total": 23510,
-            "z_score": 12.24,
-            "significant": true,
-            "direction": "複合",
-            "category": "composite"
-          },
-          {
-            "name": "composite:ops+sp_era",
-            "pct": 54.0,
-            "correct": 10454,
+            "name": "composite:ops+sp_fip",
+            "pct": 54.1,
+            "correct": 10485,
             "total": 19363,
-            "z_score": 11.1,
+            "z_score": 11.55,
             "significant": true,
             "direction": "複合",
             "category": "composite"
           },
           {
-            "name": "composite:slg+era",
-            "pct": 53.9,
-            "correct": 12681,
+            "name": "composite:run_diff+fip",
+            "pct": 54.0,
+            "correct": 12694,
             "total": 23510,
-            "z_score": 12.08,
+            "z_score": 12.25,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
+          },
+          {
+            "name": "composite:pyth+ops+fip",
+            "pct": 54.0,
+            "correct": 12692,
+            "total": 23510,
+            "z_score": 12.22,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
+          },
+          {
+            "name": "composite:ops+sp_whip",
+            "pct": 53.9,
+            "correct": 10435,
+            "total": 19363,
+            "z_score": 10.83,
             "significant": true,
             "direction": "複合",
             "category": "composite"
@@ -2937,6 +2927,26 @@
             "category": "team"
           },
           {
+            "name": "composite:ops+fip",
+            "pct": 53.6,
+            "correct": 12611,
+            "total": 23510,
+            "z_score": 11.17,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
+          },
+          {
+            "name": "composite:slg+era",
+            "pct": 53.6,
+            "correct": 12604,
+            "total": 23510,
+            "z_score": 11.07,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
+          },
+          {
             "name": "obp",
             "pct": 53.4,
             "correct": 12546,
@@ -2955,6 +2965,16 @@
             "significant": true,
             "direction": "低者勝",
             "category": "team"
+          },
+          {
+            "name": "composite:ops+sp_era",
+            "pct": 53.4,
+            "correct": 10347,
+            "total": 19363,
+            "z_score": 9.57,
+            "significant": true,
+            "direction": "複合",
+            "category": "composite"
           },
           {
             "name": "ops",
@@ -3126,6 +3146,16 @@
             "significant": true,
             "direction": "低者勝",
             "category": "team"
+          },
+          {
+            "name": "home_leading_series",
+            "pct": 29.0,
+            "correct": 1989,
+            "total": 6859,
+            "z_score": -34.79,
+            "significant": true,
+            "direction": "主隊系列賽領先",
+            "category": "situational"
           },
           {
             "name": "home_adv",
@@ -6312,6 +6342,298 @@
           }
         ]
       }
+    },
+    "series_analysis": {
+      "baseline": {
+        "n": 23510,
+        "home_win_pct": 53.36027222458528,
+        "over_7.5_pct": 57.8477243726074,
+        "over_8.5_pct": 49.931943853679286,
+        "over_9.5_pct": 39.561888558060396,
+        "avg_total": 8.989876648234794
+      },
+      "by_series_game": {
+        "1": {
+          "n": 7498,
+          "home_win_pct": 52.920778874366505,
+          "over_7.5_pct": 58.922379301146975,
+          "over_8.5_pct": 50.60016004267804,
+          "over_9.5_pct": 40.29074419845292,
+          "avg_total": 9.10122699386503
+        },
+        "2": {
+          "n": 7516,
+          "home_win_pct": 53.41937200638638,
+          "over_7.5_pct": 57.99627461415646,
+          "over_8.5_pct": 50.359233634912194,
+          "over_9.5_pct": 39.58222458754656,
+          "avg_total": 8.998270356572645
+        },
+        "3": {
+          "n": 7026,
+          "home_win_pct": 53.430116709365215,
+          "over_7.5_pct": 57.01679476231142,
+          "over_8.5_pct": 49.103330486763454,
+          "over_9.5_pct": 39.012240250498145,
+          "avg_total": 8.900370054084828
+        },
+        "4": {
+          "n": 1452,
+          "home_win_pct": 55.027548209366394,
+          "over_7.5_pct": 55.44077134986226,
+          "over_8.5_pct": 48.278236914600555,
+          "over_9.5_pct": 38.22314049586777,
+          "avg_total": 8.805785123966942
+        },
+        "5": {
+          "n": 16,
+          "home_win_pct": 43.75,
+          "over_7.5_pct": 68.75,
+          "over_8.5_pct": 50.0,
+          "over_9.5_pct": 50.0,
+          "avg_total": 8.875
+        },
+        "6": {
+          "n": 2,
+          "home_win_pct": 100.0,
+          "over_7.5_pct": 50.0,
+          "over_8.5_pct": 50.0,
+          "over_9.5_pct": 50.0,
+          "avg_total": 9.0
+        }
+      },
+      "by_series_length": {
+        "1": {
+          "n": 11,
+          "home_win_pct": 45.45454545454545,
+          "over_7.5_pct": 36.36363636363637,
+          "over_8.5_pct": 27.27272727272727,
+          "over_9.5_pct": 18.181818181818183,
+          "avg_total": 7.0
+        },
+        "2": {
+          "n": 1170,
+          "home_win_pct": 51.88034188034189,
+          "over_7.5_pct": 58.80341880341881,
+          "over_8.5_pct": 50.34188034188034,
+          "over_9.5_pct": 39.23076923076923,
+          "avg_total": 8.99059829059829
+        },
+        "3": {
+          "n": 16528,
+          "home_win_pct": 53.436592449177155,
+          "over_7.5_pct": 57.82913843175218,
+          "over_8.5_pct": 49.89109390125847,
+          "over_9.5_pct": 39.6055179090029,
+          "avg_total": 8.974225556631172
+        },
+        "4": {
+          "n": 5719,
+          "home_win_pct": 53.453400944221016,
+          "over_7.5_pct": 57.75485224689631,
+          "over_8.5_pct": 50.09617065920615,
+          "over_9.5_pct": 39.53488372093023,
+          "avg_total": 9.043713936002797
+        },
+        "5": {
+          "n": 70,
+          "home_win_pct": 52.85714285714286,
+          "over_7.5_pct": 57.14285714285714,
+          "over_8.5_pct": 44.285714285714285,
+          "over_9.5_pct": 41.42857142857143,
+          "avg_total": 8.728571428571428
+        },
+        "6": {
+          "n": 12,
+          "home_win_pct": 58.333333333333336,
+          "over_7.5_pct": 58.333333333333336,
+          "over_8.5_pct": 41.66666666666667,
+          "over_9.5_pct": 33.33333333333333,
+          "avg_total": 8.166666666666666
+        }
+      },
+      "opener_middle_finale": {
+        "opener": {
+          "n": 7498,
+          "home_win_pct": 52.920778874366505,
+          "over_7.5_pct": 58.922379301146975,
+          "over_8.5_pct": 50.60016004267804,
+          "over_9.5_pct": 40.29074419845292,
+          "avg_total": 9.10122699386503
+        },
+        "middle": {
+          "n": 8393,
+          "home_win_pct": 53.48504706302871,
+          "over_7.5_pct": 57.953056118193736,
+          "over_8.5_pct": 50.32765399737876,
+          "over_9.5_pct": 39.87847015369951,
+          "avg_total": 9.012391278446325
+        },
+        "finale": {
+          "n": 7619,
+          "home_win_pct": 53.65533534584591,
+          "over_7.5_pct": 56.67410421315133,
+          "over_8.5_pct": 48.838430240189,
+          "over_9.5_pct": 38.49586559916,
+          "avg_total": 8.855492846830293
+        }
+      },
+      "home_series_situation": {
+        "facing_sweep": {
+          "n": 1807,
+          "home_win_pct": 51.964582180409515,
+          "over_7.5_pct": 57.99667957941339,
+          "over_8.5_pct": 51.521859435528505,
+          "over_9.5_pct": 41.11787493082457,
+          "avg_total": 8.992805755395683
+        },
+        "home_leading": {
+          "n": 6859,
+          "home_win_pct": 55.693249744860765,
+          "over_7.5_pct": 56.772124216358065,
+          "over_8.5_pct": 48.97215337512757,
+          "over_9.5_pct": 38.78116343490305,
+          "avg_total": 8.9196675900277
+        },
+        "home_trailing": {
+          "n": 480,
+          "home_win_pct": 54.37499999999999,
+          "over_7.5_pct": 53.75,
+          "over_8.5_pct": 45.625,
+          "over_9.5_pct": 36.45833333333333,
+          "avg_total": 8.63125
+        },
+        "tied": {
+          "n": 3329,
+          "home_win_pct": 53.07900270351457,
+          "over_7.5_pct": 56.4133373385401,
+          "over_8.5_pct": 48.18263742865725,
+          "over_9.5_pct": 37.90928206668669,
+          "avg_total": 8.85130669870832
+        }
+      },
+      "cross_length_game": {
+        "1": {
+          "1": {
+            "n": 11,
+            "home_win_pct": 45.45454545454545,
+            "over_8.5_pct": 27.27272727272727,
+            "avg_total": 7.0
+          }
+        },
+        "2": {
+          "1": {
+            "n": 580,
+            "home_win_pct": 50.86206896551724,
+            "over_8.5_pct": 51.206896551724135,
+            "avg_total": 9.022413793103448
+          },
+          "2": {
+            "n": 590,
+            "home_win_pct": 52.88135593220339,
+            "over_8.5_pct": 49.49152542372882,
+            "avg_total": 8.959322033898305
+          }
+        },
+        "3": {
+          "1": {
+            "n": 5467,
+            "home_win_pct": 53.41137735503933,
+            "over_8.5_pct": 50.72251691970002,
+            "avg_total": 9.103896103896103
+          },
+          "2": {
+            "n": 5484,
+            "home_win_pct": 53.501094091903724,
+            "over_8.5_pct": 50.127644055434,
+            "avg_total": 8.966630196936542
+          },
+          "3": {
+            "n": 5577,
+            "home_win_pct": 53.39788416711494,
+            "over_8.5_pct": 48.84346422807961,
+            "avg_total": 8.854581316119777
+          }
+        },
+        "4": {
+          "1": {
+            "n": 1424,
+            "home_win_pct": 51.82584269662921,
+            "over_8.5_pct": 50.07022471910112,
+            "avg_total": 9.143258426966293
+          },
+          "2": {
+            "n": 1426,
+            "home_win_pct": 53.36605890603086,
+            "over_8.5_pct": 51.472650771388494,
+            "avg_total": 9.12201963534362
+          },
+          "3": {
+            "n": 1433,
+            "home_win_pct": 53.59385903698535,
+            "over_8.5_pct": 50.383810188415914,
+            "avg_total": 9.096999302163294
+          },
+          "4": {
+            "n": 1436,
+            "home_win_pct": 55.013927576601674,
+            "over_8.5_pct": 48.467966573816156,
+            "avg_total": 8.814066852367688
+          }
+        },
+        "5": {
+          "1": {
+            "n": 14,
+            "home_win_pct": 57.14285714285714,
+            "over_8.5_pct": 42.857142857142854,
+            "avg_total": 8.571428571428571
+          },
+          "2": {
+            "n": 14,
+            "home_win_pct": 50.0,
+            "over_8.5_pct": 64.28571428571429,
+            "avg_total": 10.428571428571429
+          },
+          "3": {
+            "n": 14,
+            "home_win_pct": 50.0,
+            "over_8.5_pct": 21.428571428571427,
+            "avg_total": 7.071428571428571
+          },
+          "4": {
+            "n": 14,
+            "home_win_pct": 64.28571428571429,
+            "over_8.5_pct": 35.714285714285715,
+            "avg_total": 8.5
+          }
+        },
+        "6": {
+          "1": {
+            "n": 2,
+            "home_win_pct": 100.0,
+            "over_8.5_pct": 100.0,
+            "avg_total": 10.0
+          },
+          "2": {
+            "n": 2,
+            "home_win_pct": 50.0,
+            "over_8.5_pct": 50.0,
+            "avg_total": 9.0
+          },
+          "3": {
+            "n": 2,
+            "home_win_pct": 50.0,
+            "over_8.5_pct": 50.0,
+            "avg_total": 8.5
+          },
+          "4": {
+            "n": 2,
+            "home_win_pct": 0.0,
+            "over_8.5_pct": 0.0,
+            "avg_total": 5.0
+          }
+        }
+      }
     }
   },
   "today_matchups": [
@@ -6320,57 +6642,11 @@
       "away_zh": "勇士",
       "home": "Washington Nationals",
       "home_zh": "國民",
-      "away_sp": "Martín Pérez",
+      "away_sp": "Didier Fuentes",
       "home_sp": "Zack Littell",
       "away_record": "16-8",
       "home_record": "11-13",
-      "away_sp_recent": [
-        {
-          "date": "2026-04-17",
-          "vs": "Philadelphia Phillies",
-          "vs_zh": "費城人",
-          "ip": "6.0",
-          "h": 4,
-          "r": 0,
-          "er": 0,
-          "bb": 2,
-          "so": 4,
-          "hr": 0,
-          "pitches": 94,
-          "result": "W",
-          "team_score": "9-0"
-        },
-        {
-          "date": "2026-04-11",
-          "vs": "Cleveland Guardians",
-          "vs_zh": "守護者",
-          "ip": "5.0",
-          "h": 2,
-          "r": 1,
-          "er": 1,
-          "bb": 3,
-          "so": 2,
-          "hr": 1,
-          "pitches": 86,
-          "result": "L",
-          "team_score": "0-6"
-        },
-        {
-          "date": "2026-04-05",
-          "vs": "Arizona Diamondbacks",
-          "vs_zh": "響尾蛇",
-          "ip": "5.0",
-          "h": 5,
-          "r": 4,
-          "er": 4,
-          "bb": 1,
-          "so": 1,
-          "hr": 0,
-          "pitches": 75,
-          "result": "L",
-          "team_score": "5-6"
-        }
-      ],
+      "away_sp_recent": [],
       "home_sp_recent": [
         {
           "date": "2026-04-17",
@@ -6426,11 +6702,11 @@
         "park_factor": 1.028
       },
       "weather": {
-        "temp_f": 78.4,
-        "humidity": 32,
-        "wind_mph": 10.3,
-        "wind_dir_deg": 236,
-        "precip_prob": 1
+        "temp_f": 71.7,
+        "humidity": 42,
+        "wind_mph": 5.2,
+        "wind_dir_deg": 185,
+        "precip_prob": 4
       },
       "team_comparisons": {
         "ops": {
@@ -6504,43 +6780,7 @@
           "edge": "even"
         }
       },
-      "sp_comparisons": {
-        "sp_era": {
-          "away": 2.812,
-          "home": 7.714,
-          "edge": "away"
-        },
-        "sp_whip": {
-          "away": 1.062,
-          "home": 1.786,
-          "edge": "away"
-        },
-        "sp_fip": {
-          "away": 4.162,
-          "home": 6.743,
-          "edge": "away"
-        },
-        "sp_k9": {
-          "away": 3.938,
-          "home": 8.357,
-          "edge": "home"
-        },
-        "sp_bb9": {
-          "away": 3.375,
-          "home": 2.571,
-          "edge": "home"
-        },
-        "sp_k_bb": {
-          "away": 1.167,
-          "home": 3.25,
-          "edge": "home"
-        },
-        "sp_starts": {
-          "away": 3,
-          "home": 3,
-          "edge": "even"
-        }
-      },
+      "sp_comparisons": {},
       "team_recent_form": {
         "away": {
           "games": 15,
@@ -6561,15 +6801,25 @@
           "blowout_loss_rate": 0.267
         }
       },
-      "expected_total": 9.03,
+      "series_context": {
+        "series_game": 3,
+        "home_series_wins_before": 1,
+        "away_series_wins_before": 1,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-20",
+          "2026-04-21"
+        ]
+      },
+      "expected_total": 8.66,
       "expected_total_breakdown": {
         "away_offense": 4.96,
-        "home_offense": 3.4,
+        "home_offense": 3.46,
         "park_adj": 1.028,
-        "weather_adj": 1.05
+        "weather_adj": 1.0
       },
-      "away_edges": 15,
-      "home_edges": 4,
+      "away_edges": 12,
+      "home_edges": 1,
       "any_top_5_pct": true,
       "any_top_10_pct": true,
       "bet_types": {
@@ -6636,60 +6886,6 @@
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 65.4
-            },
-            "comp:ops+sp_era": {
-              "value": -2.915,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 60.4
-            },
-            "comp:ops+sp_fip": {
-              "value": -2.789,
-              "predicts": "away",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 60.0
-            },
-            "comp:ops+sp_whip": {
-              "value": -2.875,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 61.3
-            },
-            "comp:run_diff+sp_fip": {
-              "value": -4.58,
-              "predicts": "away",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 63.9
-            },
-            "comp:pyth+ops+sp_fip": {
-              "value": -5.472,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 65.1
-            },
-            "comp:ops+sp_era+home": {
-              "value": -2.765,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 61.4
-            },
-            "comp:ops+sp_fip+home": {
-              "value": -2.639,
-              "predicts": "away",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 61.4
-            },
-            "comp:pyth+ops+sp_fip+home": {
-              "value": -5.322,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 65.9
-            },
-            "comp:run_diff+sp_fip+home": {
-              "value": -4.43,
-              "predicts": "away",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 64.8
             }
           },
           "matched_filters": [
@@ -6698,12 +6894,6 @@
               "top_pct": 5,
               "baseline_hit_rate": 67.9,
               "min_odds_needed": 2.17
-            },
-            {
-              "stat": "comp:run_diff+sp_fip+home",
-              "top_pct": 5,
-              "baseline_hit_rate": 67.0,
-              "min_odds_needed": 2.22
             },
             {
               "stat": "comp:run_diff+fip+home",
@@ -6724,18 +6914,6 @@
               "min_odds_needed": 2.27
             },
             {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 5,
-              "baseline_hit_rate": 66.3,
-              "min_odds_needed": 2.27
-            },
-            {
-              "stat": "comp:pyth+ops+sp_fip+home",
-              "top_pct": 10,
-              "baseline_hit_rate": 65.9,
-              "min_odds_needed": 2.3
-            },
-            {
               "stat": "comp:pyth+ops+fip",
               "top_pct": 5,
               "baseline_hit_rate": 65.4,
@@ -6752,12 +6930,6 @@
               "top_pct": 5,
               "baseline_hit_rate": 65.2,
               "min_odds_needed": 2.35
-            },
-            {
-              "stat": "comp:pyth+ops+sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 65.1,
-              "min_odds_needed": 2.36
             },
             {
               "stat": "comp:pyth+ops+fip",
@@ -6779,12 +6951,6 @@
             },
             {
               "stat": "comp:ops+fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 64.8,
-              "min_odds_needed": 2.38
-            },
-            {
-              "stat": "comp:run_diff+sp_fip+home",
               "top_pct": 10,
               "baseline_hit_rate": 64.8,
               "min_odds_needed": 2.38
@@ -6814,20 +6980,8 @@
               "min_odds_needed": 2.44
             },
             {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 63.9,
-              "min_odds_needed": 2.45
-            },
-            {
               "stat": "comp:obp+whip",
               "top_pct": 10,
-              "baseline_hit_rate": 63.5,
-              "min_odds_needed": 2.48
-            },
-            {
-              "stat": "comp:run_diff+sp_fip+home",
-              "top_pct": 20,
               "baseline_hit_rate": 63.5,
               "min_odds_needed": 2.48
             },
@@ -6844,19 +6998,7 @@
               "min_odds_needed": 2.5
             },
             {
-              "stat": "comp:pyth+ops+sp_fip",
-              "top_pct": 20,
-              "baseline_hit_rate": 63.3,
-              "min_odds_needed": 2.5
-            },
-            {
               "stat": "comp:ops+era+home",
-              "top_pct": 20,
-              "baseline_hit_rate": 63.2,
-              "min_odds_needed": 2.5
-            },
-            {
-              "stat": "comp:pyth+ops+sp_fip+home",
               "top_pct": 20,
               "baseline_hit_rate": 63.2,
               "min_odds_needed": 2.5
@@ -6869,12 +7011,6 @@
             },
             {
               "stat": "comp:run_diff+fip+home",
-              "top_pct": 20,
-              "baseline_hit_rate": 63.1,
-              "min_odds_needed": 2.51
-            },
-            {
-              "stat": "comp:run_diff+sp_fip",
               "top_pct": 20,
               "baseline_hit_rate": 63.1,
               "min_odds_needed": 2.51
@@ -6922,46 +7058,10 @@
               "min_odds_needed": 2.58
             },
             {
-              "stat": "comp:run_diff+sp_fip+home",
-              "top_pct": 30,
-              "baseline_hit_rate": 62.0,
-              "min_odds_needed": 2.6
-            },
-            {
               "stat": "comp:obp+whip",
               "top_pct": 20,
               "baseline_hit_rate": 61.9,
               "min_odds_needed": 2.61
-            },
-            {
-              "stat": "comp:pyth+ops+sp_fip+home",
-              "top_pct": 30,
-              "baseline_hit_rate": 61.9,
-              "min_odds_needed": 2.61
-            },
-            {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 30,
-              "baseline_hit_rate": 61.8,
-              "min_odds_needed": 2.62
-            },
-            {
-              "stat": "comp:pyth+ops+sp_fip",
-              "top_pct": 30,
-              "baseline_hit_rate": 61.7,
-              "min_odds_needed": 2.63
-            },
-            {
-              "stat": "comp:ops+sp_era+home",
-              "top_pct": 10,
-              "baseline_hit_rate": 61.4,
-              "min_odds_needed": 2.65
-            },
-            {
-              "stat": "comp:ops+sp_fip+home",
-              "top_pct": 20,
-              "baseline_hit_rate": 61.4,
-              "min_odds_needed": 2.65
             },
             {
               "stat": "comp:pyth+ops+fip",
@@ -6988,12 +7088,6 @@
               "min_odds_needed": 2.66
             },
             {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 10,
-              "baseline_hit_rate": 61.3,
-              "min_odds_needed": 2.66
-            },
-            {
               "stat": "comp:ops+whip",
               "top_pct": 30,
               "baseline_hit_rate": 61.2,
@@ -7012,12 +7106,6 @@
               "min_odds_needed": 2.69
             },
             {
-              "stat": "comp:ops+sp_fip",
-              "top_pct": 20,
-              "baseline_hit_rate": 61.0,
-              "min_odds_needed": 2.69
-            },
-            {
               "stat": "comp:ops+fip",
               "top_pct": 30,
               "baseline_hit_rate": 60.9,
@@ -7030,64 +7118,10 @@
               "min_odds_needed": 2.7
             },
             {
-              "stat": "comp:ops+sp_era",
-              "top_pct": 20,
-              "baseline_hit_rate": 60.8,
-              "min_odds_needed": 2.7
-            },
-            {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 20,
-              "baseline_hit_rate": 60.8,
-              "min_odds_needed": 2.7
-            },
-            {
-              "stat": "comp:ops+sp_era+home",
-              "top_pct": 20,
-              "baseline_hit_rate": 60.8,
-              "min_odds_needed": 2.71
-            },
-            {
-              "stat": "comp:ops+sp_fip+home",
-              "top_pct": 30,
-              "baseline_hit_rate": 60.6,
-              "min_odds_needed": 2.72
-            },
-            {
               "stat": "comp:slg+era",
               "top_pct": 30,
               "baseline_hit_rate": 60.5,
               "min_odds_needed": 2.73
-            },
-            {
-              "stat": "comp:ops+sp_era",
-              "top_pct": 10,
-              "baseline_hit_rate": 60.4,
-              "min_odds_needed": 2.74
-            },
-            {
-              "stat": "comp:ops+sp_fip",
-              "top_pct": 30,
-              "baseline_hit_rate": 60.3,
-              "min_odds_needed": 2.75
-            },
-            {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 30,
-              "baseline_hit_rate": 60.2,
-              "min_odds_needed": 2.76
-            },
-            {
-              "stat": "comp:ops+sp_era+home",
-              "top_pct": 30,
-              "baseline_hit_rate": 59.8,
-              "min_odds_needed": 2.8
-            },
-            {
-              "stat": "comp:ops+sp_era",
-              "top_pct": 30,
-              "baseline_hit_rate": 59.5,
-              "min_odds_needed": 2.83
             }
           ],
           "is_top_5_pct": true,
@@ -7095,9 +7129,9 @@
           "predicted": "away",
           "votes": {
             "home_count": 0,
-            "away_count": 19,
+            "away_count": 10,
             "home_z_sum": 0,
-            "away_z_sum": 90.28,
+            "away_z_sum": 56.49,
             "minority_ratio": 0.0,
             "conflict": false
           },
@@ -7150,56 +7184,14 @@
               "predicts": "away",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 61.5
-            },
-            "comp:ops+sp_era": {
-              "value": -2.915,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 60.4
-            },
-            "comp:ops+sp_fip": {
-              "value": -2.789,
-              "predicts": "away",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 60.1
-            },
-            "comp:ops+sp_whip": {
-              "value": -2.875,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 61.3
-            },
-            "comp:run_diff+sp_fip": {
-              "value": -4.58,
-              "predicts": "away",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 62.4
-            },
-            "comp:pyth+ops+sp_fip": {
-              "value": -5.472,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 63.9
             }
           },
           "matched_filters": [
-            {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 5,
-              "baseline_hit_rate": 64.5,
-              "min_odds_needed": 2.41
-            },
             {
               "stat": "comp:run_diff+fip",
               "top_pct": 5,
               "baseline_hit_rate": 64.0,
               "min_odds_needed": 2.44
-            },
-            {
-              "stat": "comp:pyth+ops+sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 63.9,
-              "min_odds_needed": 2.45
             },
             {
               "stat": "comp:ops+whip",
@@ -7211,12 +7203,6 @@
               "stat": "comp:run_diff+fip",
               "top_pct": 10,
               "baseline_hit_rate": 62.5,
-              "min_odds_needed": 2.56
-            },
-            {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 62.4,
               "min_odds_needed": 2.56
             },
             {
@@ -7238,20 +7224,8 @@
               "min_odds_needed": 2.6
             },
             {
-              "stat": "comp:pyth+ops+sp_fip",
-              "top_pct": 20,
-              "baseline_hit_rate": 62.0,
-              "min_odds_needed": 2.6
-            },
-            {
               "stat": "comp:ops+fip",
               "top_pct": 10,
-              "baseline_hit_rate": 61.8,
-              "min_odds_needed": 2.62
-            },
-            {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 20,
               "baseline_hit_rate": 61.8,
               "min_odds_needed": 2.62
             },
@@ -7264,12 +7238,6 @@
             {
               "stat": "comp:pyth+ops+fip",
               "top_pct": 5,
-              "baseline_hit_rate": 61.3,
-              "min_odds_needed": 2.66
-            },
-            {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 10,
               "baseline_hit_rate": 61.3,
               "min_odds_needed": 2.66
             },
@@ -7292,18 +7260,6 @@
               "min_odds_needed": 2.72
             },
             {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 20,
-              "baseline_hit_rate": 60.6,
-              "min_odds_needed": 2.72
-            },
-            {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 30,
-              "baseline_hit_rate": 60.6,
-              "min_odds_needed": 2.73
-            },
-            {
               "stat": "comp:ops+fip",
               "top_pct": 5,
               "baseline_hit_rate": 60.5,
@@ -7314,18 +7270,6 @@
               "top_pct": 5,
               "baseline_hit_rate": 60.5,
               "min_odds_needed": 2.73
-            },
-            {
-              "stat": "comp:ops+sp_era",
-              "top_pct": 10,
-              "baseline_hit_rate": 60.4,
-              "min_odds_needed": 2.74
-            },
-            {
-              "stat": "comp:ops+sp_fip",
-              "top_pct": 20,
-              "baseline_hit_rate": 60.4,
-              "min_odds_needed": 2.74
             },
             {
               "stat": "comp:run_diff+fip",
@@ -7358,31 +7302,13 @@
               "min_odds_needed": 2.78
             },
             {
-              "stat": "comp:ops+sp_era",
-              "top_pct": 20,
-              "baseline_hit_rate": 60.0,
-              "min_odds_needed": 2.78
-            },
-            {
               "stat": "comp:ops+whip",
               "top_pct": 5,
               "baseline_hit_rate": 59.9,
               "min_odds_needed": 2.79
             },
             {
-              "stat": "comp:pyth+ops+sp_fip",
-              "top_pct": 30,
-              "baseline_hit_rate": 59.9,
-              "min_odds_needed": 2.79
-            },
-            {
               "stat": "comp:run_diff+fip",
-              "top_pct": 30,
-              "baseline_hit_rate": 59.6,
-              "min_odds_needed": 2.82
-            },
-            {
-              "stat": "comp:ops+sp_whip",
               "top_pct": 30,
               "baseline_hit_rate": 59.6,
               "min_odds_needed": 2.82
@@ -7406,12 +7332,6 @@
               "min_odds_needed": 2.84
             },
             {
-              "stat": "comp:ops+sp_fip",
-              "top_pct": 30,
-              "baseline_hit_rate": 59.3,
-              "min_odds_needed": 2.84
-            },
-            {
               "stat": "comp:ops+whip",
               "top_pct": 30,
               "baseline_hit_rate": 59.1,
@@ -7428,12 +7348,6 @@
               "top_pct": 30,
               "baseline_hit_rate": 58.9,
               "min_odds_needed": 2.89
-            },
-            {
-              "stat": "comp:ops+sp_era",
-              "top_pct": 30,
-              "baseline_hit_rate": 58.8,
-              "min_odds_needed": 2.89
             }
           ],
           "is_top_5_pct": true,
@@ -7441,15 +7355,15 @@
           "predicted": "away",
           "votes": {
             "home_count": 0,
-            "away_count": 12,
+            "away_count": 7,
             "home_z_sum": 0,
-            "away_z_sum": 56.53,
+            "away_z_sum": 37.9,
             "minority_ratio": 0.0,
             "conflict": false
           },
           "confidence": "high",
           "signal_conflict": false,
-          "min_combined_odds_needed": 2.41
+          "min_combined_odds_needed": 2.44
         },
         "spread_2.5": {
           "name": "讓分 2.5",
@@ -7496,51 +7410,9 @@
               "predicts": "away",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 59.2
-            },
-            "comp:ops+sp_era": {
-              "value": -2.915,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 59.2
-            },
-            "comp:ops+sp_fip": {
-              "value": -2.789,
-              "predicts": "away",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 59.5
-            },
-            "comp:ops+sp_whip": {
-              "value": -2.875,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 60.1
-            },
-            "comp:run_diff+sp_fip": {
-              "value": -4.58,
-              "predicts": "away",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 60.7
-            },
-            "comp:pyth+ops+sp_fip": {
-              "value": -5.472,
-              "predicts": "away",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 62.8
             }
           },
           "matched_filters": [
-            {
-              "stat": "comp:pyth+ops+sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 62.8,
-              "min_odds_needed": 2.54
-            },
-            {
-              "stat": "comp:pyth+ops+sp_fip",
-              "top_pct": 20,
-              "baseline_hit_rate": 61.3,
-              "min_odds_needed": 2.66
-            },
             {
               "stat": "comp:run_diff+fip",
               "top_pct": 5,
@@ -7548,28 +7420,10 @@
               "min_odds_needed": 2.67
             },
             {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 5,
-              "baseline_hit_rate": 61.1,
-              "min_odds_needed": 2.68
-            },
-            {
               "stat": "comp:ops+whip",
               "top_pct": 10,
               "baseline_hit_rate": 60.9,
               "min_odds_needed": 2.7
-            },
-            {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 60.7,
-              "min_odds_needed": 2.71
-            },
-            {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 20,
-              "baseline_hit_rate": 60.7,
-              "min_odds_needed": 2.71
             },
             {
               "stat": "comp:ops+era",
@@ -7596,20 +7450,8 @@
               "min_odds_needed": 2.77
             },
             {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 10,
-              "baseline_hit_rate": 60.1,
-              "min_odds_needed": 2.77
-            },
-            {
               "stat": "comp:run_diff+fip",
               "top_pct": 10,
-              "baseline_hit_rate": 59.9,
-              "min_odds_needed": 2.79
-            },
-            {
-              "stat": "comp:ops+sp_fip",
-              "top_pct": 20,
               "baseline_hit_rate": 59.9,
               "min_odds_needed": 2.79
             },
@@ -7620,31 +7462,13 @@
               "min_odds_needed": 2.81
             },
             {
-              "stat": "comp:run_diff+sp_fip",
-              "top_pct": 30,
-              "baseline_hit_rate": 59.6,
-              "min_odds_needed": 2.82
-            },
-            {
               "stat": "comp:ops+fip",
               "top_pct": 10,
               "baseline_hit_rate": 59.5,
               "min_odds_needed": 2.82
             },
             {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 20,
-              "baseline_hit_rate": 59.5,
-              "min_odds_needed": 2.83
-            },
-            {
               "stat": "comp:obp+whip",
-              "top_pct": 10,
-              "baseline_hit_rate": 59.2,
-              "min_odds_needed": 2.85
-            },
-            {
-              "stat": "comp:ops+sp_era",
               "top_pct": 10,
               "baseline_hit_rate": 59.2,
               "min_odds_needed": 2.85
@@ -7662,18 +7486,6 @@
               "min_odds_needed": 2.86
             },
             {
-              "stat": "comp:ops+sp_era",
-              "top_pct": 20,
-              "baseline_hit_rate": 59.1,
-              "min_odds_needed": 2.87
-            },
-            {
-              "stat": "comp:ops+sp_fip",
-              "top_pct": 30,
-              "baseline_hit_rate": 59.1,
-              "min_odds_needed": 2.87
-            },
-            {
               "stat": "comp:ops+fip",
               "top_pct": 20,
               "baseline_hit_rate": 59.0,
@@ -7682,12 +7494,6 @@
             {
               "stat": "comp:pyth+ops+fip",
               "top_pct": 20,
-              "baseline_hit_rate": 59.0,
-              "min_odds_needed": 2.88
-            },
-            {
-              "stat": "comp:pyth+ops+sp_fip",
-              "top_pct": 30,
               "baseline_hit_rate": 59.0,
               "min_odds_needed": 2.88
             },
@@ -7718,12 +7524,6 @@
             {
               "stat": "comp:run_diff+fip",
               "top_pct": 20,
-              "baseline_hit_rate": 58.6,
-              "min_odds_needed": 2.91
-            },
-            {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 30,
               "baseline_hit_rate": 58.6,
               "min_odds_needed": 2.91
             },
@@ -7763,15 +7563,15 @@
           "predicted": "away",
           "votes": {
             "home_count": 0,
-            "away_count": 12,
+            "away_count": 7,
             "home_z_sum": 0,
-            "away_z_sum": 56.53,
+            "away_z_sum": 37.9,
             "minority_ratio": 0.0,
             "conflict": false
           },
           "confidence": "high",
           "signal_conflict": false,
-          "min_combined_odds_needed": 2.54
+          "min_combined_odds_needed": 2.67
         },
         "total_7.5": {
           "name": "大小分 7.5",
@@ -7825,36 +7625,6 @@
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 52.6
             },
-            "comp:sp_era_only": {
-              "value": 0.521,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.3
-            },
-            "comp:sp_fip_only": {
-              "value": 1.272,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 57.6
-            },
-            "comp:sp_whip_only": {
-              "value": 0.354,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.3
-            },
-            "comp:sp_hr9_only": {
-              "value": 1.296,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 55.3
-            },
-            "comp:sp_k9_inv": {
-              "value": 1.483,
-              "predicts": "over",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 54.5
-            },
             "comp:runs+era": {
               "value": 3.079,
               "predicts": "over",
@@ -7897,60 +7667,6 @@
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 53.9
             },
-            "comp:ops+sp_era": {
-              "value": 2.169,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 58.0
-            },
-            "comp:ops+sp_fip": {
-              "value": 2.919,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 58.9
-            },
-            "comp:runs+sp_era": {
-              "value": 3.135,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 57.0
-            },
-            "comp:runs+sp_fip": {
-              "value": 3.885,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 57.7
-            },
-            "comp:ops-sp_k9": {
-              "value": 3.131,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 59.0
-            },
-            "comp:ops+sp_whip": {
-              "value": 2.001,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 58.5
-            },
-            "comp:ops+2sp_fip": {
-              "value": 4.191,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 59.2
-            },
-            "comp:runs+2sp_era": {
-              "value": 3.656,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 57.4
-            },
-            "comp:2sp_fip+sp_era": {
-              "value": 3.064,
-              "predicts": "over",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 57.7
-            },
             "comp:runs+era+pf": {
               "value": 3.45,
               "predicts": "over",
@@ -7962,39 +7678,9 @@
               "predicts": "over",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 63.6
-            },
-            "comp:ops+sp_fip+pf": {
-              "value": 3.29,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 65.0
-            },
-            "comp:runs+sp_era+pf": {
-              "value": 3.505,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 64.8
             }
           },
           "matched_filters": [
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 5,
-              "baseline_hit_rate": 70.2,
-              "min_odds_needed": 2.03
-            },
-            {
-              "stat": "comp:ops+sp_fip+pf",
-              "top_pct": 10,
-              "baseline_hit_rate": 65.0,
-              "min_odds_needed": 2.37
-            },
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 10,
-              "baseline_hit_rate": 64.8,
-              "min_odds_needed": 2.38
-            },
             {
               "stat": "comp:runs+era+pf",
               "top_pct": 10,
@@ -8006,18 +7692,6 @@
               "top_pct": 10,
               "baseline_hit_rate": 63.6,
               "min_odds_needed": 2.47
-            },
-            {
-              "stat": "comp:ops+sp_fip+pf",
-              "top_pct": 20,
-              "baseline_hit_rate": 62.0,
-              "min_odds_needed": 2.6
-            },
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 20,
-              "baseline_hit_rate": 61.4,
-              "min_odds_needed": 2.65
             },
             {
               "stat": "comp:ops+fip+pf",
@@ -8032,46 +7706,10 @@
               "min_odds_needed": 2.78
             },
             {
-              "stat": "comp:ops+sp_fip+pf",
-              "top_pct": 30,
-              "baseline_hit_rate": 60.0,
-              "min_odds_needed": 2.77
-            },
-            {
               "stat": "comp:ops+fip+pf",
               "top_pct": 30,
               "baseline_hit_rate": 59.5,
               "min_odds_needed": 2.82
-            },
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 30,
-              "baseline_hit_rate": 60.1,
-              "min_odds_needed": 2.77
-            },
-            {
-              "stat": "comp:ops+2sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 59.7,
-              "min_odds_needed": 2.81
-            },
-            {
-              "stat": "comp:ops-sp_k9",
-              "top_pct": 10,
-              "baseline_hit_rate": 59.0,
-              "min_odds_needed": 2.87
-            },
-            {
-              "stat": "comp:ops+sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 59.0,
-              "min_odds_needed": 2.87
-            },
-            {
-              "stat": "comp:ops+2sp_fip",
-              "top_pct": 5,
-              "baseline_hit_rate": 58.9,
-              "min_odds_needed": 2.88
             },
             {
               "stat": "comp:runs+fip",
@@ -8080,26 +7718,8 @@
               "min_odds_needed": 2.9
             },
             {
-              "stat": "comp:ops-sp_k9",
-              "top_pct": 5,
-              "baseline_hit_rate": 59.9,
-              "min_odds_needed": 2.79
-            },
-            {
-              "stat": "comp:runs+sp_fip",
-              "top_pct": 5,
-              "baseline_hit_rate": 58.6,
-              "min_odds_needed": 2.91
-            },
-            {
               "stat": "comp:runs+era+pf",
               "top_pct": 30,
-              "baseline_hit_rate": 58.8,
-              "min_odds_needed": 2.89
-            },
-            {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 10,
               "baseline_hit_rate": 58.8,
               "min_odds_needed": 2.89
             },
@@ -8110,41 +7730,29 @@
               "min_odds_needed": 2.93
             },
             {
-              "stat": "comp:ops+2sp_fip",
-              "top_pct": 20,
-              "baseline_hit_rate": 58.2,
-              "min_odds_needed": 2.95
-            },
-            {
-              "stat": "comp:runs+2sp_era",
-              "top_pct": 5,
-              "baseline_hit_rate": 58.1,
-              "min_odds_needed": 2.97
-            },
-            {
               "stat": "comp:runs+fip",
               "top_pct": 20,
               "baseline_hit_rate": 58.1,
               "min_odds_needed": 2.97
             }
           ],
-          "is_top_5_pct": true,
-          "is_top_10_pct": true,
+          "is_top_5_pct": false,
+          "is_top_10_pct": false,
           "predicted": "over",
           "votes": {
-            "est_total": 11.88,
+            "est_total": 11.92,
             "line": 7.5,
-            "distance": 4.38,
-            "over_count": 26,
+            "distance": 4.42,
+            "over_count": 12,
             "under_count": 0,
-            "over_z_sum": 72.32,
+            "over_z_sum": 33.33,
             "under_z_sum": 0,
             "minority_ratio": 0.0,
             "conflict": false
           },
-          "confidence": "high",
+          "confidence": "medium",
           "signal_conflict": false,
-          "min_combined_odds_needed": 2.03
+          "min_combined_odds_needed": 2.42
         },
         "total_8.5": {
           "name": "大小分 8.5",
@@ -8198,36 +7806,6 @@
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 53.3
             },
-            "comp:sp_era_only": {
-              "value": 0.521,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.3
-            },
-            "comp:sp_fip_only": {
-              "value": 1.272,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 57.4
-            },
-            "comp:sp_whip_only": {
-              "value": 0.354,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.1
-            },
-            "comp:sp_hr9_only": {
-              "value": 1.296,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 54.4
-            },
-            "comp:sp_k9_inv": {
-              "value": 1.483,
-              "predicts": "over",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 55.6
-            },
             "comp:runs+era": {
               "value": 3.079,
               "predicts": "over",
@@ -8270,60 +7848,6 @@
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 53.9
             },
-            "comp:ops+sp_era": {
-              "value": 2.169,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 57.4
-            },
-            "comp:ops+sp_fip": {
-              "value": 2.919,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 59.0
-            },
-            "comp:runs+sp_era": {
-              "value": 3.135,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 56.2
-            },
-            "comp:runs+sp_fip": {
-              "value": 3.885,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 57.5
-            },
-            "comp:ops-sp_k9": {
-              "value": 3.131,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 58.8
-            },
-            "comp:ops+sp_whip": {
-              "value": 2.001,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 58.8
-            },
-            "comp:ops+2sp_fip": {
-              "value": 4.191,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 59.7
-            },
-            "comp:runs+2sp_era": {
-              "value": 3.656,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 56.9
-            },
-            "comp:2sp_fip+sp_era": {
-              "value": 3.064,
-              "predicts": "over",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 58.2
-            },
             "comp:runs+era+pf": {
               "value": 3.45,
               "predicts": "over",
@@ -8335,39 +7859,9 @@
               "predicts": "over",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 61.5
-            },
-            "comp:ops+sp_fip+pf": {
-              "value": 3.29,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 62.9
-            },
-            "comp:runs+sp_era+pf": {
-              "value": 3.505,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 62.7
             }
           },
           "matched_filters": [
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 5,
-              "baseline_hit_rate": 70.2,
-              "min_odds_needed": 2.03
-            },
-            {
-              "stat": "comp:ops+sp_fip+pf",
-              "top_pct": 10,
-              "baseline_hit_rate": 65.0,
-              "min_odds_needed": 2.37
-            },
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 10,
-              "baseline_hit_rate": 64.8,
-              "min_odds_needed": 2.38
-            },
             {
               "stat": "comp:runs+era+pf",
               "top_pct": 10,
@@ -8379,18 +7873,6 @@
               "top_pct": 10,
               "baseline_hit_rate": 63.6,
               "min_odds_needed": 2.47
-            },
-            {
-              "stat": "comp:ops+sp_fip+pf",
-              "top_pct": 20,
-              "baseline_hit_rate": 62.0,
-              "min_odds_needed": 2.6
-            },
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 20,
-              "baseline_hit_rate": 61.4,
-              "min_odds_needed": 2.65
             },
             {
               "stat": "comp:ops+fip+pf",
@@ -8405,46 +7887,10 @@
               "min_odds_needed": 2.78
             },
             {
-              "stat": "comp:ops+sp_fip+pf",
-              "top_pct": 30,
-              "baseline_hit_rate": 60.0,
-              "min_odds_needed": 2.77
-            },
-            {
               "stat": "comp:ops+fip+pf",
               "top_pct": 30,
               "baseline_hit_rate": 59.5,
               "min_odds_needed": 2.82
-            },
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 30,
-              "baseline_hit_rate": 60.1,
-              "min_odds_needed": 2.77
-            },
-            {
-              "stat": "comp:ops+2sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 59.7,
-              "min_odds_needed": 2.81
-            },
-            {
-              "stat": "comp:ops-sp_k9",
-              "top_pct": 10,
-              "baseline_hit_rate": 59.0,
-              "min_odds_needed": 2.87
-            },
-            {
-              "stat": "comp:ops+sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 59.0,
-              "min_odds_needed": 2.87
-            },
-            {
-              "stat": "comp:ops+2sp_fip",
-              "top_pct": 5,
-              "baseline_hit_rate": 58.9,
-              "min_odds_needed": 2.88
             },
             {
               "stat": "comp:runs+fip",
@@ -8453,26 +7899,8 @@
               "min_odds_needed": 2.9
             },
             {
-              "stat": "comp:ops-sp_k9",
-              "top_pct": 5,
-              "baseline_hit_rate": 59.9,
-              "min_odds_needed": 2.79
-            },
-            {
-              "stat": "comp:runs+sp_fip",
-              "top_pct": 5,
-              "baseline_hit_rate": 58.6,
-              "min_odds_needed": 2.91
-            },
-            {
               "stat": "comp:runs+era+pf",
               "top_pct": 30,
-              "baseline_hit_rate": 58.8,
-              "min_odds_needed": 2.89
-            },
-            {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 10,
               "baseline_hit_rate": 58.8,
               "min_odds_needed": 2.89
             },
@@ -8483,41 +7911,29 @@
               "min_odds_needed": 2.93
             },
             {
-              "stat": "comp:ops+2sp_fip",
-              "top_pct": 20,
-              "baseline_hit_rate": 58.2,
-              "min_odds_needed": 2.95
-            },
-            {
-              "stat": "comp:runs+2sp_era",
-              "top_pct": 5,
-              "baseline_hit_rate": 58.1,
-              "min_odds_needed": 2.97
-            },
-            {
               "stat": "comp:runs+fip",
               "top_pct": 20,
               "baseline_hit_rate": 58.1,
               "min_odds_needed": 2.97
             }
           ],
-          "is_top_5_pct": true,
-          "is_top_10_pct": true,
+          "is_top_5_pct": false,
+          "is_top_10_pct": false,
           "predicted": "over",
           "votes": {
-            "est_total": 11.88,
+            "est_total": 11.92,
             "line": 8.5,
-            "distance": 3.38,
-            "over_count": 26,
+            "distance": 3.42,
+            "over_count": 12,
             "under_count": 0,
-            "over_z_sum": 72.32,
+            "over_z_sum": 33.33,
             "under_z_sum": 0,
             "minority_ratio": 0.0,
             "conflict": false
           },
-          "confidence": "high",
+          "confidence": "medium",
           "signal_conflict": false,
-          "min_combined_odds_needed": 2.03
+          "min_combined_odds_needed": 2.42
         },
         "total_9.5": {
           "name": "大小分 9.5",
@@ -8571,36 +7987,6 @@
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 52.7
             },
-            "comp:sp_era_only": {
-              "value": 0.521,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 53.3
-            },
-            "comp:sp_fip_only": {
-              "value": 1.272,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 54.5
-            },
-            "comp:sp_whip_only": {
-              "value": 0.354,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 54.6
-            },
-            "comp:sp_hr9_only": {
-              "value": 1.296,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 51.7
-            },
-            "comp:sp_k9_inv": {
-              "value": 1.483,
-              "predicts": "over",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 56.5
-            },
             "comp:runs+era": {
               "value": 3.079,
               "predicts": "over",
@@ -8643,60 +8029,6 @@
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 53.4
             },
-            "comp:ops+sp_era": {
-              "value": 2.169,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 56.8
-            },
-            "comp:ops+sp_fip": {
-              "value": 2.919,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 58.1
-            },
-            "comp:runs+sp_era": {
-              "value": 3.135,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 55.7
-            },
-            "comp:runs+sp_fip": {
-              "value": 3.885,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 56.8
-            },
-            "comp:ops-sp_k9": {
-              "value": 3.131,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 58.8
-            },
-            "comp:ops+sp_whip": {
-              "value": 2.001,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 58.3
-            },
-            "comp:ops+2sp_fip": {
-              "value": 4.191,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 58.0
-            },
-            "comp:runs+2sp_era": {
-              "value": 3.656,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 56.0
-            },
-            "comp:2sp_fip+sp_era": {
-              "value": 3.064,
-              "predicts": "over",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 55.6
-            },
             "comp:runs+era+pf": {
               "value": 3.45,
               "predicts": "over",
@@ -8708,39 +8040,9 @@
               "predicts": "over",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 59.3
-            },
-            "comp:ops+sp_fip+pf": {
-              "value": 3.29,
-              "predicts": "over",
-              "bucket": "Top 10%",
-              "baseline_top_10_hit_rate": 61.4
-            },
-            "comp:runs+sp_era+pf": {
-              "value": 3.505,
-              "predicts": "over",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 60.5
             }
           },
           "matched_filters": [
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 5,
-              "baseline_hit_rate": 70.2,
-              "min_odds_needed": 2.03
-            },
-            {
-              "stat": "comp:ops+sp_fip+pf",
-              "top_pct": 10,
-              "baseline_hit_rate": 65.0,
-              "min_odds_needed": 2.37
-            },
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 10,
-              "baseline_hit_rate": 64.8,
-              "min_odds_needed": 2.38
-            },
             {
               "stat": "comp:runs+era+pf",
               "top_pct": 10,
@@ -8752,18 +8054,6 @@
               "top_pct": 10,
               "baseline_hit_rate": 63.6,
               "min_odds_needed": 2.47
-            },
-            {
-              "stat": "comp:ops+sp_fip+pf",
-              "top_pct": 20,
-              "baseline_hit_rate": 62.0,
-              "min_odds_needed": 2.6
-            },
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 20,
-              "baseline_hit_rate": 61.4,
-              "min_odds_needed": 2.65
             },
             {
               "stat": "comp:ops+fip+pf",
@@ -8778,46 +8068,10 @@
               "min_odds_needed": 2.78
             },
             {
-              "stat": "comp:ops+sp_fip+pf",
-              "top_pct": 30,
-              "baseline_hit_rate": 60.0,
-              "min_odds_needed": 2.77
-            },
-            {
               "stat": "comp:ops+fip+pf",
               "top_pct": 30,
               "baseline_hit_rate": 59.5,
               "min_odds_needed": 2.82
-            },
-            {
-              "stat": "comp:runs+sp_era+pf",
-              "top_pct": 30,
-              "baseline_hit_rate": 60.1,
-              "min_odds_needed": 2.77
-            },
-            {
-              "stat": "comp:ops+2sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 59.7,
-              "min_odds_needed": 2.81
-            },
-            {
-              "stat": "comp:ops-sp_k9",
-              "top_pct": 10,
-              "baseline_hit_rate": 59.0,
-              "min_odds_needed": 2.87
-            },
-            {
-              "stat": "comp:ops+sp_fip",
-              "top_pct": 10,
-              "baseline_hit_rate": 59.0,
-              "min_odds_needed": 2.87
-            },
-            {
-              "stat": "comp:ops+2sp_fip",
-              "top_pct": 5,
-              "baseline_hit_rate": 58.9,
-              "min_odds_needed": 2.88
             },
             {
               "stat": "comp:runs+fip",
@@ -8826,26 +8080,8 @@
               "min_odds_needed": 2.9
             },
             {
-              "stat": "comp:ops-sp_k9",
-              "top_pct": 5,
-              "baseline_hit_rate": 59.9,
-              "min_odds_needed": 2.79
-            },
-            {
-              "stat": "comp:runs+sp_fip",
-              "top_pct": 5,
-              "baseline_hit_rate": 58.6,
-              "min_odds_needed": 2.91
-            },
-            {
               "stat": "comp:runs+era+pf",
               "top_pct": 30,
-              "baseline_hit_rate": 58.8,
-              "min_odds_needed": 2.89
-            },
-            {
-              "stat": "comp:ops+sp_whip",
-              "top_pct": 10,
               "baseline_hit_rate": 58.8,
               "min_odds_needed": 2.89
             },
@@ -8856,41 +8092,29 @@
               "min_odds_needed": 2.93
             },
             {
-              "stat": "comp:ops+2sp_fip",
-              "top_pct": 20,
-              "baseline_hit_rate": 58.2,
-              "min_odds_needed": 2.95
-            },
-            {
-              "stat": "comp:runs+2sp_era",
-              "top_pct": 5,
-              "baseline_hit_rate": 58.1,
-              "min_odds_needed": 2.97
-            },
-            {
               "stat": "comp:runs+fip",
               "top_pct": 20,
               "baseline_hit_rate": 58.1,
               "min_odds_needed": 2.97
             }
           ],
-          "is_top_5_pct": true,
-          "is_top_10_pct": true,
+          "is_top_5_pct": false,
+          "is_top_10_pct": false,
           "predicted": "over",
           "votes": {
-            "est_total": 11.88,
+            "est_total": 11.92,
             "line": 9.5,
-            "distance": 2.38,
-            "over_count": 26,
+            "distance": 2.42,
+            "over_count": 12,
             "under_count": 0,
-            "over_z_sum": 72.32,
+            "over_z_sum": 33.33,
             "under_z_sum": 0,
             "minority_ratio": 0.0,
             "conflict": false
           },
-          "confidence": "high",
+          "confidence": "medium",
           "signal_conflict": false,
-          "min_combined_odds_needed": 2.03
+          "min_combined_odds_needed": 2.42
         }
       }
     },
@@ -9005,11 +8229,11 @@
         "park_factor": 1.11
       },
       "weather": {
-        "temp_f": 46.8,
-        "humidity": 69,
-        "wind_mph": 8.5,
-        "wind_dir_deg": 186,
-        "precip_prob": 9
+        "temp_f": 44.6,
+        "humidity": 81,
+        "wind_mph": 5.3,
+        "wind_dir_deg": 165,
+        "precip_prob": 1
       },
       "team_comparisons": {
         "ops": {
@@ -9139,6 +8363,15 @@
           "blowout_win_rate": 0.267,
           "blowout_loss_rate": 0.333
         }
+      },
+      "series_context": {
+        "series_game": 2,
+        "home_series_wins_before": 0,
+        "away_series_wins_before": 1,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-21"
+        ]
       },
       "expected_total": 7.03,
       "expected_total_breakdown": {
@@ -10801,11 +10034,11 @@
         "park_factor": 0.908
       },
       "weather": {
-        "temp_f": 59.1,
-        "humidity": 74,
-        "wind_mph": 6.3,
-        "wind_dir_deg": 276,
-        "precip_prob": 13
+        "temp_f": 61.4,
+        "humidity": 69,
+        "wind_mph": 8.4,
+        "wind_dir_deg": 278,
+        "precip_prob": 0
       },
       "team_comparisons": {
         "ops": {
@@ -10936,6 +10169,15 @@
           "blowout_loss_rate": 0.4
         }
       },
+      "series_context": {
+        "series_game": 2,
+        "home_series_wins_before": 1,
+        "away_series_wins_before": 0,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-21"
+        ]
+      },
       "expected_total": 6.22,
       "expected_total_breakdown": {
         "away_offense": 4.93,
@@ -10953,115 +10195,115 @@
           "line": 0,
           "composite_scores": {
             "comp:ops+era": {
-              "value": -5.189,
+              "value": -5.039,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 64.1
             },
             "comp:ops+fip": {
-              "value": -5.399,
+              "value": -5.249,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 64.8
             },
             "comp:ops+whip": {
-              "value": -6.02,
+              "value": -5.87,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 64.9
             },
             "comp:run_diff+fip": {
-              "value": -4.459,
+              "value": -4.309,
               "predicts": "away",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 66.3
             },
             "comp:pyth+ops+fip": {
-              "value": -8.76,
+              "value": -8.61,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 65.0
             },
             "comp:slg+era": {
-              "value": -4.847,
+              "value": -4.697,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 64.0
             },
             "comp:obp+whip": {
-              "value": -6.025,
+              "value": -5.875,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 63.5
             },
             "comp:ops+era+home": {
-              "value": -5.039,
+              "value": -4.889,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 64.5
             },
             "comp:run_diff+fip+home": {
-              "value": -4.309,
+              "value": -4.159,
               "predicts": "away",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 66.5
             },
             "comp:pyth+ops+fip+home": {
-              "value": -8.61,
+              "value": -8.46,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 65.4
             },
             "comp:ops+sp_era": {
-              "value": -6.824,
+              "value": -6.674,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.4
             },
             "comp:ops+sp_fip": {
-              "value": -7.53,
+              "value": -7.38,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.0
             },
             "comp:ops+sp_whip": {
-              "value": -7.304,
+              "value": -7.154,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 61.3
             },
             "comp:run_diff+sp_fip": {
-              "value": -6.59,
+              "value": -6.44,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 63.9
             },
             "comp:pyth+ops+sp_fip": {
-              "value": -10.891,
+              "value": -10.741,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 65.1
             },
             "comp:ops+sp_era+home": {
-              "value": -6.674,
+              "value": -6.524,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 61.4
             },
             "comp:ops+sp_fip+home": {
-              "value": -7.38,
+              "value": -7.23,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 61.4
             },
             "comp:pyth+ops+sp_fip+home": {
-              "value": -10.741,
+              "value": -10.591,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 65.9
             },
             "comp:run_diff+sp_fip+home": {
-              "value": -6.44,
+              "value": -6.29,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 64.8
@@ -11520,7 +10762,7 @@
             "home_count": 0,
             "away_count": 19,
             "home_z_sum": 0,
-            "away_z_sum": 129.03,
+            "away_z_sum": 126.18,
             "minority_ratio": 0.0,
             "conflict": false
           },
@@ -11533,73 +10775,73 @@
           "line": 1.5,
           "composite_scores": {
             "comp:ops+era": {
-              "value": -5.189,
+              "value": -5.039,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 62.3
             },
             "comp:ops+fip": {
-              "value": -5.399,
+              "value": -5.249,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 61.8
             },
             "comp:ops+whip": {
-              "value": -6.02,
+              "value": -5.87,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 62.9
             },
             "comp:run_diff+fip": {
-              "value": -4.459,
+              "value": -4.309,
               "predicts": "away",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 62.5
             },
             "comp:pyth+ops+fip": {
-              "value": -8.76,
+              "value": -8.61,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 62.1
             },
             "comp:slg+era": {
-              "value": -4.847,
+              "value": -4.697,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 62.1
             },
             "comp:obp+whip": {
-              "value": -6.025,
+              "value": -5.875,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 61.5
             },
             "comp:ops+sp_era": {
-              "value": -6.824,
+              "value": -6.674,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.4
             },
             "comp:ops+sp_fip": {
-              "value": -7.53,
+              "value": -7.38,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.1
             },
             "comp:ops+sp_whip": {
-              "value": -7.304,
+              "value": -7.154,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 61.3
             },
             "comp:run_diff+sp_fip": {
-              "value": -6.59,
+              "value": -6.44,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 62.4
             },
             "comp:pyth+ops+sp_fip": {
-              "value": -10.891,
+              "value": -10.741,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 63.9
@@ -11896,7 +11138,7 @@
             "home_count": 0,
             "away_count": 12,
             "home_z_sum": 0,
-            "away_z_sum": 79.84,
+            "away_z_sum": 78.04,
             "minority_ratio": 0.0,
             "conflict": false
           },
@@ -11909,73 +11151,73 @@
           "line": 2.5,
           "composite_scores": {
             "comp:ops+era": {
-              "value": -5.189,
+              "value": -5.039,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.6
             },
             "comp:ops+fip": {
-              "value": -5.399,
+              "value": -5.249,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 59.5
             },
             "comp:ops+whip": {
-              "value": -6.02,
+              "value": -5.87,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.9
             },
             "comp:run_diff+fip": {
-              "value": -4.459,
+              "value": -4.309,
               "predicts": "away",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 59.9
             },
             "comp:pyth+ops+fip": {
-              "value": -8.76,
+              "value": -8.61,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.1
             },
             "comp:slg+era": {
-              "value": -4.847,
+              "value": -4.697,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.3
             },
             "comp:obp+whip": {
-              "value": -6.025,
+              "value": -5.875,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 59.2
             },
             "comp:ops+sp_era": {
-              "value": -6.824,
+              "value": -6.674,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 59.2
             },
             "comp:ops+sp_fip": {
-              "value": -7.53,
+              "value": -7.38,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 59.5
             },
             "comp:ops+sp_whip": {
-              "value": -7.304,
+              "value": -7.154,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.1
             },
             "comp:run_diff+sp_fip": {
-              "value": -6.59,
+              "value": -6.44,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.7
             },
             "comp:pyth+ops+sp_fip": {
-              "value": -10.891,
+              "value": -10.741,
               "predicts": "away",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 62.8
@@ -12242,7 +11484,7 @@
             "home_count": 0,
             "away_count": 12,
             "home_z_sum": 0,
-            "away_z_sum": 79.84,
+            "away_z_sum": 78.04,
             "minority_ratio": 0.0,
             "conflict": false
           },
@@ -13157,6 +12399,16 @@
           "blowout_win_rate": 0.333,
           "blowout_loss_rate": 0.333
         }
+      },
+      "series_context": {
+        "series_game": 3,
+        "home_series_wins_before": 0,
+        "away_series_wins_before": 2,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-20",
+          "2026-04-21"
+        ]
       },
       "expected_total": 5.09,
       "expected_total_breakdown": {
@@ -14534,10 +13786,10 @@
         "park_factor": 1.276
       },
       "weather": {
-        "temp_f": 81.7,
-        "humidity": 5,
-        "wind_mph": 16.3,
-        "wind_dir_deg": 234,
+        "temp_f": 80.0,
+        "humidity": 4,
+        "wind_mph": 15.7,
+        "wind_dir_deg": 248,
         "precip_prob": 0
       },
       "team_comparisons": {
@@ -14668,6 +13920,15 @@
           "blowout_win_rate": 0.2,
           "blowout_loss_rate": 0.4
         }
+      },
+      "series_context": {
+        "series_game": 2,
+        "home_series_wins_before": 0,
+        "away_series_wins_before": 1,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-21"
+        ]
       },
       "expected_total": 8.86,
       "expected_total_breakdown": {
@@ -16312,6 +15573,16 @@
           "blowout_loss_rate": 0.333
         }
       },
+      "series_context": {
+        "series_game": 3,
+        "home_series_wins_before": 1,
+        "away_series_wins_before": 1,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-20",
+          "2026-04-21"
+        ]
+      },
       "expected_total": 6.37,
       "expected_total_breakdown": {
         "away_offense": 3.68,
@@ -17469,10 +16740,10 @@
         "park_factor": 0.996
       },
       "weather": {
-        "temp_f": 69.5,
-        "humidity": 46,
-        "wind_mph": 9.7,
-        "wind_dir_deg": 251,
+        "temp_f": 68.8,
+        "humidity": 41,
+        "wind_mph": 9.4,
+        "wind_dir_deg": 252,
         "precip_prob": 0
       },
       "team_comparisons": {
@@ -17603,6 +16874,16 @@
           "blowout_win_rate": 0.4,
           "blowout_loss_rate": 0.333
         }
+      },
+      "series_context": {
+        "series_game": 3,
+        "home_series_wins_before": 0,
+        "away_series_wins_before": 2,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-20",
+          "2026-04-21"
+        ]
       },
       "expected_total": 6.57,
       "expected_total_breakdown": {
@@ -19000,10 +18281,10 @@
         "park_factor": 0.976
       },
       "weather": {
-        "temp_f": 52.9,
-        "humidity": 91,
-        "wind_mph": 8.4,
-        "wind_dir_deg": 8,
+        "temp_f": 51.6,
+        "humidity": 57,
+        "wind_mph": 9.3,
+        "wind_dir_deg": 10,
         "precip_prob": 0
       },
       "team_comparisons": {
@@ -19099,6 +18380,16 @@
           "blowout_loss_rate": 0.067
         }
       },
+      "series_context": {
+        "series_game": 3,
+        "home_series_wins_before": 2,
+        "away_series_wins_before": 0,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-20",
+          "2026-04-21"
+        ]
+      },
       "expected_total": 6.37,
       "expected_total_breakdown": {
         "away_offense": 2.36,
@@ -19116,61 +18407,61 @@
           "line": 0,
           "composite_scores": {
             "comp:ops+era": {
-              "value": 4.187,
+              "value": 4.337,
               "predicts": "home",
-              "bucket": "Top 10%",
+              "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 64.1
             },
             "comp:ops+fip": {
-              "value": 0.934,
+              "value": 1.084,
               "predicts": "home",
               "bucket": null,
               "baseline_top_10_hit_rate": 64.8
             },
             "comp:ops+whip": {
-              "value": 4.803,
+              "value": 4.953,
               "predicts": "home",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 64.9
             },
             "comp:run_diff+fip": {
-              "value": 2.639,
+              "value": 2.789,
               "predicts": "home",
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 66.3
             },
             "comp:pyth+ops+fip": {
-              "value": 4.584,
+              "value": 4.734,
               "predicts": "home",
               "bucket": "Top 20%",
               "baseline_top_10_hit_rate": 65.0
             },
             "comp:slg+era": {
-              "value": 3.473,
+              "value": 3.623,
               "predicts": "home",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 64.0
             },
             "comp:obp+whip": {
-              "value": 5.953,
+              "value": 6.103,
               "predicts": "home",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 63.5
             },
             "comp:ops+era+home": {
-              "value": 4.337,
+              "value": 4.487,
               "predicts": "home",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 64.5
             },
             "comp:run_diff+fip+home": {
-              "value": 2.789,
+              "value": 2.939,
               "predicts": "home",
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 66.5
             },
             "comp:pyth+ops+fip+home": {
-              "value": 4.734,
+              "value": 4.884,
               "predicts": "home",
               "bucket": "Top 20%",
               "baseline_top_10_hit_rate": 65.4
@@ -19206,6 +18497,12 @@
               "top_pct": 10,
               "baseline_hit_rate": 63.5,
               "min_odds_needed": 2.48
+            },
+            {
+              "stat": "comp:ops+era",
+              "top_pct": 5,
+              "baseline_hit_rate": 63.3,
+              "min_odds_needed": 2.49
             },
             {
               "stat": "comp:pyth+ops+fip+home",
@@ -19328,7 +18625,7 @@
           "votes": {
             "home_count": 7,
             "away_count": 0,
-            "home_z_sum": 32.07,
+            "home_z_sum": 33.12,
             "away_z_sum": 0,
             "minority_ratio": 0.0,
             "conflict": false
@@ -19342,43 +18639,43 @@
           "line": 1.5,
           "composite_scores": {
             "comp:ops+era": {
-              "value": 4.187,
+              "value": 4.337,
               "predicts": "home",
-              "bucket": "Top 10%",
+              "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 62.3
             },
             "comp:ops+fip": {
-              "value": 0.934,
+              "value": 1.084,
               "predicts": "home",
               "bucket": null,
               "baseline_top_10_hit_rate": 61.8
             },
             "comp:ops+whip": {
-              "value": 4.803,
+              "value": 4.953,
               "predicts": "home",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 62.9
             },
             "comp:run_diff+fip": {
-              "value": 2.639,
+              "value": 2.789,
               "predicts": "home",
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 62.5
             },
             "comp:pyth+ops+fip": {
-              "value": 4.584,
+              "value": 4.734,
               "predicts": "home",
               "bucket": "Top 20%",
               "baseline_top_10_hit_rate": 62.1
             },
             "comp:slg+era": {
-              "value": 3.473,
+              "value": 3.623,
               "predicts": "home",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 62.1
             },
             "comp:obp+whip": {
-              "value": 5.953,
+              "value": 6.103,
               "predicts": "home",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 61.5
@@ -19440,6 +18737,12 @@
               "min_odds_needed": 2.76
             },
             {
+              "stat": "comp:ops+era",
+              "top_pct": 5,
+              "baseline_hit_rate": 60.0,
+              "min_odds_needed": 2.78
+            },
+            {
               "stat": "comp:slg+era",
               "top_pct": 20,
               "baseline_hit_rate": 60.0,
@@ -19494,7 +18797,7 @@
           "votes": {
             "home_count": 5,
             "away_count": 0,
-            "home_z_sum": 23.0,
+            "home_z_sum": 23.75,
             "away_z_sum": 0,
             "minority_ratio": 0.0,
             "conflict": false
@@ -19508,43 +18811,43 @@
           "line": 2.5,
           "composite_scores": {
             "comp:ops+era": {
-              "value": 4.187,
+              "value": 4.337,
               "predicts": "home",
-              "bucket": "Top 10%",
+              "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.6
             },
             "comp:ops+fip": {
-              "value": 0.934,
+              "value": 1.084,
               "predicts": "home",
               "bucket": null,
               "baseline_top_10_hit_rate": 59.5
             },
             "comp:ops+whip": {
-              "value": 4.803,
+              "value": 4.953,
               "predicts": "home",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 60.9
             },
             "comp:run_diff+fip": {
-              "value": 2.639,
+              "value": 2.789,
               "predicts": "home",
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 59.9
             },
             "comp:pyth+ops+fip": {
-              "value": 4.584,
+              "value": 4.734,
               "predicts": "home",
               "bucket": "Top 20%",
               "baseline_top_10_hit_rate": 60.1
             },
             "comp:slg+era": {
-              "value": 3.473,
+              "value": 3.623,
               "predicts": "home",
               "bucket": "Top 10%",
               "baseline_top_10_hit_rate": 60.3
             },
             "comp:obp+whip": {
-              "value": 5.953,
+              "value": 6.103,
               "predicts": "home",
               "bucket": "Top 5%",
               "baseline_top_10_hit_rate": 59.2
@@ -19574,6 +18877,12 @@
               "top_pct": 10,
               "baseline_hit_rate": 59.2,
               "min_odds_needed": 2.85
+            },
+            {
+              "stat": "comp:ops+era",
+              "top_pct": 5,
+              "baseline_hit_rate": 59.1,
+              "min_odds_needed": 2.86
             },
             {
               "stat": "comp:ops+whip",
@@ -19636,7 +18945,7 @@
           "votes": {
             "home_count": 5,
             "away_count": 0,
-            "home_z_sum": 23.0,
+            "home_z_sum": 23.75,
             "away_z_sum": 0,
             "minority_ratio": 0.0,
             "conflict": false
@@ -20265,6 +19574,15 @@
           "blowout_loss_rate": 0.2
         }
       },
+      "series_context": {
+        "series_game": 2,
+        "home_series_wins_before": 1,
+        "away_series_wins_before": 0,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-21"
+        ]
+      },
       "expected_total": 7.13,
       "expected_total_breakdown": {
         "away_offense": 3.98,
@@ -20282,115 +19600,115 @@
           "line": 0,
           "composite_scores": {
             "comp:ops+era": {
-              "value": -0.713,
+              "value": -0.563,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 64.1
             },
             "comp:ops+fip": {
-              "value": -1.397,
+              "value": -1.247,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 64.8
             },
             "comp:ops+whip": {
-              "value": -0.356,
+              "value": -0.206,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 64.9
             },
             "comp:run_diff+fip": {
-              "value": -1.223,
+              "value": -1.073,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 66.3
             },
             "comp:pyth+ops+fip": {
-              "value": -1.619,
+              "value": -1.469,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 65.0
             },
             "comp:slg+era": {
-              "value": -0.289,
+              "value": -0.139,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 64.0
             },
             "comp:obp+whip": {
-              "value": -1.155,
+              "value": -1.005,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 63.5
             },
             "comp:ops+era+home": {
-              "value": -0.563,
+              "value": -0.413,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 64.5
             },
             "comp:run_diff+fip+home": {
-              "value": -1.073,
+              "value": -0.923,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 66.5
             },
             "comp:pyth+ops+fip+home": {
-              "value": -1.469,
+              "value": -1.319,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 65.4
             },
             "comp:ops+sp_era": {
-              "value": -1.431,
+              "value": -1.281,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 60.4
             },
             "comp:ops+sp_fip": {
-              "value": -2.058,
+              "value": -1.908,
               "predicts": "away",
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 60.0
             },
             "comp:ops+sp_whip": {
-              "value": -1.535,
+              "value": -1.385,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 61.3
             },
             "comp:run_diff+sp_fip": {
-              "value": -1.884,
+              "value": -1.734,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 63.9
             },
             "comp:pyth+ops+sp_fip": {
-              "value": -2.28,
+              "value": -2.13,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 65.1
             },
             "comp:ops+sp_era+home": {
-              "value": -1.281,
+              "value": -1.131,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 61.4
             },
             "comp:ops+sp_fip+home": {
-              "value": -1.908,
+              "value": -1.758,
               "predicts": "away",
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 61.4
             },
             "comp:pyth+ops+sp_fip+home": {
-              "value": -2.13,
+              "value": -1.98,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 65.9
             },
             "comp:run_diff+sp_fip+home": {
-              "value": -1.734,
+              "value": -1.584,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 64.8
@@ -20417,7 +19735,7 @@
             "home_count": 0,
             "away_count": 19,
             "home_z_sum": 0,
-            "away_z_sum": 26.1,
+            "away_z_sum": 23.25,
             "minority_ratio": 0.0,
             "conflict": false
           },
@@ -20430,73 +19748,73 @@
           "line": 1.5,
           "composite_scores": {
             "comp:ops+era": {
-              "value": -0.713,
+              "value": -0.563,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 62.3
             },
             "comp:ops+fip": {
-              "value": -1.397,
+              "value": -1.247,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 61.8
             },
             "comp:ops+whip": {
-              "value": -0.356,
+              "value": -0.206,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 62.9
             },
             "comp:run_diff+fip": {
-              "value": -1.223,
+              "value": -1.073,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 62.5
             },
             "comp:pyth+ops+fip": {
-              "value": -1.619,
+              "value": -1.469,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 62.1
             },
             "comp:slg+era": {
-              "value": -0.289,
+              "value": -0.139,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 62.1
             },
             "comp:obp+whip": {
-              "value": -1.155,
+              "value": -1.005,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 61.5
             },
             "comp:ops+sp_era": {
-              "value": -1.431,
+              "value": -1.281,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 60.4
             },
             "comp:ops+sp_fip": {
-              "value": -2.058,
+              "value": -1.908,
               "predicts": "away",
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 60.1
             },
             "comp:ops+sp_whip": {
-              "value": -1.535,
+              "value": -1.385,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 61.3
             },
             "comp:run_diff+sp_fip": {
-              "value": -1.884,
+              "value": -1.734,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 62.4
             },
             "comp:pyth+ops+sp_fip": {
-              "value": -2.28,
+              "value": -2.13,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 63.9
@@ -20517,7 +19835,7 @@
             "home_count": 0,
             "away_count": 12,
             "home_z_sum": 0,
-            "away_z_sum": 15.94,
+            "away_z_sum": 14.14,
             "minority_ratio": 0.0,
             "conflict": false
           },
@@ -20530,73 +19848,73 @@
           "line": 2.5,
           "composite_scores": {
             "comp:ops+era": {
-              "value": -0.713,
+              "value": -0.563,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 60.6
             },
             "comp:ops+fip": {
-              "value": -1.397,
+              "value": -1.247,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 59.5
             },
             "comp:ops+whip": {
-              "value": -0.356,
+              "value": -0.206,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 60.9
             },
             "comp:run_diff+fip": {
-              "value": -1.223,
+              "value": -1.073,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 59.9
             },
             "comp:pyth+ops+fip": {
-              "value": -1.619,
+              "value": -1.469,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 60.1
             },
             "comp:slg+era": {
-              "value": -0.289,
+              "value": -0.139,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 60.3
             },
             "comp:obp+whip": {
-              "value": -1.155,
+              "value": -1.005,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 59.2
             },
             "comp:ops+sp_era": {
-              "value": -1.431,
+              "value": -1.281,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 59.2
             },
             "comp:ops+sp_fip": {
-              "value": -2.058,
+              "value": -1.908,
               "predicts": "away",
               "bucket": "Top 30%",
               "baseline_top_10_hit_rate": 59.5
             },
             "comp:ops+sp_whip": {
-              "value": -1.535,
+              "value": -1.385,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 60.1
             },
             "comp:run_diff+sp_fip": {
-              "value": -1.884,
+              "value": -1.734,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 60.7
             },
             "comp:pyth+ops+sp_fip": {
-              "value": -2.28,
+              "value": -2.13,
               "predicts": "away",
               "bucket": null,
               "baseline_top_10_hit_rate": 62.8
@@ -20617,7 +19935,7 @@
             "home_count": 0,
             "away_count": 12,
             "home_z_sum": 0,
-            "away_z_sum": 15.94,
+            "away_z_sum": 14.14,
             "minority_ratio": 0.0,
             "conflict": false
           },
@@ -21532,6 +20850,16 @@
           "blowout_win_rate": 0.2,
           "blowout_loss_rate": 0.4
         }
+      },
+      "series_context": {
+        "series_game": 3,
+        "home_series_wins_before": 0,
+        "away_series_wins_before": 2,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-20",
+          "2026-04-21"
+        ]
       },
       "expected_total": 5.26,
       "expected_total_breakdown": {
@@ -22711,10 +22039,10 @@
         "park_factor": 1.018
       },
       "weather": {
-        "temp_f": 69.4,
-        "humidity": 68,
-        "wind_mph": 11.7,
-        "wind_dir_deg": 204,
+        "temp_f": 68.5,
+        "humidity": 78,
+        "wind_mph": 10.6,
+        "wind_dir_deg": 175,
         "precip_prob": 0
       },
       "team_comparisons": {
@@ -22845,6 +22173,16 @@
           "blowout_win_rate": 0.0,
           "blowout_loss_rate": 0.2
         }
+      },
+      "series_context": {
+        "series_game": 3,
+        "home_series_wins_before": 1,
+        "away_series_wins_before": 1,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-20",
+          "2026-04-21"
+        ]
       },
       "expected_total": 5.81,
       "expected_total_breakdown": {
@@ -24035,11 +23373,11 @@
         "park_factor": 0.915
       },
       "weather": {
-        "temp_f": 49.5,
-        "humidity": 87,
-        "wind_mph": 9.9,
-        "wind_dir_deg": 129,
-        "precip_prob": 8
+        "temp_f": 49.4,
+        "humidity": 77,
+        "wind_mph": 3.2,
+        "wind_dir_deg": 45,
+        "precip_prob": 1
       },
       "team_comparisons": {
         "ops": {
@@ -24133,6 +23471,15 @@
           "blowout_win_rate": 0.133,
           "blowout_loss_rate": 0.467
         }
+      },
+      "series_context": {
+        "series_game": 2,
+        "home_series_wins_before": 0,
+        "away_series_wins_before": 1,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-21"
+        ]
       },
       "expected_total": 4.93,
       "expected_total_breakdown": {
@@ -25119,6 +24466,15 @@
           "blowout_win_rate": 0.333,
           "blowout_loss_rate": 0.133
         }
+      },
+      "series_context": {
+        "series_game": 2,
+        "home_series_wins_before": 0,
+        "away_series_wins_before": 1,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-21"
+        ]
       },
       "expected_total": 6.91,
       "expected_total_breakdown": {
@@ -26161,1253 +25517,6 @@
       }
     },
     {
-      "away": "Milwaukee Brewers",
-      "away_zh": "釀酒人",
-      "home": "Detroit Tigers",
-      "home_zh": "老虎",
-      "away_sp": "Chad Patrick",
-      "home_sp": "Casey Mize",
-      "away_record": "13-9",
-      "home_record": "12-12",
-      "away_sp_recent": [
-        {
-          "date": "2026-04-15",
-          "vs": "Toronto Blue Jays",
-          "vs_zh": "藍鳥",
-          "ip": "6.2",
-          "h": 3,
-          "r": 1,
-          "er": 1,
-          "bb": 2,
-          "so": 2,
-          "hr": 0,
-          "pitches": 81,
-          "result": "W",
-          "team_score": "2-1"
-        },
-        {
-          "date": "2026-04-04",
-          "vs": "Kansas City Royals",
-          "vs_zh": "皇家",
-          "ip": "5.0",
-          "h": 4,
-          "r": 0,
-          "er": 0,
-          "bb": 3,
-          "so": 3,
-          "hr": 0,
-          "pitches": 86,
-          "result": "W",
-          "team_score": "5-2"
-        },
-        {
-          "date": "2026-03-28",
-          "vs": "Chicago White Sox",
-          "vs_zh": "白襪",
-          "ip": "4.1",
-          "h": 5,
-          "r": 1,
-          "er": 1,
-          "bb": 1,
-          "so": 4,
-          "hr": 1,
-          "pitches": 74,
-          "result": "W",
-          "team_score": "6-1"
-        }
-      ],
-      "home_sp_recent": [
-        {
-          "date": "2026-04-17",
-          "vs": "Boston Red Sox",
-          "vs_zh": "紅襪",
-          "ip": "6.2",
-          "h": 3,
-          "r": 0,
-          "er": 0,
-          "bb": 1,
-          "so": 7,
-          "hr": 0,
-          "pitches": 94,
-          "result": "L",
-          "team_score": "0-1"
-        },
-        {
-          "date": "2026-04-11",
-          "vs": "Miami Marlins",
-          "vs_zh": "馬林魚",
-          "ip": "5.2",
-          "h": 6,
-          "r": 1,
-          "er": 1,
-          "bb": 1,
-          "so": 5,
-          "hr": 0,
-          "pitches": 74,
-          "result": "W",
-          "team_score": "6-1"
-        },
-        {
-          "date": "2026-04-06",
-          "vs": "Minnesota Twins",
-          "vs_zh": "雙城",
-          "ip": "4.1",
-          "h": 7,
-          "r": 5,
-          "er": 5,
-          "bb": 3,
-          "so": 4,
-          "hr": 1,
-          "pitches": 90,
-          "result": "L",
-          "team_score": "3-7"
-        }
-      ],
-      "venue": {
-        "id": 2394,
-        "name": "Comerica Park",
-        "roof": "Open",
-        "elevation": 600,
-        "park_factor": 1.001
-      },
-      "weather": {
-        "temp_f": 72.7,
-        "humidity": 36,
-        "wind_mph": 7.3,
-        "wind_dir_deg": 78,
-        "precip_prob": 0
-      },
-      "team_comparisons": {
-        "ops": {
-          "away": 0.716,
-          "home": 0.705,
-          "edge": "away"
-        },
-        "slg": {
-          "away": 0.373,
-          "home": 0.378,
-          "edge": "home"
-        },
-        "obp": {
-          "away": 0.343,
-          "home": 0.327,
-          "edge": "away"
-        },
-        "avg": {
-          "away": 0.239,
-          "home": 0.246,
-          "edge": "home"
-        },
-        "era": {
-          "away": 3.857,
-          "home": 3.702,
-          "edge": "home"
-        },
-        "whip": {
-          "away": 1.327,
-          "home": 1.297,
-          "edge": "home"
-        },
-        "fip": {
-          "away": 3.574,
-          "home": 3.347,
-          "edge": "home"
-        },
-        "k9": {
-          "away": 9.092,
-          "home": 8.187,
-          "edge": "away"
-        },
-        "bb9": {
-          "away": 3.903,
-          "home": 3.745,
-          "edge": "home"
-        },
-        "run_diff_per_game": {
-          "away": 1.227,
-          "home": 0.375,
-          "edge": "away"
-        },
-        "pyth_pct": {
-          "away": 0.627,
-          "home": 0.545,
-          "edge": "away"
-        },
-        "runs_per_game": {
-          "away": 5.364,
-          "home": 4.333,
-          "edge": "away"
-        },
-        "ra_per_game": {
-          "away": 4.136,
-          "home": 3.958,
-          "edge": "home"
-        },
-        "bp_fatigue": {
-          "away": 0.88,
-          "home": 1.0,
-          "edge": "away"
-        }
-      },
-      "sp_comparisons": {
-        "sp_era": {
-          "away": 1.125,
-          "home": 2.779,
-          "edge": "away"
-        },
-        "sp_whip": {
-          "away": 1.125,
-          "home": 1.191,
-          "edge": "away"
-        },
-        "sp_fip": {
-          "away": 3.913,
-          "home": 2.968,
-          "edge": "home"
-        },
-        "sp_k9": {
-          "away": 5.062,
-          "home": 9.926,
-          "edge": "home"
-        },
-        "sp_bb9": {
-          "away": 3.375,
-          "home": 2.779,
-          "edge": "home"
-        },
-        "sp_k_bb": {
-          "away": 1.5,
-          "home": 3.571,
-          "edge": "home"
-        },
-        "sp_starts": {
-          "away": 3,
-          "home": 4,
-          "edge": "even"
-        }
-      },
-      "team_recent_form": {
-        "away": {
-          "games": 15,
-          "runs_per_game": 4.73,
-          "ra_per_game": 4.4,
-          "ops": 0.688,
-          "over_9_5_rate": 0.467,
-          "blowout_win_rate": 0.267,
-          "blowout_loss_rate": 0.133
-        },
-        "home": {
-          "games": 15,
-          "runs_per_game": 4.13,
-          "ra_per_game": 4.0,
-          "ops": 0.706,
-          "over_9_5_rate": 0.4,
-          "blowout_win_rate": 0.267,
-          "blowout_loss_rate": 0.133
-        }
-      },
-      "expected_total": 5.53,
-      "expected_total_breakdown": {
-        "away_offense": 3.18,
-        "home_offense": 2.35,
-        "park_adj": 1.001,
-        "weather_adj": 1.0
-      },
-      "away_edges": 9,
-      "home_edges": 11,
-      "any_top_5_pct": false,
-      "any_top_10_pct": false,
-      "bet_types": {
-        "ml": {
-          "name": "不讓分",
-          "line": 0,
-          "composite_scores": {
-            "comp:ops+era": {
-              "value": 0.017,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 64.1
-            },
-            "comp:ops+fip": {
-              "value": 0.261,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 64.8
-            },
-            "comp:ops+whip": {
-              "value": 0.046,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 64.9
-            },
-            "comp:run_diff+fip": {
-              "value": -0.404,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 66.3
-            },
-            "comp:pyth+ops+fip": {
-              "value": -0.527,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 65.0
-            },
-            "comp:slg+era": {
-              "value": 0.382,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 64.0
-            },
-            "comp:obp+whip": {
-              "value": -0.674,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 63.5
-            },
-            "comp:ops+era+home": {
-              "value": 0.167,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 64.5
-            },
-            "comp:run_diff+fip+home": {
-              "value": -0.254,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 66.5
-            },
-            "comp:pyth+ops+fip+home": {
-              "value": -0.377,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 65.4
-            },
-            "comp:ops+sp_era": {
-              "value": -0.845,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.4
-            },
-            "comp:ops+sp_fip": {
-              "value": 0.414,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.0
-            },
-            "comp:ops+sp_whip": {
-              "value": -0.385,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 61.3
-            },
-            "comp:run_diff+sp_fip": {
-              "value": -0.25,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 63.9
-            },
-            "comp:pyth+ops+sp_fip": {
-              "value": -0.374,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 65.1
-            },
-            "comp:ops+sp_era+home": {
-              "value": -0.695,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 61.4
-            },
-            "comp:ops+sp_fip+home": {
-              "value": 0.564,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 61.4
-            },
-            "comp:pyth+ops+sp_fip+home": {
-              "value": -0.224,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 65.9
-            },
-            "comp:run_diff+sp_fip+home": {
-              "value": -0.1,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 64.8
-            }
-          },
-          "matched_filters": [],
-          "is_top_5_pct": false,
-          "is_top_10_pct": false,
-          "predicted": "away",
-          "votes": {
-            "home_count": 7,
-            "away_count": 12,
-            "home_z_sum": 1.85,
-            "away_z_sum": 5.11,
-            "minority_ratio": 0.27,
-            "conflict": false
-          },
-          "confidence": "low",
-          "signal_conflict": false,
-          "min_combined_odds_needed": null
-        },
-        "spread_1.5": {
-          "name": "讓分 1.5",
-          "line": 1.5,
-          "composite_scores": {
-            "comp:ops+era": {
-              "value": 0.017,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 62.3
-            },
-            "comp:ops+fip": {
-              "value": 0.261,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 61.8
-            },
-            "comp:ops+whip": {
-              "value": 0.046,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 62.9
-            },
-            "comp:run_diff+fip": {
-              "value": -0.404,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 62.5
-            },
-            "comp:pyth+ops+fip": {
-              "value": -0.527,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 62.1
-            },
-            "comp:slg+era": {
-              "value": 0.382,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 62.1
-            },
-            "comp:obp+whip": {
-              "value": -0.674,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 61.5
-            },
-            "comp:ops+sp_era": {
-              "value": -0.845,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.4
-            },
-            "comp:ops+sp_fip": {
-              "value": 0.414,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.1
-            },
-            "comp:ops+sp_whip": {
-              "value": -0.385,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 61.3
-            },
-            "comp:run_diff+sp_fip": {
-              "value": -0.25,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 62.4
-            },
-            "comp:pyth+ops+sp_fip": {
-              "value": -0.374,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 63.9
-            }
-          },
-          "matched_filters": [],
-          "is_top_5_pct": false,
-          "is_top_10_pct": false,
-          "predicted": "away",
-          "votes": {
-            "home_count": 5,
-            "away_count": 7,
-            "home_z_sum": 1.12,
-            "away_z_sum": 3.46,
-            "minority_ratio": 0.24,
-            "conflict": false
-          },
-          "confidence": "low",
-          "signal_conflict": false,
-          "min_combined_odds_needed": null
-        },
-        "spread_2.5": {
-          "name": "讓分 2.5",
-          "line": 2.5,
-          "composite_scores": {
-            "comp:ops+era": {
-              "value": 0.017,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.6
-            },
-            "comp:ops+fip": {
-              "value": 0.261,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 59.5
-            },
-            "comp:ops+whip": {
-              "value": 0.046,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.9
-            },
-            "comp:run_diff+fip": {
-              "value": -0.404,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 59.9
-            },
-            "comp:pyth+ops+fip": {
-              "value": -0.527,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.1
-            },
-            "comp:slg+era": {
-              "value": 0.382,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.3
-            },
-            "comp:obp+whip": {
-              "value": -0.674,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 59.2
-            },
-            "comp:ops+sp_era": {
-              "value": -0.845,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 59.2
-            },
-            "comp:ops+sp_fip": {
-              "value": 0.414,
-              "predicts": "home",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 59.5
-            },
-            "comp:ops+sp_whip": {
-              "value": -0.385,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.1
-            },
-            "comp:run_diff+sp_fip": {
-              "value": -0.25,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.7
-            },
-            "comp:pyth+ops+sp_fip": {
-              "value": -0.374,
-              "predicts": "away",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 62.8
-            }
-          },
-          "matched_filters": [],
-          "is_top_5_pct": false,
-          "is_top_10_pct": false,
-          "predicted": "away",
-          "votes": {
-            "home_count": 5,
-            "away_count": 7,
-            "home_z_sum": 1.12,
-            "away_z_sum": 3.46,
-            "minority_ratio": 0.24,
-            "conflict": false
-          },
-          "confidence": "low",
-          "signal_conflict": false,
-          "min_combined_odds_needed": null
-        },
-        "total_7.5": {
-          "name": "大小分 7.5",
-          "line": 7.5,
-          "composite_scores": {
-            "comp:runs_pg": {
-              "value": 0.831,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 54.9
-            },
-            "comp:ops": {
-              "value": 0.144,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.1
-            },
-            "comp:slg": {
-              "value": -0.362,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.5
-            },
-            "comp:hr_pg": {
-              "value": -1.228,
-              "predicts": "under",
-              "bucket": "Top 30%",
-              "baseline_top_10_hit_rate": 57.7
-            },
-            "comp:era": {
-              "value": -0.742,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.9
-            },
-            "comp:fip": {
-              "value": -1.416,
-              "predicts": "under",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 57.2
-            },
-            "comp:whip": {
-              "value": -0.136,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.3
-            },
-            "comp:k9_inv": {
-              "value": -0.012,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 52.6
-            },
-            "comp:sp_era_only": {
-              "value": -1.251,
-              "predicts": "under",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 55.3
-            },
-            "comp:sp_fip_only": {
-              "value": -0.636,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.6
-            },
-            "comp:sp_whip_only": {
-              "value": -0.59,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.3
-            },
-            "comp:sp_hr9_only": {
-              "value": -0.796,
-              "predicts": "under",
-              "bucket": "Top 30%",
-              "baseline_top_10_hit_rate": 55.3
-            },
-            "comp:sp_k9_inv": {
-              "value": 0.624,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 54.5
-            },
-            "comp:runs+era": {
-              "value": 0.089,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.1
-            },
-            "comp:ops+era": {
-              "value": -0.598,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.9
-            },
-            "comp:ops+fip": {
-              "value": -1.272,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.1
-            },
-            "comp:ops+whip": {
-              "value": 0.008,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.5
-            },
-            "comp:runs+fip": {
-              "value": -0.586,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.7
-            },
-            "comp:runs-k9": {
-              "value": 0.819,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 53.9
-            },
-            "comp:ops-k9": {
-              "value": 0.132,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 53.9
-            },
-            "comp:ops+sp_era": {
-              "value": -1.107,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.0
-            },
-            "comp:ops+sp_fip": {
-              "value": -0.492,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.9
-            },
-            "comp:runs+sp_era": {
-              "value": -0.42,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.0
-            },
-            "comp:runs+sp_fip": {
-              "value": 0.195,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.7
-            },
-            "comp:ops-sp_k9": {
-              "value": 0.768,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 59.0
-            },
-            "comp:ops+sp_whip": {
-              "value": -0.447,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.5
-            },
-            "comp:ops+2sp_fip": {
-              "value": -1.127,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 59.2
-            },
-            "comp:runs+2sp_era": {
-              "value": -1.671,
-              "predicts": "under",
-              "bucket": "Top 30%",
-              "baseline_top_10_hit_rate": 57.4
-            },
-            "comp:2sp_fip+sp_era": {
-              "value": -2.522,
-              "predicts": "under",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 57.7
-            },
-            "comp:runs+era+pf": {
-              "value": 0.1,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 64.2
-            },
-            "comp:ops+fip+pf": {
-              "value": -1.261,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 63.6
-            },
-            "comp:ops+sp_fip+pf": {
-              "value": -0.48,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 65.0
-            },
-            "comp:runs+sp_era+pf": {
-              "value": -0.409,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 64.8
-            }
-          },
-          "matched_filters": [],
-          "is_top_5_pct": false,
-          "is_top_10_pct": false,
-          "predicted": "over",
-          "votes": {
-            "est_total": 9.16,
-            "line": 7.5,
-            "distance": 1.66,
-            "over_count": 0,
-            "under_count": 3,
-            "over_z_sum": 0,
-            "under_z_sum": 5.19,
-            "minority_ratio": 0.0,
-            "conflict": false
-          },
-          "confidence": "low",
-          "signal_conflict": false,
-          "min_combined_odds_needed": null
-        },
-        "total_8.5": {
-          "name": "大小分 8.5",
-          "line": 8.5,
-          "composite_scores": {
-            "comp:runs_pg": {
-              "value": 0.831,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 53.6
-            },
-            "comp:ops": {
-              "value": 0.144,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.5
-            },
-            "comp:slg": {
-              "value": -0.362,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.0
-            },
-            "comp:hr_pg": {
-              "value": -1.228,
-              "predicts": "under",
-              "bucket": "Top 30%",
-              "baseline_top_10_hit_rate": 57.4
-            },
-            "comp:era": {
-              "value": -0.742,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.9
-            },
-            "comp:fip": {
-              "value": -1.416,
-              "predicts": "under",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 57.0
-            },
-            "comp:whip": {
-              "value": -0.136,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.5
-            },
-            "comp:k9_inv": {
-              "value": -0.012,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 53.3
-            },
-            "comp:sp_era_only": {
-              "value": -1.251,
-              "predicts": "under",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 55.3
-            },
-            "comp:sp_fip_only": {
-              "value": -0.636,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.4
-            },
-            "comp:sp_whip_only": {
-              "value": -0.59,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.1
-            },
-            "comp:sp_hr9_only": {
-              "value": -0.796,
-              "predicts": "under",
-              "bucket": "Top 30%",
-              "baseline_top_10_hit_rate": 54.4
-            },
-            "comp:sp_k9_inv": {
-              "value": 0.624,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.6
-            },
-            "comp:runs+era": {
-              "value": 0.089,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.2
-            },
-            "comp:ops+era": {
-              "value": -0.598,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.3
-            },
-            "comp:ops+fip": {
-              "value": -1.272,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.9
-            },
-            "comp:ops+whip": {
-              "value": 0.008,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.0
-            },
-            "comp:runs+fip": {
-              "value": -0.586,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.5
-            },
-            "comp:runs-k9": {
-              "value": 0.819,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 53.7
-            },
-            "comp:ops-k9": {
-              "value": 0.132,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 53.9
-            },
-            "comp:ops+sp_era": {
-              "value": -1.107,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.4
-            },
-            "comp:ops+sp_fip": {
-              "value": -0.492,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 59.0
-            },
-            "comp:runs+sp_era": {
-              "value": -0.42,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.2
-            },
-            "comp:runs+sp_fip": {
-              "value": 0.195,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.5
-            },
-            "comp:ops-sp_k9": {
-              "value": 0.768,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.8
-            },
-            "comp:ops+sp_whip": {
-              "value": -0.447,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.8
-            },
-            "comp:ops+2sp_fip": {
-              "value": -1.127,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 59.7
-            },
-            "comp:runs+2sp_era": {
-              "value": -1.671,
-              "predicts": "under",
-              "bucket": "Top 30%",
-              "baseline_top_10_hit_rate": 56.9
-            },
-            "comp:2sp_fip+sp_era": {
-              "value": -2.522,
-              "predicts": "under",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 58.2
-            },
-            "comp:runs+era+pf": {
-              "value": 0.1,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 62.1
-            },
-            "comp:ops+fip+pf": {
-              "value": -1.261,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 61.5
-            },
-            "comp:ops+sp_fip+pf": {
-              "value": -0.48,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 62.9
-            },
-            "comp:runs+sp_era+pf": {
-              "value": -0.409,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 62.7
-            }
-          },
-          "matched_filters": [],
-          "is_top_5_pct": false,
-          "is_top_10_pct": false,
-          "predicted": "over",
-          "votes": {
-            "est_total": 9.16,
-            "line": 8.5,
-            "distance": 0.66,
-            "over_count": 0,
-            "under_count": 3,
-            "over_z_sum": 0,
-            "under_z_sum": 5.19,
-            "minority_ratio": 0.0,
-            "conflict": false
-          },
-          "confidence": "low",
-          "signal_conflict": false,
-          "min_combined_odds_needed": null
-        },
-        "total_9.5": {
-          "name": "大小分 9.5",
-          "line": 9.5,
-          "composite_scores": {
-            "comp:runs_pg": {
-              "value": 0.831,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 53.1
-            },
-            "comp:ops": {
-              "value": 0.144,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.0
-            },
-            "comp:slg": {
-              "value": -0.362,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.5
-            },
-            "comp:hr_pg": {
-              "value": -1.228,
-              "predicts": "under",
-              "bucket": "Top 30%",
-              "baseline_top_10_hit_rate": 55.9
-            },
-            "comp:era": {
-              "value": -0.742,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.4
-            },
-            "comp:fip": {
-              "value": -1.416,
-              "predicts": "under",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 56.0
-            },
-            "comp:whip": {
-              "value": -0.136,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.2
-            },
-            "comp:k9_inv": {
-              "value": -0.012,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 52.7
-            },
-            "comp:sp_era_only": {
-              "value": -1.251,
-              "predicts": "under",
-              "bucket": "Top 5%",
-              "baseline_top_10_hit_rate": 53.3
-            },
-            "comp:sp_fip_only": {
-              "value": -0.636,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 54.5
-            },
-            "comp:sp_whip_only": {
-              "value": -0.59,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 54.6
-            },
-            "comp:sp_hr9_only": {
-              "value": -0.796,
-              "predicts": "under",
-              "bucket": "Top 30%",
-              "baseline_top_10_hit_rate": 51.7
-            },
-            "comp:sp_k9_inv": {
-              "value": 0.624,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.5
-            },
-            "comp:runs+era": {
-              "value": 0.089,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.7
-            },
-            "comp:ops+era": {
-              "value": -0.598,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.6
-            },
-            "comp:ops+fip": {
-              "value": -1.272,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.4
-            },
-            "comp:ops+whip": {
-              "value": 0.008,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.1
-            },
-            "comp:runs+fip": {
-              "value": -0.586,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 57.5
-            },
-            "comp:runs-k9": {
-              "value": 0.819,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 53.5
-            },
-            "comp:ops-k9": {
-              "value": 0.132,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 53.4
-            },
-            "comp:ops+sp_era": {
-              "value": -1.107,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.8
-            },
-            "comp:ops+sp_fip": {
-              "value": -0.492,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.1
-            },
-            "comp:runs+sp_era": {
-              "value": -0.42,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 55.7
-            },
-            "comp:runs+sp_fip": {
-              "value": 0.195,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 56.8
-            },
-            "comp:ops-sp_k9": {
-              "value": 0.768,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.8
-            },
-            "comp:ops+sp_whip": {
-              "value": -0.447,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.3
-            },
-            "comp:ops+2sp_fip": {
-              "value": -1.127,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 58.0
-            },
-            "comp:runs+2sp_era": {
-              "value": -1.671,
-              "predicts": "under",
-              "bucket": "Top 30%",
-              "baseline_top_10_hit_rate": 56.0
-            },
-            "comp:2sp_fip+sp_era": {
-              "value": -2.522,
-              "predicts": "under",
-              "bucket": "Top 20%",
-              "baseline_top_10_hit_rate": 55.6
-            },
-            "comp:runs+era+pf": {
-              "value": 0.1,
-              "predicts": "over",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.6
-            },
-            "comp:ops+fip+pf": {
-              "value": -1.261,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 59.3
-            },
-            "comp:ops+sp_fip+pf": {
-              "value": -0.48,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 61.4
-            },
-            "comp:runs+sp_era+pf": {
-              "value": -0.409,
-              "predicts": "under",
-              "bucket": null,
-              "baseline_top_10_hit_rate": 60.5
-            }
-          },
-          "matched_filters": [],
-          "is_top_5_pct": false,
-          "is_top_10_pct": false,
-          "predicted": "under",
-          "votes": {
-            "est_total": 9.16,
-            "line": 9.5,
-            "distance": -0.34,
-            "over_count": 0,
-            "under_count": 3,
-            "over_z_sum": 0,
-            "under_z_sum": 5.19,
-            "minority_ratio": 0.0,
-            "conflict": false
-          },
-          "confidence": "low",
-          "signal_conflict": false,
-          "min_combined_odds_needed": null
-        }
-      }
-    },
-    {
       "away": "Houston Astros",
       "away_zh": "太空人",
       "home": "Cleveland Guardians",
@@ -27488,11 +25597,11 @@
         "park_factor": 0.905
       },
       "weather": {
-        "temp_f": 68.8,
-        "humidity": 47,
-        "wind_mph": 6.2,
-        "wind_dir_deg": 347,
-        "precip_prob": 0
+        "temp_f": 64.0,
+        "humidity": 58,
+        "wind_mph": 5.2,
+        "wind_dir_deg": 20,
+        "precip_prob": 1
       },
       "team_comparisons": {
         "ops": {
@@ -27622,6 +25731,16 @@
           "blowout_win_rate": 0.333,
           "blowout_loss_rate": 0.2
         }
+      },
+      "series_context": {
+        "series_game": 3,
+        "home_series_wins_before": 1,
+        "away_series_wins_before": 1,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-20",
+          "2026-04-21"
+        ]
       },
       "expected_total": 6.73,
       "expected_total_breakdown": {
@@ -28276,6 +26395,778 @@
           "confidence": "medium",
           "signal_conflict": false,
           "min_combined_odds_needed": 2.83
+        }
+      }
+    },
+    {
+      "away": "Milwaukee Brewers",
+      "away_zh": "釀酒人",
+      "home": "Detroit Tigers",
+      "home_zh": "老虎",
+      "away_sp": "DL Hall",
+      "home_sp": "Casey Mize",
+      "away_record": "13-9",
+      "home_record": "12-12",
+      "away_sp_recent": [],
+      "home_sp_recent": [
+        {
+          "date": "2026-04-17",
+          "vs": "Boston Red Sox",
+          "vs_zh": "紅襪",
+          "ip": "6.2",
+          "h": 3,
+          "r": 0,
+          "er": 0,
+          "bb": 1,
+          "so": 7,
+          "hr": 0,
+          "pitches": 94,
+          "result": "L",
+          "team_score": "0-1"
+        },
+        {
+          "date": "2026-04-11",
+          "vs": "Miami Marlins",
+          "vs_zh": "馬林魚",
+          "ip": "5.2",
+          "h": 6,
+          "r": 1,
+          "er": 1,
+          "bb": 1,
+          "so": 5,
+          "hr": 0,
+          "pitches": 74,
+          "result": "W",
+          "team_score": "6-1"
+        },
+        {
+          "date": "2026-04-06",
+          "vs": "Minnesota Twins",
+          "vs_zh": "雙城",
+          "ip": "4.1",
+          "h": 7,
+          "r": 5,
+          "er": 5,
+          "bb": 3,
+          "so": 4,
+          "hr": 1,
+          "pitches": 90,
+          "result": "L",
+          "team_score": "3-7"
+        }
+      ],
+      "venue": {
+        "id": 2394,
+        "name": "Comerica Park",
+        "roof": "Open",
+        "elevation": 600,
+        "park_factor": 1.001
+      },
+      "weather": {
+        "temp_f": 63.1,
+        "humidity": 49,
+        "wind_mph": 9.3,
+        "wind_dir_deg": 42,
+        "precip_prob": 1
+      },
+      "team_comparisons": {
+        "ops": {
+          "away": 0.716,
+          "home": 0.705,
+          "edge": "away"
+        },
+        "slg": {
+          "away": 0.373,
+          "home": 0.378,
+          "edge": "home"
+        },
+        "obp": {
+          "away": 0.343,
+          "home": 0.327,
+          "edge": "away"
+        },
+        "avg": {
+          "away": 0.239,
+          "home": 0.246,
+          "edge": "home"
+        },
+        "era": {
+          "away": 3.857,
+          "home": 3.702,
+          "edge": "home"
+        },
+        "whip": {
+          "away": 1.327,
+          "home": 1.297,
+          "edge": "home"
+        },
+        "fip": {
+          "away": 3.574,
+          "home": 3.347,
+          "edge": "home"
+        },
+        "k9": {
+          "away": 9.092,
+          "home": 8.187,
+          "edge": "away"
+        },
+        "bb9": {
+          "away": 3.903,
+          "home": 3.745,
+          "edge": "home"
+        },
+        "run_diff_per_game": {
+          "away": 1.227,
+          "home": 0.375,
+          "edge": "away"
+        },
+        "pyth_pct": {
+          "away": 0.627,
+          "home": 0.545,
+          "edge": "away"
+        },
+        "runs_per_game": {
+          "away": 5.364,
+          "home": 4.333,
+          "edge": "away"
+        },
+        "ra_per_game": {
+          "away": 4.136,
+          "home": 3.958,
+          "edge": "home"
+        },
+        "bp_fatigue": {
+          "away": 0.88,
+          "home": 1.0,
+          "edge": "away"
+        }
+      },
+      "sp_comparisons": {},
+      "team_recent_form": {
+        "away": {
+          "games": 15,
+          "runs_per_game": 4.73,
+          "ra_per_game": 4.4,
+          "ops": 0.688,
+          "over_9_5_rate": 0.467,
+          "blowout_win_rate": 0.267,
+          "blowout_loss_rate": 0.133
+        },
+        "home": {
+          "games": 15,
+          "runs_per_game": 4.13,
+          "ra_per_game": 4.0,
+          "ops": 0.706,
+          "over_9_5_rate": 0.4,
+          "blowout_win_rate": 0.267,
+          "blowout_loss_rate": 0.133
+        }
+      },
+      "series_context": {
+        "series_game": 2,
+        "home_series_wins_before": 0,
+        "away_series_wins_before": 1,
+        "is_opener": false,
+        "prior_dates": [
+          "2026-04-21"
+        ]
+      },
+      "expected_total": 6.21,
+      "expected_total_breakdown": {
+        "away_offense": 3.18,
+        "home_offense": 3.03,
+        "park_adj": 1.001,
+        "weather_adj": 1.0
+      },
+      "away_edges": 7,
+      "home_edges": 7,
+      "any_top_5_pct": false,
+      "any_top_10_pct": false,
+      "bet_types": {
+        "ml": {
+          "name": "不讓分",
+          "line": 0,
+          "composite_scores": {
+            "comp:ops+era": {
+              "value": 0.017,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 64.1
+            },
+            "comp:ops+fip": {
+              "value": 0.261,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 64.8
+            },
+            "comp:ops+whip": {
+              "value": 0.046,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 64.9
+            },
+            "comp:run_diff+fip": {
+              "value": -0.404,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 66.3
+            },
+            "comp:pyth+ops+fip": {
+              "value": -0.527,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 65.0
+            },
+            "comp:slg+era": {
+              "value": 0.382,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 64.0
+            },
+            "comp:obp+whip": {
+              "value": -0.674,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 63.5
+            },
+            "comp:ops+era+home": {
+              "value": 0.167,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 64.5
+            },
+            "comp:run_diff+fip+home": {
+              "value": -0.254,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 66.5
+            },
+            "comp:pyth+ops+fip+home": {
+              "value": -0.377,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 65.4
+            }
+          },
+          "matched_filters": [],
+          "is_top_5_pct": false,
+          "is_top_10_pct": false,
+          "predicted": "away",
+          "votes": {
+            "home_count": 5,
+            "away_count": 5,
+            "home_z_sum": 0.87,
+            "away_z_sum": 2.24,
+            "minority_ratio": 0.28,
+            "conflict": false
+          },
+          "confidence": "low",
+          "signal_conflict": false,
+          "min_combined_odds_needed": null
+        },
+        "spread_1.5": {
+          "name": "讓分 1.5",
+          "line": 1.5,
+          "composite_scores": {
+            "comp:ops+era": {
+              "value": 0.017,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 62.3
+            },
+            "comp:ops+fip": {
+              "value": 0.261,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 61.8
+            },
+            "comp:ops+whip": {
+              "value": 0.046,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 62.9
+            },
+            "comp:run_diff+fip": {
+              "value": -0.404,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 62.5
+            },
+            "comp:pyth+ops+fip": {
+              "value": -0.527,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 62.1
+            },
+            "comp:slg+era": {
+              "value": 0.382,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 62.1
+            },
+            "comp:obp+whip": {
+              "value": -0.674,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 61.5
+            }
+          },
+          "matched_filters": [],
+          "is_top_5_pct": false,
+          "is_top_10_pct": false,
+          "predicted": "away",
+          "votes": {
+            "home_count": 4,
+            "away_count": 3,
+            "home_z_sum": 0.71,
+            "away_z_sum": 1.6,
+            "minority_ratio": 0.31,
+            "conflict": false
+          },
+          "confidence": "low",
+          "signal_conflict": false,
+          "min_combined_odds_needed": null
+        },
+        "spread_2.5": {
+          "name": "讓分 2.5",
+          "line": 2.5,
+          "composite_scores": {
+            "comp:ops+era": {
+              "value": 0.017,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 60.6
+            },
+            "comp:ops+fip": {
+              "value": 0.261,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 59.5
+            },
+            "comp:ops+whip": {
+              "value": 0.046,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 60.9
+            },
+            "comp:run_diff+fip": {
+              "value": -0.404,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 59.9
+            },
+            "comp:pyth+ops+fip": {
+              "value": -0.527,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 60.1
+            },
+            "comp:slg+era": {
+              "value": 0.382,
+              "predicts": "home",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 60.3
+            },
+            "comp:obp+whip": {
+              "value": -0.674,
+              "predicts": "away",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 59.2
+            }
+          },
+          "matched_filters": [],
+          "is_top_5_pct": false,
+          "is_top_10_pct": false,
+          "predicted": "away",
+          "votes": {
+            "home_count": 4,
+            "away_count": 3,
+            "home_z_sum": 0.71,
+            "away_z_sum": 1.6,
+            "minority_ratio": 0.31,
+            "conflict": false
+          },
+          "confidence": "low",
+          "signal_conflict": false,
+          "min_combined_odds_needed": null
+        },
+        "total_7.5": {
+          "name": "大小分 7.5",
+          "line": 7.5,
+          "composite_scores": {
+            "comp:runs_pg": {
+              "value": 0.831,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 54.9
+            },
+            "comp:ops": {
+              "value": 0.144,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 56.1
+            },
+            "comp:slg": {
+              "value": -0.362,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 56.5
+            },
+            "comp:hr_pg": {
+              "value": -1.228,
+              "predicts": "under",
+              "bucket": "Top 30%",
+              "baseline_top_10_hit_rate": 57.7
+            },
+            "comp:era": {
+              "value": -0.742,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 55.9
+            },
+            "comp:fip": {
+              "value": -1.416,
+              "predicts": "under",
+              "bucket": "Top 20%",
+              "baseline_top_10_hit_rate": 57.2
+            },
+            "comp:whip": {
+              "value": -0.136,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 55.3
+            },
+            "comp:k9_inv": {
+              "value": -0.012,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 52.6
+            },
+            "comp:runs+era": {
+              "value": 0.089,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 56.1
+            },
+            "comp:ops+era": {
+              "value": -0.598,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 56.9
+            },
+            "comp:ops+fip": {
+              "value": -1.272,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 57.1
+            },
+            "comp:ops+whip": {
+              "value": 0.008,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 56.5
+            },
+            "comp:runs+fip": {
+              "value": -0.586,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 58.7
+            },
+            "comp:runs-k9": {
+              "value": 0.819,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 53.9
+            },
+            "comp:ops-k9": {
+              "value": 0.132,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 53.9
+            },
+            "comp:runs+era+pf": {
+              "value": 0.1,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 64.2
+            },
+            "comp:ops+fip+pf": {
+              "value": -1.261,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 63.6
+            }
+          },
+          "matched_filters": [],
+          "is_top_5_pct": false,
+          "is_top_10_pct": false,
+          "predicted": "over",
+          "votes": {
+            "est_total": 9.57,
+            "line": 7.5,
+            "distance": 2.07,
+            "over_count": 0,
+            "under_count": 1,
+            "over_z_sum": 0,
+            "under_z_sum": 1.42,
+            "minority_ratio": 0.0,
+            "conflict": false
+          },
+          "confidence": "low",
+          "signal_conflict": false,
+          "min_combined_odds_needed": null
+        },
+        "total_8.5": {
+          "name": "大小分 8.5",
+          "line": 8.5,
+          "composite_scores": {
+            "comp:runs_pg": {
+              "value": 0.831,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 53.6
+            },
+            "comp:ops": {
+              "value": 0.144,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 55.5
+            },
+            "comp:slg": {
+              "value": -0.362,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 56.0
+            },
+            "comp:hr_pg": {
+              "value": -1.228,
+              "predicts": "under",
+              "bucket": "Top 30%",
+              "baseline_top_10_hit_rate": 57.4
+            },
+            "comp:era": {
+              "value": -0.742,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 55.9
+            },
+            "comp:fip": {
+              "value": -1.416,
+              "predicts": "under",
+              "bucket": "Top 20%",
+              "baseline_top_10_hit_rate": 57.0
+            },
+            "comp:whip": {
+              "value": -0.136,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 55.5
+            },
+            "comp:k9_inv": {
+              "value": -0.012,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 53.3
+            },
+            "comp:runs+era": {
+              "value": 0.089,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 56.2
+            },
+            "comp:ops+era": {
+              "value": -0.598,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 57.3
+            },
+            "comp:ops+fip": {
+              "value": -1.272,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 56.9
+            },
+            "comp:ops+whip": {
+              "value": 0.008,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 57.0
+            },
+            "comp:runs+fip": {
+              "value": -0.586,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 58.5
+            },
+            "comp:runs-k9": {
+              "value": 0.819,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 53.7
+            },
+            "comp:ops-k9": {
+              "value": 0.132,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 53.9
+            },
+            "comp:runs+era+pf": {
+              "value": 0.1,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 62.1
+            },
+            "comp:ops+fip+pf": {
+              "value": -1.261,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 61.5
+            }
+          },
+          "matched_filters": [],
+          "is_top_5_pct": false,
+          "is_top_10_pct": false,
+          "predicted": "over",
+          "votes": {
+            "est_total": 9.57,
+            "line": 8.5,
+            "distance": 1.07,
+            "over_count": 0,
+            "under_count": 1,
+            "over_z_sum": 0,
+            "under_z_sum": 1.42,
+            "minority_ratio": 0.0,
+            "conflict": false
+          },
+          "confidence": "low",
+          "signal_conflict": false,
+          "min_combined_odds_needed": null
+        },
+        "total_9.5": {
+          "name": "大小分 9.5",
+          "line": 9.5,
+          "composite_scores": {
+            "comp:runs_pg": {
+              "value": 0.831,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 53.1
+            },
+            "comp:ops": {
+              "value": 0.144,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 55.0
+            },
+            "comp:slg": {
+              "value": -0.362,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 55.5
+            },
+            "comp:hr_pg": {
+              "value": -1.228,
+              "predicts": "under",
+              "bucket": "Top 30%",
+              "baseline_top_10_hit_rate": 55.9
+            },
+            "comp:era": {
+              "value": -0.742,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 55.4
+            },
+            "comp:fip": {
+              "value": -1.416,
+              "predicts": "under",
+              "bucket": "Top 20%",
+              "baseline_top_10_hit_rate": 56.0
+            },
+            "comp:whip": {
+              "value": -0.136,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 55.2
+            },
+            "comp:k9_inv": {
+              "value": -0.012,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 52.7
+            },
+            "comp:runs+era": {
+              "value": 0.089,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 56.7
+            },
+            "comp:ops+era": {
+              "value": -0.598,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 57.6
+            },
+            "comp:ops+fip": {
+              "value": -1.272,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 56.4
+            },
+            "comp:ops+whip": {
+              "value": 0.008,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 57.1
+            },
+            "comp:runs+fip": {
+              "value": -0.586,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 57.5
+            },
+            "comp:runs-k9": {
+              "value": 0.819,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 53.5
+            },
+            "comp:ops-k9": {
+              "value": 0.132,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 53.4
+            },
+            "comp:runs+era+pf": {
+              "value": 0.1,
+              "predicts": "over",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 60.6
+            },
+            "comp:ops+fip+pf": {
+              "value": -1.261,
+              "predicts": "under",
+              "bucket": null,
+              "baseline_top_10_hit_rate": 59.3
+            }
+          },
+          "matched_filters": [],
+          "is_top_5_pct": false,
+          "is_top_10_pct": false,
+          "predicted": "over",
+          "votes": {
+            "est_total": 9.57,
+            "line": 9.5,
+            "distance": 0.07,
+            "over_count": 0,
+            "under_count": 1,
+            "over_z_sum": 0,
+            "under_z_sum": 1.42,
+            "minority_ratio": 0.0,
+            "conflict": false
+          },
+          "confidence": "low",
+          "signal_conflict": false,
+          "min_combined_odds_needed": null
         }
       }
     }

@@ -53,6 +53,7 @@ MIN_STARTS = 2         # 投手至少先發幾場才納入分析 (從 3 降到 2
 BULLPEN_WINDOW = 3     # 牛棚疲勞追蹤天數
 FIP_CONSTANT = 3.10    # 近似 cFIP
 HOME_ADV_BONUS = 0.15  # 主場優勢加成 (z-score 單位，約對應 1-2% 勝率)
+SERIES_LEAD_BONUS = 0.15  # 主隊系列賽領先加成 (10 年回測 z=+3.87, 55.7% vs 53.4%)
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
 BASELINE_FILE = "baseline_10y.json"
 VENUES_FILE = "venues.json"
@@ -353,6 +354,107 @@ def compute_park_factors(games, min_home_games=10):
             park_factors[team] = round(avg / league_avg, 3)
 
     return park_factors, league_avg
+
+
+def compute_series_info(games, max_gap_days=2):
+    """偵測系列賽結構。
+
+    回傳 dict: game_pk -> {
+        'series_id': str,
+        'series_game': int (本場在系列賽中的位置, 1-indexed),
+        'series_length': int (整個系列賽場數),
+        'is_opener': bool (系列賽首戰),
+        'is_finale': bool (系列賽末戰),
+        'home_series_wins_before': int (本場開打前主隊已贏場數),
+        'away_series_wins_before': int (本場開打前客隊已贏場數),
+    }
+
+    演算法: 依 (away, home, season) 分組, 相鄰日期差 <= max_gap_days 歸同一系列賽。
+    """
+    from collections import defaultdict
+
+    groups = defaultdict(list)
+    for g in games:
+        season = int(g.date[:4])
+        groups[(g.away_name, g.home_name, season)].append(g)
+
+    info = {}
+    for key, group_games in groups.items():
+        group_games.sort(key=lambda x: (x.date, x.game_pk))
+
+        series_buckets = []
+        current = [group_games[0]]
+        for g in group_games[1:]:
+            prev_date = datetime.strptime(current[-1].date, "%Y-%m-%d")
+            cur_date = datetime.strptime(g.date, "%Y-%m-%d")
+            if (cur_date - prev_date).days <= max_gap_days:
+                current.append(g)
+            else:
+                series_buckets.append(current)
+                current = [g]
+        series_buckets.append(current)
+
+        for series_idx, series in enumerate(series_buckets):
+            series_id = f"{key[0]}@{key[1]}_{key[2]}_{series_idx}"
+            home_wins = 0
+            away_wins = 0
+            length = len(series)
+            for pos, g in enumerate(series, start=1):
+                info[g.game_pk] = {
+                    'series_id': series_id,
+                    'series_game': pos,
+                    'series_length': length,
+                    'is_opener': pos == 1,
+                    'is_finale': pos == length,
+                    'home_series_wins_before': home_wins,
+                    'away_series_wins_before': away_wins,
+                }
+                if g.winner_side == 'home':
+                    home_wins += 1
+                elif g.winner_side == 'away':
+                    away_wins += 1
+
+    return info
+
+
+def compute_today_series_context(games, away_team, home_team, today, max_gap_days=2):
+    """給定今日客/主隊，推出今日是系列賽第幾戰、目前系列賽戰績。
+
+    回傳 dict 或 None:
+        'series_game': int (1 = 首戰)
+        'home_series_wins_before': int
+        'away_series_wins_before': int
+        'is_opener': bool
+        'prior_dates': [YYYY-MM-DD, ...]  (本系列賽先前場次)
+    """
+    today_dt = datetime.strptime(today, "%Y-%m-%d")
+    prior = [g for g in games
+             if g.away_name == away_team and g.home_name == home_team
+             and datetime.strptime(g.date, "%Y-%m-%d") < today_dt]
+    prior.sort(key=lambda x: (x.date, x.game_pk), reverse=True)
+
+    series_before = []
+    next_ref_dt = today_dt
+    for g in prior:
+        g_dt = datetime.strptime(g.date, "%Y-%m-%d")
+        gap = (next_ref_dt - g_dt).days
+        if gap <= max_gap_days:
+            series_before.append(g)
+            next_ref_dt = g_dt
+        else:
+            break
+
+    series_before.reverse()
+    home_wins = sum(1 for g in series_before if g.winner_side == 'home')
+    away_wins = sum(1 for g in series_before if g.winner_side == 'away')
+
+    return {
+        'series_game': len(series_before) + 1,
+        'home_series_wins_before': home_wins,
+        'away_series_wins_before': away_wins,
+        'is_opener': len(series_before) == 0,
+        'prior_dates': [g.date for g in series_before],
+    }
 
 
 def fetch_game_weather(lat, lon, date_str, game_hour=19, is_forecast=False):
@@ -1211,6 +1313,208 @@ def load_cached_games(seasons):
     return games
 
 
+def run_series_analysis(matchups):
+    """系列賽維度的分層回測 — 看 series_game / length / opener / finale /
+    主隊系列賽逆境等是否為顯著訊號。
+
+    matchups 需要已帶 'series' 欄位 (由 compute_series_info 寫入)。
+    """
+    from collections import defaultdict
+
+    total_n = len(matchups)
+    if total_n == 0:
+        return {}
+
+    base_home_win = sum(1 for m in matchups if m['out_ml'] == 'home') / total_n
+    base_over_75 = sum(1 for m in matchups if m['out_total_7.5'] == 'over') / total_n
+    base_over_85 = sum(1 for m in matchups if m['out_total_8.5'] == 'over') / total_n
+    base_over_95 = sum(1 for m in matchups if m['out_total_9.5'] == 'over') / total_n
+    base_avg_total = sum(m['total_runs'] for m in matchups) / total_n
+
+    def group_stats(group):
+        n = len(group)
+        if n == 0:
+            return None
+        return {
+            'n': n,
+            'home_win_pct': sum(1 for m in group if m['out_ml'] == 'home') / n * 100,
+            'over_7.5_pct': sum(1 for m in group if m['out_total_7.5'] == 'over') / n * 100,
+            'over_8.5_pct': sum(1 for m in group if m['out_total_8.5'] == 'over') / n * 100,
+            'over_9.5_pct': sum(1 for m in group if m['out_total_9.5'] == 'over') / n * 100,
+            'avg_total': sum(m['total_runs'] for m in group) / n,
+        }
+
+    def z_pct(pct, base_pct, n):
+        """比例 vs 基準的 z-score (二項檢定近似)"""
+        if n == 0:
+            return 0
+        p = pct / 100
+        b = base_pct
+        se = sqrt(b * (1 - b) / n) if 0 < b < 1 else 0
+        return (p - b) / se if se > 0 else 0
+
+    results = {
+        'baseline': {
+            'n': total_n,
+            'home_win_pct': base_home_win * 100,
+            'over_7.5_pct': base_over_75 * 100,
+            'over_8.5_pct': base_over_85 * 100,
+            'over_9.5_pct': base_over_95 * 100,
+            'avg_total': base_avg_total,
+        }
+    }
+
+    print(f"\n{'='*72}")
+    print(f"【系列賽維度分析】({total_n} 場)")
+    print(f"{'='*72}")
+    print(f"基準: 主勝 {base_home_win*100:.1f}% | 大7.5 {base_over_75*100:.1f}% | "
+          f"大8.5 {base_over_85*100:.1f}% | 大9.5 {base_over_95*100:.1f}% | "
+          f"平均總分 {base_avg_total:.2f}")
+
+    # === 依系列賽第幾戰 ===
+    print(f"\n-- 系列賽第 N 戰 --")
+    print(f"{'pos':<8s}{'N':>7s}{'主勝%':>9s}{'大7.5%':>9s}{'大8.5%':>9s}{'大9.5%':>9s}{'平均總分':>11s}  顯著性")
+    by_game = defaultdict(list)
+    for m in matchups:
+        sg = m.get('series', {}).get('series_game')
+        if sg is not None:
+            by_game[sg].append(m)
+
+    results['by_series_game'] = {}
+    for sg in sorted(by_game.keys()):
+        s = group_stats(by_game[sg])
+        if not s:
+            continue
+        results['by_series_game'][sg] = s
+        z_win = z_pct(s['home_win_pct'], base_home_win, s['n'])
+        z_ov85 = z_pct(s['over_8.5_pct'], base_over_85, s['n'])
+        z_ov95 = z_pct(s['over_9.5_pct'], base_over_95, s['n'])
+        marks = []
+        if abs(z_win) > 1.96: marks.append(f"主勝z={z_win:+.2f}")
+        if abs(z_ov85) > 1.96: marks.append(f"大8.5z={z_ov85:+.2f}")
+        if abs(z_ov95) > 1.96: marks.append(f"大9.5z={z_ov95:+.2f}")
+        mark_str = " ".join(marks)
+        print(f"Game{sg:<4d}{s['n']:>7d}{s['home_win_pct']:>8.1f}%{s['over_7.5_pct']:>8.1f}%"
+              f"{s['over_8.5_pct']:>8.1f}%{s['over_9.5_pct']:>8.1f}%{s['avg_total']:>10.2f}  {mark_str}")
+
+    # === 依系列賽長度 ===
+    print(f"\n-- 系列賽長度 --")
+    print(f"{'length':<10s}{'N':>7s}{'主勝%':>9s}{'大8.5%':>9s}{'大9.5%':>9s}{'平均總分':>11s}")
+    by_length = defaultdict(list)
+    for m in matchups:
+        sl = m.get('series', {}).get('series_length')
+        if sl is not None:
+            by_length[sl].append(m)
+
+    results['by_series_length'] = {}
+    for sl in sorted(by_length.keys()):
+        s = group_stats(by_length[sl])
+        if not s:
+            continue
+        results['by_series_length'][sl] = s
+        print(f"{sl}連戰{'':<6s}{s['n']:>7d}{s['home_win_pct']:>8.1f}%"
+              f"{s['over_8.5_pct']:>8.1f}%{s['over_9.5_pct']:>8.1f}%{s['avg_total']:>10.2f}")
+
+    # === Opener / Middle / Finale ===
+    print(f"\n-- Opener vs Middle vs Finale --")
+    print(f"{'pos':<10s}{'N':>7s}{'主勝%':>9s}{'大8.5%':>9s}{'大9.5%':>9s}{'平均總分':>11s}  顯著性")
+
+    opener = [m for m in matchups if m.get('series', {}).get('is_opener')]
+    finale = [m for m in matchups
+              if m.get('series', {}).get('is_finale') and not m.get('series', {}).get('is_opener')]
+    middle = [m for m in matchups
+              if not m.get('series', {}).get('is_opener')
+              and not m.get('series', {}).get('is_finale')]
+
+    results['opener_middle_finale'] = {}
+    for label, group in [('opener', opener), ('middle', middle), ('finale', finale)]:
+        s = group_stats(group)
+        if not s:
+            continue
+        results['opener_middle_finale'][label] = s
+        z_win = z_pct(s['home_win_pct'], base_home_win, s['n'])
+        z_ov85 = z_pct(s['over_8.5_pct'], base_over_85, s['n'])
+        z_ov95 = z_pct(s['over_9.5_pct'], base_over_95, s['n'])
+        marks = []
+        if abs(z_win) > 1.96: marks.append(f"主勝z={z_win:+.2f}")
+        if abs(z_ov85) > 1.96: marks.append(f"大8.5z={z_ov85:+.2f}")
+        if abs(z_ov95) > 1.96: marks.append(f"大9.5z={z_ov95:+.2f}")
+        mark_str = " ".join(marks)
+        print(f"{label:<10s}{s['n']:>7d}{s['home_win_pct']:>8.1f}%"
+              f"{s['over_8.5_pct']:>8.1f}%{s['over_9.5_pct']:>8.1f}%{s['avg_total']:>10.2f}  {mark_str}")
+
+    # === 主場系列賽處境 ===
+    print(f"\n-- 主場系列賽處境 --")
+    print(f"{'situation':<16s}{'N':>7s}{'主勝%':>9s}{'大8.5%':>9s}{'平均總分':>11s}  顯著性")
+
+    home_facing_sweep = []   # 系列賽至少打到第3場、主隊尚未贏
+    home_leading = []        # 主隊在系列賽中領先 (已贏 > 客隊)
+    home_trailing = []       # 主隊落後但未被橫掃 (客勝 > 主勝且主勝 > 0)
+    home_even = []           # 系列賽戰成平手 (主客同勝)
+
+    for m in matchups:
+        si = m.get('series', {})
+        sg = si.get('series_game', 0)
+        if not sg or sg < 2:
+            continue
+        hw = si.get('home_series_wins_before', 0)
+        aw = si.get('away_series_wins_before', 0)
+        if sg >= 3 and hw == 0:
+            home_facing_sweep.append(m)
+        if hw > aw:
+            home_leading.append(m)
+        elif aw > hw and hw > 0:
+            home_trailing.append(m)
+        elif hw == aw and hw > 0:
+            home_even.append(m)
+
+    results['home_series_situation'] = {}
+    for label, group in [('facing_sweep', home_facing_sweep),
+                          ('home_leading', home_leading),
+                          ('home_trailing', home_trailing),
+                          ('tied', home_even)]:
+        s = group_stats(group)
+        if not s:
+            continue
+        results['home_series_situation'][label] = s
+        z_win = z_pct(s['home_win_pct'], base_home_win, s['n'])
+        z_ov85 = z_pct(s['over_8.5_pct'], base_over_85, s['n'])
+        marks = []
+        if abs(z_win) > 1.96: marks.append(f"主勝z={z_win:+.2f}")
+        if abs(z_ov85) > 1.96: marks.append(f"大8.5z={z_ov85:+.2f}")
+        mark_str = " ".join(marks)
+        print(f"{label:<16s}{s['n']:>7d}{s['home_win_pct']:>8.1f}%"
+              f"{s['over_8.5_pct']:>8.1f}%{s['avg_total']:>10.2f}  {mark_str}")
+
+    # === 交叉表: length × game number ===
+    print(f"\n-- Length × Game Number (格式: 主勝% / 大8.5% / 平均總分) --")
+    header = f"{'':<10s}" + "".join(f"{f'Game{g}':>18s}" for g in [1, 2, 3, 4])
+    print(header)
+    results['cross_length_game'] = {}
+    for sl in sorted(by_length.keys()):
+        row = f"{sl}連戰{'':<6s}"
+        results['cross_length_game'][sl] = {}
+        for sg in [1, 2, 3, 4]:
+            subset = [m for m in matchups
+                      if m.get('series', {}).get('series_length') == sl
+                      and m.get('series', {}).get('series_game') == sg]
+            if subset:
+                n = len(subset)
+                win_pct = sum(1 for m in subset if m['out_ml'] == 'home') / n * 100
+                over85 = sum(1 for m in subset if m['out_total_8.5'] == 'over') / n * 100
+                avg_t = sum(m['total_runs'] for m in subset) / n
+                results['cross_length_game'][sl][sg] = {
+                    'n': n, 'home_win_pct': win_pct,
+                    'over_8.5_pct': over85, 'avg_total': avg_t,
+                }
+                row += f"{win_pct:5.1f}/{over85:5.1f}/{avg_t:5.2f}".rjust(18)
+            else:
+                row += f"{'—':>18s}"
+        print(row)
+
+    return results
+
+
 # ═══════════════════════════════════════════
 # 第二步：相關性回測
 # ═══════════════════════════════════════════
@@ -1223,7 +1527,8 @@ def run_correlation_analysis(games):
     # 載入天氣快取 & park factors
     weather_cache = load_weather_cache()
     pf_all, league_rpg = compute_park_factors(games, min_home_games=50)
-    print(f"  天氣快取: {len(weather_cache)} 場, Park factors: {len(pf_all)} 球場")
+    series_info = compute_series_info(games)
+    print(f"  天氣快取: {len(weather_cache)} 場, Park factors: {len(pf_all)} 球場, 系列賽標記: {len(series_info)} 場")
 
     # 累積追蹤器 - 每季獨立 (避免跨季污染)
     trackers = {}            # 球隊累積
@@ -1281,6 +1586,7 @@ def run_correlation_analysis(games):
                 'score_diff': g.home_score - g.away_score,  # home 視角
                 'park_factor': pf_all.get(g.home_name, 1.0),
                 'weather': weather_cache.get(str(g.game_pk)),
+                'series': series_info.get(g.game_pk, {}),
             }
             # 預先計算每個 bet type 的 outcome
             for bt_key, _, _, _, outcome_fn in BET_TYPES:
@@ -1333,6 +1639,7 @@ def run_correlation_analysis(games):
         ("ra_pg",       lambda s: s['ra_per_game'],        "lower",  "positive"),
         ("bp_fatigue",  lambda s: s['bp_fatigue'],         "lower",  "positive"),
         ("home_adv",    None,                               "home",   "neutral"),
+        ("home_leading_series", None,                       "home_leading", "neutral"),
     ]
 
     # 投手相關指標 (今日先發投手 — 個別累積)
@@ -1390,6 +1697,13 @@ def run_correlation_analysis(games):
         out_key = f'out_{bet_type}'
         for m in matchups:
             if stat_name == "home_adv":
+                predicted = "home"
+            elif stat_name == "home_leading_series":
+                si = m.get('series', {})
+                hw = si.get('home_series_wins_before', 0)
+                aw = si.get('away_series_wins_before', 0)
+                if hw <= aw:
+                    continue  # 主隊未領先 → 無訊號, 排除本場
                 predicted = "home"
             else:
                 if source == 'team':
@@ -1480,7 +1794,8 @@ def run_correlation_analysis(games):
             # 球隊指標
             for stat_name, getter, direction, _ in single_stats:
                 c, t = test_directional(matchups, stat_name, getter, direction, 'team', bt_key)
-                label = {"higher": "高者勝", "lower": "低者勝", "home": "主場"}[direction]
+                label = {"higher": "高者勝", "lower": "低者勝",
+                         "home": "主場", "home_leading": "主隊系列賽領先"}[direction]
                 add_result(bt_key, stat_name, c, t, label)
                 if t > 0:
                     r = results[bt_key][stat_name]
@@ -1586,6 +1901,10 @@ def run_correlation_analysis(games):
             score += (h_z - a_z) * weight
         if use_home_adv:
             score += HOME_ADV_BONUS
+        # 主隊系列賽領先 → 偏向 home (10 年回測顯著, 普遍適用於 ML 與讓分)
+        si = m.get('series', {})
+        if si.get('home_series_wins_before', 0) > si.get('away_series_wins_before', 0):
+            score += SERIES_LEAD_BONUS
         return score
 
     def compute_total_composite(m, components):
@@ -1698,6 +2017,9 @@ def run_correlation_analysis(games):
         bucket_thresholds_all[bt_key] = b_thresh
         profitable_filters_all[bt_key] = b_profit
 
+    # === 系列賽維度分析 ===
+    series_results = run_series_analysis(matchups)
+
     # === Park factors 摘要顯示 ===
     print(f"\n  Park factors ({len(pf_all)} 球場, 聯盟平均 {league_rpg:.2f} rpg)")
     sorted_pf = sorted(pf_all.items(), key=lambda x: -x[1])
@@ -1720,6 +2042,7 @@ def run_correlation_analysis(games):
             'bucket_thresholds': bucket_thresholds_all,
             'profitable_filters': profitable_filters_all,
             'park_factors': pf_all,
+            'series_analysis': series_results,
         })
 
     return results, trackers
@@ -2052,6 +2375,8 @@ def save_baseline(data):
                 entry['category'] = 'starter'
             elif name == 'home_adv':
                 entry['category'] = 'situational'
+            elif name == 'home_leading_series':
+                entry['category'] = 'situational'
             elif name == 'bp_fatigue':
                 entry['category'] = 'bullpen'
                 entry['warning'] = '10 年大樣本驗證為無效 (≈50%)，僅作參考'
@@ -2081,6 +2406,7 @@ def save_baseline(data):
         'stat_means': serialized_means,
         'stat_stds': serialized_stds,
         'park_factors': data.get('park_factors', {}),
+        'series_analysis': data.get('series_analysis', {}),
     }
 
     with open(path, 'w', encoding='utf-8') as f:
@@ -2210,6 +2536,10 @@ def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
                 continue
             if use_home_adv:
                 score += HOME_ADV_BONUS
+            # 主隊系列賽領先加成 (和 backtest 邏輯一致)
+            series_ctx = kwargs.get('series_context') or {}
+            if series_ctx.get('home_series_wins_before', 0) > series_ctx.get('away_series_wins_before', 0):
+                score += SERIES_LEAD_BONUS
 
             full_name = f"comp:{comp_name}"
             t = thresholds.get(full_name, {})
@@ -2584,6 +2914,9 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
 
             est_total = round(est_total, 2)
 
+            # 系列賽情境 (今日是系列賽第幾戰、主客目前戰績) - 需在複合分數前算好
+            series_context = compute_today_series_context(games, away_team, home_team, today)
+
             # 預先合併大小分的 profitable_filters (同一組 z-score 共享篩選)
             total_bt_keys = [k for k, _, t, _, _ in BET_TYPES if t == 'total']
             total_filters_union = {}  # {(stat, top_pct): filter_dict}
@@ -2617,7 +2950,8 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                     bt_key, bt_type, away_snap, home_snap,
                     away_sp_snap, home_sp_snap, baseline,
                     current_season_means=current_season_means if bt_type == 'total' else None,
-                    park_factor=pf
+                    park_factor=pf,
+                    series_context=series_context,
                 )
 
                 # 大小分盤口: 用共享的 filters 和 thresholds
@@ -2823,6 +3157,7 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                     'away': away_form,
                     'home': home_form,
                 },
+                'series_context': series_context,
                 'expected_total': expected_total_val,
                 'expected_total_breakdown': expected_total_breakdown,
                 'away_edges': away_edges,
@@ -2861,6 +3196,7 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 }
                 for bt_key, bt_data in baseline['bet_types'].items()
             },
+            'series_analysis': baseline.get('series_analysis', {}),
         },
         'today_matchups': today_matchups,
     }

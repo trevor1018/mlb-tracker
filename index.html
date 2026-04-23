@@ -2007,6 +2007,23 @@ function MatchupCardV3({m}){
         <span style={{color:m.home_edges>m.away_edges?C.acc:C.t}}>{homeZh}</span>
         <span style={{fontSize:11,color:C.d,marginLeft:4}}>({m.home_record||"—"})</span>
       </div>
+      {m.series_context&&(()=>{
+        const sc=m.series_context;
+        const hw=sc.home_series_wins_before||0;
+        const aw=sc.away_series_wins_before||0;
+        const leader=hw>aw?"home":aw>hw?"away":null;
+        const leaderName=leader==="home"?homeZh:leader==="away"?awayZh:null;
+        const leadColor=leader==="home"?C.acc:leader==="away"?C.g:C.d;
+        return<div style={{fontSize:10,color:C.d,marginBottom:4,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",fontFamily:"'JetBrains Mono',monospace"}}>
+          <span style={{background:"rgba(139,92,246,0.12)",color:"#a78bfa",padding:"1px 6px",borderRadius:4,fontWeight:600}}>
+            {sc.is_opener?"系列賽首戰":`系列賽 G${sc.series_game}`}
+          </span>
+          {sc.is_opener?<span style={{color:C.m}}>雙方首次交手</span>:
+            <span>目前 <span style={{color:C.g,fontWeight:700}}>{aw}</span>-<span style={{color:C.acc,fontWeight:700}}>{hw}</span>
+              {leaderName&&<span style={{color:leadColor,marginLeft:4,fontWeight:600}}>· {leaderName}領先</span>}
+            </span>}
+        </div>;
+      })()}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:expanded?8:0}}>
         <div style={{fontSize:11,color:C.d}}>
           {(m.away_sp||m.home_sp)&&<>{m.away_sp||"—"} <span style={{color:C.m}}>vs</span> {m.home_sp||"—"}</>}
@@ -2163,14 +2180,15 @@ function simulateParlay(legs,trials=5000){
 }
 
 // Kelly criterion bet sizing
-// Returns recommended stake (rounded); fraction < 1 applies fractional Kelly for safety
+// 台彩規則：一注 NT$10，最小 10 注 (NT$100)，以 NT$10 為單位向下取整
 function kellyStake(bankroll,winProb,decimalOdds,fraction=0.5){
   if(!bankroll||bankroll<=0||!winProb||!decimalOdds||decimalOdds<=1)return 0;
   const b=decimalOdds-1;
   const edge=b*winProb-(1-winProb);
   if(edge<=0)return 0;
   const f=edge/b*fraction;
-  return Math.max(0,Math.round(bankroll*f));
+  const raw=bankroll*f;
+  return Math.max(0,Math.floor(raw/10)*10);
 }
 
 // ─── Recommendation Scoring ───
@@ -2211,6 +2229,20 @@ function scorePick(matchup,btKey){
     const total=voteVals.reduce((a,b)=>a+b,0);
     const max=Math.max(...voteVals);
     if(total>0)score+=(max/total)*25;
+  }
+
+  // 系列賽領先加分（僅對方向性盤口：ml / spread / handi）
+  // 10 年回測：主隊系列賽領先時 home_win 55.7% vs 基準 53.4% (+2.3pp, z=+3.87)
+  const sc=matchup.series_context;
+  if(sc&&(btKey==="ml"||btKey==="handi"||btKey.startsWith("spread_"))){
+    const hw=sc.home_series_wins_before||0;
+    const aw=sc.away_series_wins_before||0;
+    if(hw>aw){
+      if(bt.predicted==="home")score+=15;
+      else if(bt.predicted==="away")score-=10;
+    }else if(aw>hw){
+      if(bt.predicted==="away")score+=8; // 客隊領先較弱訊號
+    }
   }
 
   return{
@@ -2289,6 +2321,16 @@ function scoreYoloPick(matchup,btKey){
     }
 
     if(btKey==="spread_1.5")score+=15;
+
+    // 系列賽領先訊號：領先隊若又是推薦方向 → 加分；反向則扣分
+    const sc=matchup.series_context;
+    if(sc){
+      const hw=sc.home_series_wins_before||0;
+      const aw=sc.away_series_wins_before||0;
+      if(hw>aw&&predicted==="home")score+=12;
+      else if(hw>aw&&predicted==="away")score-=8;
+      else if(aw>hw&&predicted==="away")score+=8;
+    }
 
   }else if(btKey==="total_9.5"){
     effectivePredicted="over";
@@ -2615,6 +2657,22 @@ function RecommendPanel({matchups,uid,state,setState}){
           {leg.filterCount>0?<> 符合 {leg.filterCount} 個篩選</>:" 無符合篩選"}
         </span>}
       </div>
+      {(()=>{
+        const sc=m.series_context;
+        if(!sc||sc.is_opener)return null;
+        const hw=sc.home_series_wins_before||0;
+        const aw=sc.away_series_wins_before||0;
+        if(hw===aw)return null;
+        const leader=hw>aw?"home":"away";
+        const leaderZh=leader==="home"?homeZh:awayZh;
+        const aligned=leader===bt.predicted;
+        const isDirectional=leg.btKey==="ml"||leg.btKey==="handi"||leg.btKey.startsWith("spread_");
+        if(!isDirectional)return null;
+        return<div style={{fontSize:10,marginTop:3,color:aligned?C.g:C.acc,...mono}}>
+          {aligned?"✓":"⚠"} {leaderZh}系列賽領先 {hw>aw?`${hw}-${aw}`:`${aw}-${hw}`}
+          {aligned?" (+2.3pp 歷史勝率)":" · 推薦方向與領先隊相反"}
+        </div>;
+      })()}
       {!isYolo&&leg.bestHitRate>0&&<div style={{fontSize:11,color:C.d,marginTop:2,...mono}}>
         最佳篩選歷史命中 <span style={{color:C.g,fontWeight:700}}>{leg.bestHitRate.toFixed(1)}%</span>
         {leg.bestMinOdds&&<> · 該腳最低賠率 <span style={{color:C.acc}}>{leg.bestMinOdds.toFixed(2)}</span></>}
@@ -2715,17 +2773,20 @@ function RecommendPanel({matchups,uid,state,setState}){
             <span style={{fontSize:13,fontWeight:600,...mono,color:C.g}}>{combinedBest.toFixed(2)}</span>
           </div>
         </>}
-        {/* Kelly bet sizing */}
+        {/* Kelly bet sizing — 台彩一注 NT$10，最小 10 注 */}
         {kellyOdds&&<div style={{marginTop:8,paddingTop:8,borderTop:`1px dashed ${C.bd}`}}>
-          {kellyAmount>0?<>
+          {kellyAmount>=100?<>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{fontSize:12,color:C.d}}>💰 建議下注 (半 Kelly)</span>
-              <span style={{fontSize:16,fontWeight:700,...mono,color:C.acc}}>NT${kellyAmount.toLocaleString()}</span>
+              <span style={{fontSize:16,fontWeight:700,...mono,color:C.acc}}>NT${kellyAmount.toLocaleString()} <span style={{fontSize:11,color:C.m,fontWeight:400}}>({kellyAmount/10} 注)</span></span>
             </div>
             <div style={{fontSize:10,color:C.m,marginTop:2,...mono}}>
-              EV {kellyEV>=0?"+":""}{kellyEV.toFixed(1)}% · 滿 Kelly NT${fullKelly.toLocaleString()} · 本金 NT${bankroll.toLocaleString()}
+              EV {kellyEV>=0?"+":""}{kellyEV.toFixed(1)}% · 滿 Kelly NT${fullKelly.toLocaleString()} ({fullKelly/10} 注) · 本金 NT${bankroll.toLocaleString()}
             </div>
-          </>:<div style={{fontSize:11,color:C.r,textAlign:"center"}}>
+          </>:kellyEV>0?<div style={{fontSize:11,color:C.acc,textAlign:"center"}}>
+            ⚠ 半 Kelly 建議 NT${kellyAmount} 低於最小 NT$100 (10 注)，邊際太薄建議跳過<br/>
+            <span style={{fontSize:10,color:C.m}}>EV +{kellyEV.toFixed(1)}% · 滿 Kelly NT${fullKelly.toLocaleString()}{fullKelly>=10?` (${fullKelly/10} 注)`:""}</span>
+          </div>:<div style={{fontSize:11,color:C.r,textAlign:"center"}}>
             ⚠ 負期望值 (EV {kellyEV.toFixed(1)}%)，建議跳過
           </div>}
         </div>}
