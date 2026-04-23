@@ -2014,14 +2014,37 @@ function MatchupCardV3({m}){
         const leader=hw>aw?"home":aw>hw?"away":null;
         const leaderName=leader==="home"?homeZh:leader==="away"?awayZh:null;
         const leadColor=leader==="home"?C.acc:leader==="away"?C.g:C.d;
-        return<div style={{fontSize:10,color:C.d,marginBottom:4,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",fontFamily:"'JetBrains Mono',monospace"}}>
-          <span style={{background:"rgba(139,92,246,0.12)",color:"#a78bfa",padding:"1px 6px",borderRadius:4,fontWeight:600}}>
-            {sc.is_opener?"系列賽首戰":`系列賽 G${sc.series_game}`}
-          </span>
-          {sc.is_opener?<span style={{color:C.m}}>雙方首次交手</span>:
-            <span>目前 <span style={{color:C.g,fontWeight:700}}>{aw}</span>-<span style={{color:C.acc,fontWeight:700}}>{hw}</span>
-              {leaderName&&<span style={{color:leadColor,marginLeft:4,fontWeight:600}}>· {leaderName}領先</span>}
-            </span>}
+        const priorGames=sc.prior_games||[];
+        const fmtDate=(d)=>{if(!d)return"";const p=d.split("-");return p.length===3?`${+p[1]}/${+p[2]}`:d};
+        return<div style={{marginBottom:6,fontFamily:"'JetBrains Mono',monospace"}}>
+          <div style={{fontSize:10,color:C.d,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:priorGames.length?3:0}}>
+            <span style={{background:"rgba(139,92,246,0.12)",color:"#a78bfa",padding:"1px 6px",borderRadius:4,fontWeight:600}}>
+              {sc.is_opener?"系列賽首戰":`系列賽 G${sc.series_game}`}
+            </span>
+            {sc.is_opener?<span style={{color:C.m}}>雙方首次交手</span>:
+              <span>目前 <span style={{color:C.g,fontWeight:700}}>{aw}</span>-<span style={{color:C.acc,fontWeight:700}}>{hw}</span>
+                {leaderName&&<span style={{color:leadColor,marginLeft:4,fontWeight:600}}>· {leaderName}領先</span>}
+              </span>}
+          </div>
+          {priorGames.length>0&&<div style={{fontSize:10,color:C.m,display:"flex",flexWrap:"wrap",gap:4,alignItems:"center",lineHeight:1.5}}>
+            {priorGames.map((pg,i)=>{
+              const awayWon=pg.winner_side==="away";
+              const homeWon=pg.winner_side==="home";
+              return<React.Fragment key={i}>
+                {i>0&&<span style={{color:C.m}}>·</span>}
+                <span>
+                  <span style={{color:C.d}}>{fmtDate(pg.date)}</span>{" "}
+                  <span style={{color:awayWon?C.g:C.d,fontWeight:awayWon?700:400}}>{awayZh}</span>{" "}
+                  <span style={{color:awayWon?C.g:C.t,fontWeight:awayWon?700:500}}>{pg.away_score}</span>
+                  <span style={{color:C.m}}>-</span>
+                  <span style={{color:homeWon?C.acc:C.t,fontWeight:homeWon?700:500}}>{pg.home_score}</span>{" "}
+                  <span style={{color:homeWon?C.acc:C.d,fontWeight:homeWon?700:400}}>{homeZh}</span>
+                </span>
+              </React.Fragment>;
+            })}
+            <span style={{color:C.m}}>·</span>
+            <span style={{color:"#a78bfa",fontWeight:600}}>今日 G{sc.series_game}</span>
+          </div>}
         </div>;
       })()}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:expanded?8:0}}>
