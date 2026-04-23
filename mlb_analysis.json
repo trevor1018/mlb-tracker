@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-04-23T21:20:41.376109",
+  "generated_at": "2026-04-23T22:09:21.847099",
   "date": "2026-04-22",
   "current_season": 2026,
-  "current_season_games": 353,
+  "current_season_games": 368,
   "top5_mode": false,
   "baseline": {
     "season_range": "2015-2025",
@@ -6809,6 +6809,20 @@
         "prior_dates": [
           "2026-04-20",
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-20",
+            "away_score": 9,
+            "home_score": 4,
+            "winner_side": "away"
+          },
+          {
+            "date": "2026-04-21",
+            "away_score": 4,
+            "home_score": 11,
+            "winner_side": "home"
+          }
         ]
       },
       "expected_total": 8.66,
@@ -8371,6 +8385,14 @@
         "is_opener": false,
         "prior_dates": [
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-21",
+            "away_score": 4,
+            "home_score": 0,
+            "winner_side": "away"
+          }
         ]
       },
       "expected_total": 7.03,
@@ -10176,6 +10198,14 @@
         "is_opener": false,
         "prior_dates": [
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-21",
+            "away_score": 1,
+            "home_score": 3,
+            "winner_side": "home"
+          }
         ]
       },
       "expected_total": 6.22,
@@ -12408,6 +12438,20 @@
         "prior_dates": [
           "2026-04-20",
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-20",
+            "away_score": 6,
+            "home_score": 4,
+            "winner_side": "away"
+          },
+          {
+            "date": "2026-04-21",
+            "away_score": 5,
+            "home_score": 2,
+            "winner_side": "away"
+          }
         ]
       },
       "expected_total": 5.09,
@@ -13928,6 +13972,14 @@
         "is_opener": false,
         "prior_dates": [
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-21",
+            "away_score": 1,
+            "home_score": 0,
+            "winner_side": "away"
+          }
         ]
       },
       "expected_total": 8.86,
@@ -15581,6 +15633,20 @@
         "prior_dates": [
           "2026-04-20",
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-20",
+            "away_score": 3,
+            "home_score": 5,
+            "winner_side": "home"
+          },
+          {
+            "date": "2026-04-21",
+            "away_score": 5,
+            "home_score": 3,
+            "winner_side": "away"
+          }
         ]
       },
       "expected_total": 6.37,
@@ -16883,6 +16949,20 @@
         "prior_dates": [
           "2026-04-20",
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-20",
+            "away_score": 5,
+            "home_score": 2,
+            "winner_side": "away"
+          },
+          {
+            "date": "2026-04-21",
+            "away_score": 4,
+            "home_score": 2,
+            "winner_side": "away"
+          }
         ]
       },
       "expected_total": 6.57,
@@ -18388,6 +18468,20 @@
         "prior_dates": [
           "2026-04-20",
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-20",
+            "away_score": 1,
+            "home_score": 5,
+            "winner_side": "home"
+          },
+          {
+            "date": "2026-04-21",
+            "away_score": 4,
+            "home_score": 7,
+            "winner_side": "home"
+          }
         ]
       },
       "expected_total": 6.37,
@@ -19581,6 +19675,14 @@
         "is_opener": false,
         "prior_dates": [
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-21",
+            "away_score": 1,
+            "home_score": 5,
+            "winner_side": "home"
+          }
         ]
       },
       "expected_total": 7.13,
@@ -20859,6 +20961,20 @@
         "prior_dates": [
           "2026-04-20",
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-20",
+            "away_score": 6,
+            "home_score": 1,
+            "winner_side": "away"
+          },
+          {
+            "date": "2026-04-21",
+            "away_score": 12,
+            "home_score": 6,
+            "winner_side": "away"
+          }
         ]
       },
       "expected_total": 5.26,
@@ -22182,6 +22298,20 @@
         "prior_dates": [
           "2026-04-20",
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-20",
+            "away_score": 7,
+            "home_score": 5,
+            "winner_side": "away"
+          },
+          {
+            "date": "2026-04-21",
+            "away_score": 5,
+            "home_score": 6,
+            "winner_side": "home"
+          }
         ]
       },
       "expected_total": 5.81,
@@ -23479,6 +23609,14 @@
         "is_opener": false,
         "prior_dates": [
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-21",
+            "away_score": 5,
+            "home_score": 3,
+            "winner_side": "away"
+          }
         ]
       },
       "expected_total": 4.93,
@@ -24474,6 +24612,14 @@
         "is_opener": false,
         "prior_dates": [
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-21",
+            "away_score": 11,
+            "home_score": 5,
+            "winner_side": "away"
+          }
         ]
       },
       "expected_total": 6.91,
@@ -25740,6 +25886,20 @@
         "prior_dates": [
           "2026-04-20",
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-20",
+            "away_score": 9,
+            "home_score": 2,
+            "winner_side": "away"
+          },
+          {
+            "date": "2026-04-21",
+            "away_score": 5,
+            "home_score": 8,
+            "winner_side": "home"
+          }
         ]
       },
       "expected_total": 6.73,
@@ -26569,6 +26729,14 @@
         "is_opener": false,
         "prior_dates": [
           "2026-04-21"
+        ],
+        "prior_games": [
+          {
+            "date": "2026-04-21",
+            "away_score": 12,
+            "home_score": 4,
+            "winner_side": "away"
+          }
         ]
       },
       "expected_total": 6.21,

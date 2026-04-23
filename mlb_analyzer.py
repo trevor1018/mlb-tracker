@@ -448,12 +448,23 @@ def compute_today_series_context(games, away_team, home_team, today, max_gap_day
     home_wins = sum(1 for g in series_before if g.winner_side == 'home')
     away_wins = sum(1 for g in series_before if g.winner_side == 'away')
 
+    prior_games = [
+        {
+            'date': g.date,
+            'away_score': g.away_score,
+            'home_score': g.home_score,
+            'winner_side': g.winner_side,
+        }
+        for g in series_before
+    ]
+
     return {
         'series_game': len(series_before) + 1,
         'home_series_wins_before': home_wins,
         'away_series_wins_before': away_wins,
         'is_opener': len(series_before) == 0,
         'prior_dates': [g.date for g in series_before],
+        'prior_games': prior_games,
     }
 
 
