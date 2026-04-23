@@ -190,31 +190,46 @@ async function compressImage(file,maxSide=1600,quality=0.85){
 }
 
 // ─── OCR via OCR.space (free 25K/month) ───
-// apikey 放 FormData 而非 header，避開 CORS preflight → 防止 "Failed to fetch"
+// OCR.space 2026/04 起不再回 Access-Control-Allow-Origin，瀏覽器直連會被 CORS 擋
+// 策略：先試直連，失敗則走 cors.eu.org proxy 轉發
+const OCR_DIRECT_URL="https://api.ocr.space/parse/image";
+const OCR_PROXY_URL="https://cors.eu.org/https://api.ocr.space/parse/image";
+
 async function ocrImage(base64WithPrefix,apiKey){
-  // base64 字串長度 × 0.75 ≈ 解碼後 bytes；>900KB 就逼近 OCR.space 1MB 限制
   const approxBytes=(base64WithPrefix.length-base64WithPrefix.indexOf(",")-1)*0.75;
   if(approxBytes>1024*1024)throw new Error(`圖片壓縮後仍 ${(approxBytes/1024/1024).toFixed(2)}MB，超過 OCR.space 免費 1MB 限制`);
-  const form=new FormData();
-  form.append("apikey",apiKey);
-  form.append("base64Image",base64WithPrefix);
-  form.append("language","cht");
-  form.append("isOverlayRequired","false");
-  form.append("OCREngine","2");
-  let res;
+  const buildForm=()=>{
+    const f=new FormData();
+    f.append("apikey",apiKey);
+    f.append("base64Image",base64WithPrefix);
+    f.append("language","cht");
+    f.append("isOverlayRequired","false");
+    f.append("OCREngine","2");
+    return f;
+  };
+  const callOnce=async(url)=>{
+    const res=await fetch(url,{method:"POST",body:buildForm()});
+    if(!res.ok){
+      let msg=`OCR API ${res.status}`;
+      try{const t=await res.text();if(t)msg+=`: ${t.slice(0,200)}`}catch{}
+      throw new Error(msg);
+    }
+    const data=await res.json();
+    if(data.IsErroredOnProcessing)throw new Error(data.ErrorMessage?.[0]||"OCR 處理失敗");
+    return(data.ParsedResults||[]).map(r=>r.ParsedText||"").join("\n");
+  };
   try{
-    res=await fetch("https://api.ocr.space/parse/image",{method:"POST",body:form});
+    return await callOnce(OCR_DIRECT_URL);
   }catch(e){
-    throw new Error("網路錯誤或 CORS 被擋 (可能離線 / 被擴充套件擋 / 防火牆)");
+    // 只有網路層失敗（TypeError: Failed to fetch）才走 proxy；API 錯誤不重試
+    const isNetworkFail=e instanceof TypeError||/Failed to fetch|Network/i.test(e.message||"");
+    if(!isNetworkFail)throw e;
+    try{
+      return await callOnce(OCR_PROXY_URL);
+    }catch(e2){
+      throw new Error(`直連與 CORS proxy 都失敗: ${e2.message||e2}`);
+    }
   }
-  if(!res.ok){
-    let msg=`OCR API ${res.status}`;
-    try{const t=await res.text();if(t)msg+=`: ${t.slice(0,200)}`}catch{}
-    throw new Error(msg);
-  }
-  const data=await res.json();
-  if(data.IsErroredOnProcessing)throw new Error(data.ErrorMessage?.[0]||"OCR 處理失敗");
-  return(data.ParsedResults||[]).map(r=>r.ParsedText||"").join("\n");
 }
 
 // ─── Parse OCR text into structured bets ───
