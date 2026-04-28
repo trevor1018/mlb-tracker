@@ -2907,23 +2907,15 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                     'edge': 'even',
                 }
 
-            # === 計算預期總分 (用於大小分方向判定) ===
-            est_total = away_snap['runs_per_game'] + home_snap['runs_per_game']
-
-            # Park factor 修正：球場 rpg 偏差
-            est_total *= pf
-
-            # SP 修正：今日先發比球隊平均差 → 對手多得分
-            if away_sp_snap and away_sp_snap.get('sp_starts', 0) >= MIN_STARTS:
-                team_era = away_snap.get('era', 4.0)
-                sp_era = away_sp_snap.get('sp_era', team_era)
-                est_total += (sp_era - team_era) * 0.15  # 客隊 SP 差 → 主隊多得分
-            if home_sp_snap and home_sp_snap.get('sp_starts', 0) >= MIN_STARTS:
-                team_era = home_snap.get('era', 4.0)
-                sp_era = home_sp_snap.get('sp_era', team_era)
-                est_total += (sp_era - team_era) * 0.15  # 主隊 SP 差 → 客隊多得分
-
-            est_total = round(est_total, 2)
+            # === 計算預期總分 (Poisson 風格, 兼顧雙方近 15 場打擊與對方 SP 近 3 場投球) ===
+            # 這個值同時用於: (1) 大小分方向判定 (2) JSON 的 expected_total 欄位 (前端顯示)
+            away_form = compute_team_recent_form(games, away_team, today, n=15)
+            home_form = compute_team_recent_form(games, home_team, today, n=15)
+            expected_total_val, expected_total_breakdown = compute_expected_total(
+                away_form, home_form, away_sp_recent, home_sp_recent,
+                away_snap, home_snap, pf, weather, is_dome,
+            )
+            est_total = expected_total_val
 
             # 系列賽情境 (今日是系列賽第幾戰、主客目前戰績) - 需在複合分數前算好
             series_context = compute_today_series_context(games, away_team, home_team, today)
@@ -3060,8 +3052,7 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                     total_z = home_z_sum + away_z_sum
                     minority_z = min(home_z_sum, away_z_sum)
                 else:
-                    # === 大小分: 用「預期總分 vs 盤口線」判定方向 ===
-                    # est_total 已在上方從 runs_per_game + SP 修正計算
+                    # === 大小分: 用「Poisson 預期總分 vs 盤口線」判定初始方向 ===
                     distance = est_total - bt_line  # 正 = 偏大, 負 = 偏小
                     if distance > 0:
                         predicted = 'over'
@@ -3070,11 +3061,15 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                     else:
                         predicted = 'even'
 
-                    # 複合 z-score 仍計算 (用於信心度和 bucket)
+                    # 複合 z-score 投票 (用於信心度、bucket、與方向交叉驗證)
                     over_z_sum = sum(s['value'] for s in strong_scores if s['value'] > 0)
                     under_z_sum = sum(-s['value'] for s in strong_scores if s['value'] < 0)
                     over_count = sum(1 for s in strong_scores if s['predicts'] == 'over')
                     under_count = sum(1 for s in strong_scores if s['predicts'] == 'under')
+                    composite_majority = (
+                        'over' if over_z_sum > under_z_sum
+                        else ('under' if under_z_sum > over_z_sum else 'even')
+                    )
 
                     vote_info = {
                         'est_total': est_total,
@@ -3083,6 +3078,7 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                         'over_count': over_count, 'under_count': under_count,
                         'over_z_sum': round(over_z_sum, 2),
                         'under_z_sum': round(under_z_sum, 2),
+                        'composite_majority': composite_majority,
                     }
                     total_z = over_z_sum + under_z_sum
                     minority_z = min(over_z_sum, under_z_sum)
@@ -3092,6 +3088,16 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 minority_ratio = minority_z / total_z if total_z > 0 else 0
                 signal_conflict = minority_ratio >= 0.35  # 35%+ = 輕度衝突
                 severe_conflict = minority_ratio >= 0.45  # 45%+ = 嚴重衝突
+
+                # 大小分: 若 composite 多數方向與 expected_total 預測相反 → 強制嚴重衝突
+                # (例如: 6 個 composite 全投 under, 但 expected_total 預測 over)
+                if bt_type == 'total':
+                    if (composite_majority != 'even'
+                        and predicted not in ('even',)
+                        and composite_majority != predicted):
+                        signal_conflict = True
+                        severe_conflict = True
+
                 vote_info['minority_ratio'] = round(minority_ratio, 2)
                 vote_info['conflict'] = severe_conflict
 
@@ -3135,16 +3141,6 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
 
             any_top_10 = any(bt.get('is_top_10_pct') for bt in bet_type_analysis.values())
             any_top_5 = any(bt.get('is_top_5_pct') for bt in bet_type_analysis.values())
-
-            # 近 15 場表現 (用於前端 YOLO total picker 驗證趨勢)
-            away_form = compute_team_recent_form(games, away_team, today, n=15)
-            home_form = compute_team_recent_form(games, home_team, today, n=15)
-
-            # 預期總分 (Poisson 風格, 含 PF + 天氣修正)
-            expected_total_val, expected_total_breakdown = compute_expected_total(
-                away_form, home_form, away_sp_recent, home_sp_recent,
-                away_snap, home_snap, pf, weather, is_dome,
-            )
 
             matchup_data = {
                 'away': away_team, 'away_zh': away_zh,
