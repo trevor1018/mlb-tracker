@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// MLB Tracker — Firestore Security Rules
+// 資料模型：所有用戶資料都在 users/{uid}/ 底下
+//   users/{uid}/meta/{ocrApiKey, oddsApiKey, analysis}
+//   users/{uid}/bets/{betId}
+//   users/{uid}/games/{gameId}
+// 規則：只允許已登入用戶讀寫自己的路徑，其他全部拒絕
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 用戶私人資料 — 只有本人能讀寫
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // 預設拒絕所有其他路徑（明確寫出避免誤開）
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

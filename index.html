@@ -2277,18 +2277,6 @@ function simulateParlay(legs,trials=5000){
   return{legProbs,combined};
 }
 
-// Kelly criterion bet sizing
-// 台彩規則：一注 NT$10，最小 10 注 (NT$100)，以 NT$10 為單位向下取整
-function kellyStake(bankroll,winProb,decimalOdds,fraction=0.5){
-  if(!bankroll||bankroll<=0||!winProb||!decimalOdds||decimalOdds<=1)return 0;
-  const b=decimalOdds-1;
-  const edge=b*winProb-(1-winProb);
-  if(edge<=0)return 0;
-  const f=edge/b*fraction;
-  const raw=bankroll*f;
-  return Math.max(0,Math.floor(raw/10)*10);
-}
-
 // ─── Recommendation Scoring ───
 function scorePick(matchup,btKey){
   const bt=matchup.bet_types?.[btKey];
@@ -2498,7 +2486,7 @@ function generateRecommendations(matchups,excludes){
   const matchupId=(m)=>`${m.away}@${m.home}`;
   const blocked=expandExcludes(excludes||new Set());
 
-  // ═══ A區：穩健推薦 4×串2關 (10年指標) ═══
+  // ═══ A區：穩健推薦 1×串5關 (10年指標) ═══
   const stablePicks=[];
   matchups.forEach(m=>{
     Object.keys(m.bet_types||{}).forEach(k=>{
@@ -2509,31 +2497,22 @@ function generateRecommendations(matchups,excludes){
   });
   stablePicks.sort((a,b)=>b.score-a.score);
 
-  const usedPicks=new Set();
-  const usedMatchupsGlobal=new Set();
+  // 取前 5 高分，每場比賽只能用一次
+  const stableLegs=[];
+  const stableUsed=new Set();
+  for(const pick of stablePicks){
+    if(stableLegs.length>=5)break;
+    const mid=matchupId(pick.matchup);
+    if(stableUsed.has(mid))continue;
+    stableLegs.push(pick);
+    stableUsed.add(mid);
+  }
+  // N-leg true BE = sqrt(product of min_odds_needed) — 因 min_odds = 1/hr²，1/hr = sqrt(min_odds)
+  // 串 N 關 BE = ∏(1/hr_i) = ∏ sqrt(min_odds_i) = sqrt(∏ min_odds_i)
   const stableParlays=[];
-  for(let i=0;i<4;i++){
-    const legs=[];
-    const usedInParlay=new Set();
-    for(const pick of stablePicks){
-      if(legs.length>=2)break;
-      const mid=matchupId(pick.matchup);
-      const pid=mid+"::"+pick.btKey;
-      if(usedPicks.has(pid))continue;
-      if(usedInParlay.has(mid))continue;
-      const isTop5=pick.bt.is_top_5_pct;
-      if(!isTop5&&usedMatchupsGlobal.has(mid))continue;
-      legs.push(pick);
-      usedPicks.add(pid);
-      usedInParlay.add(mid);
-      usedMatchupsGlobal.add(mid);
-    }
-    if(legs.length===2){
-      // Each leg's bestMinOdds is 1/hit_rate² (already a 2-leg parlay BE value).
-    // True 2-leg BE = 1/(hr_A × hr_B) = sqrt(1/hr_A² × 1/hr_B²) = sqrt(product).
-    const product=legs.reduce((acc,l)=>acc*(l.bestMinOdds||4),1);
-      stableParlays.push({legs,combinedMinOdds:Math.sqrt(product)});
-    }
+  if(stableLegs.length>=3){
+    const product=stableLegs.reduce((acc,l)=>acc*(l.bestMinOdds||4),1);
+    stableParlays.push({legs:stableLegs,combinedMinOdds:Math.sqrt(product)});
   }
 
   // ═══ B區：高賠博弈 1×串5關 (本季數據) ═══
@@ -2663,9 +2642,6 @@ function RecommendPanel({matchups,uid,state,setState}){
   const[oddsError,setOddsError]=useState("");
   const[showKeyInput,setShowKeyInput]=useState(false);
   const[excludes,setExcludes]=useState(()=>new Set());
-  const[bankroll,setBankroll]=useState(()=>Number(load("bankroll-ntd",10000))||10000);
-  const[showBankrollInput,setShowBankrollInput]=useState(false);
-  const saveBankroll=(v)=>{const n=Number(v)||0;setBankroll(n);save("bankroll-ntd",n)};
 
   useEffect(()=>{
     if(!uid)return;
@@ -2832,14 +2808,6 @@ function RecommendPanel({matchups,uid,state,setState}){
       parlay._mc=simulateParlay(parlay.legs,isYolo?3000:5000);
     }
     const mc=parlay._mc;
-    // Kelly bet size — prefer best available odds, fall back to estimates
-    // A 區: combinedMinOdds × 1.3 (BE × typical edge); B 區: product of typical odds per bet type
-    const typicalOdds={"spread_1.5":2.3,"spread_2.5":2.55,"total_9.5":2.40,"total_8.5":2.15,"total_7.5":1.95,"ml":1.85};
-    const fallbackOdds=isYolo?parlay.legs.reduce((a,l)=>a*(typicalOdds[l.btKey]||2.2),1):(parlay.combinedMinOdds?parlay.combinedMinOdds*1.3:null);
-    const kellyOdds=combinedBest||combinedAvg||fallbackOdds;
-    const kellyAmount=kellyOdds?kellyStake(bankroll,mc.combined,kellyOdds,0.5):0;
-    const fullKelly=kellyOdds?kellyStake(bankroll,mc.combined,kellyOdds,1.0):0;
-    const kellyEV=kellyOdds?(mc.combined*kellyOdds-1)*100:0;
 
     return<div key={pi} style={{background:bgColor,borderRadius:10,padding:14,border:`2px solid ${borderColor}`,marginBottom:10}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -2871,25 +2839,7 @@ function RecommendPanel({matchups,uid,state,setState}){
             <span style={{fontSize:13,fontWeight:600,...mono,color:C.g}}>{combinedBest.toFixed(2)}</span>
           </div>
         </>}
-        {/* Kelly bet sizing — 台彩一注 NT$10，最小 10 注 */}
-        {kellyOdds&&<div style={{marginTop:8,paddingTop:8,borderTop:`1px dashed ${C.bd}`}}>
-          {kellyAmount>=100?<>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:12,color:C.d}}>💰 建議下注 (半 Kelly)</span>
-              <span style={{fontSize:16,fontWeight:700,...mono,color:C.acc}}>NT${kellyAmount.toLocaleString()} <span style={{fontSize:11,color:C.m,fontWeight:400}}>({kellyAmount/10} 注)</span></span>
-            </div>
-            <div style={{fontSize:10,color:C.m,marginTop:2,...mono}}>
-              EV {kellyEV>=0?"+":""}{kellyEV.toFixed(1)}% · 滿 Kelly NT${fullKelly.toLocaleString()} ({fullKelly/10} 注) · 本金 NT${bankroll.toLocaleString()}
-            </div>
-          </>:kellyEV>0?<div style={{fontSize:11,color:C.acc,textAlign:"center"}}>
-            ⚠ 半 Kelly 建議 NT${kellyAmount} 低於最小 NT$100 (10 注)，邊際太薄建議跳過<br/>
-            <span style={{fontSize:10,color:C.m}}>EV +{kellyEV.toFixed(1)}% · 滿 Kelly NT${fullKelly.toLocaleString()}{fullKelly>=10?` (${fullKelly/10} 注)`:""}</span>
-          </div>:<div style={{fontSize:11,color:C.r,textAlign:"center"}}>
-            ⚠ 負期望值 (EV {kellyEV.toFixed(1)}%)，建議跳過
-          </div>}
-        </div>}
-        {oddsData&&!allMatched&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>部分腳位無國際盤對應，Kelly 以估算賠率計算</div>}
-        {!oddsData&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>未抓國際盤，Kelly 以{isYolo?"各盤口典型賠率":"損益平衡賠率×1.3"}估算</div>}
+        {oddsData&&!allMatched&&<div style={{fontSize:10,color:C.m,marginTop:4,textAlign:"right"}}>部分腳位無國際盤對應</div>}
       </div>
     </div>;
   };
@@ -2899,28 +2849,14 @@ function RecommendPanel({matchups,uid,state,setState}){
     <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
       <div style={{fontSize:13,fontWeight:700,color:C.acc,marginBottom:8}}>🎰 組合推薦</div>
       <div style={{fontSize:12,color:C.d,lineHeight:1.6}}>
-        <span style={{color:C.g}}>A 穩健推薦</span>：4 單 × 串 2 關，依 10 年歷史指標計算信心分數<br/>
+        <span style={{color:C.g}}>A 穩健推薦</span>：1 單 × 串 5 關，依 10 年歷史指標計算信心分數<br/>
         <span style={{color:"#a78bfa"}}>B 高賠博弈</span>：1 單 × 串 5 關，依本季球隊火力 + 牛棚 + 先發近況，偏重讓分 2.5 / 大分 9.5
       </div>
     </div>
 
-    {/* Bankroll (for Kelly sizing) */}
-    <div style={{background:C.card,borderRadius:10,padding:"10px 14px",border:`1px solid ${C.bd}`,marginBottom:12}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div style={{fontSize:12,color:C.d}}>💰 本金 (用於 Kelly 建議)</div>
-        <button onClick={()=>setShowBankrollInput(!showBankrollInput)} style={{background:"none",border:"none",color:C.acc,cursor:"pointer",fontSize:14,fontWeight:700,...mono}}>
-          NT${bankroll.toLocaleString()} {showBankrollInput?"▲":"▼"}
-        </button>
-      </div>
-      {showBankrollInput&&<div style={{marginTop:8}}>
-        <Inp value={bankroll} onChange={saveBankroll} type="number" mono/>
-        <div style={{fontSize:10,color:C.m,marginTop:4}}>半 Kelly 較保守 (波動較小)，滿 Kelly 成長最快但破產風險較高</div>
-      </div>}
-    </div>
-
     {/* Generate button */}
     <button onClick={generate} disabled={!matchups||matchups.length===0} style={{width:"100%",padding:14,borderRadius:10,border:"none",fontSize:15,fontWeight:700,background:matchups&&matchups.length>0?C.acc:C.m,color:matchups&&matchups.length>0?"#000":C.d,cursor:matchups&&matchups.length>0?"pointer":"default",outline:"none",marginBottom:12}}>
-      一鍵生成推薦（4 穩 + 1 博）
+      一鍵生成推薦（2 組串 5 關）
     </button>
 
     {/* International Odds */}
@@ -2960,23 +2896,23 @@ function RecommendPanel({matchups,uid,state,setState}){
 
     {/* Results */}
     {result&&<div>
-      {/* A: Stable parlays */}
-      <div style={{fontSize:13,fontWeight:700,color:C.g,marginBottom:8}}>🛡️ A 穩健推薦 · 串 2 關 × 4 單</div>
+      {/* A: Stable 5-leg parlay */}
+      <div style={{fontSize:13,fontWeight:700,color:C.g,marginBottom:8}}>🛡️ A 穩健推薦 · 串 5 關</div>
       {result.stableParlays.length===0?<div style={{textAlign:"center",padding:20,color:C.d,fontSize:12,marginBottom:12}}>
-        穩健場次不足（可用 {result.totalStable} 場）
+        穩健場次不足（可用 {result.totalStable} 場，需至少 3 場）
       </div>:<>
         {result.stableParlays.map((p,i)=>{
           const anyTop5=p.legs.some(l=>l.bt.is_top_5_pct);
           const allTop10=p.legs.every(l=>l.bt.is_top_10_pct||l.bt.is_top_5_pct);
           const icon=anyTop5?"🔥 ":allTop10?"⭐ ":"";
-          return renderParlay(p,i,`${icon}第 ${i+1} 單 · 串 2 關`,anyTop5?C.acc:allTop10?C.g:C.acc,anyTop5?C.acc:allTop10?C.g:C.bd,anyTop5?"rgba(245,158,11,0.06)":allTop10?"rgba(16,185,129,0.06)":C.card,false);
+          return renderParlay(p,i,`${icon}穩健 · 串 ${p.legs.length} 關`,anyTop5?C.acc:allTop10?C.g:C.acc,anyTop5?C.acc:allTop10?C.g:C.bd,anyTop5?"rgba(245,158,11,0.06)":allTop10?"rgba(16,185,129,0.06)":C.card,false);
         })}
       </>}
 
       {/* B: YOLO parlay */}
       <div style={{fontSize:13,fontWeight:700,color:"#a78bfa",marginTop:16,marginBottom:8}}>🎲 B 高賠博弈 · 串 5 關</div>
       <div style={{fontSize:11,color:C.d,marginBottom:8,lineHeight:1.5}}>
-        ⚠️ 風險極高 · 建議固定 $100 · 依本季球隊火力、牛棚疲勞、先發近況選出高賠組合
+        ⚠️ 風險極高 · 依本季球隊火力、牛棚疲勞、先發近況選出高賠組合
       </div>
       {!result.yoloParlay?<div style={{textAlign:"center",padding:20,color:C.d,fontSize:12}}>
         高賠場次不足（可用 {result.totalYolo} 場，需至少 3 場）
