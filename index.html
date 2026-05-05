@@ -2526,16 +2526,42 @@ function generateRecommendations(matchups,excludes){
   });
   yoloPicks.sort((a,b)=>b.score-a.score);
 
+  // A/B 場次盡量不重複；同場不同玩法且雙方都在 top 10% 才允許重複，否則 pass2 fallback
+  const aUsedMap=new Map();
+  stableLegs.forEach(p=>aUsedMap.set(matchupId(p.matchup),p));
+  const isTop10=(bt)=>!!(bt&&(bt.is_top_5_pct||bt.is_top_10_pct));
   const yoloLegs=[];
   const yoloUsed=new Set();
+  const tryAddYolo=(pick,allowOverlap)=>{
+    if(yoloLegs.length>=5)return false;
+    const mid=matchupId(pick.matchup);
+    if(yoloUsed.has(mid))return false;
+    const aPick=aUsedMap.get(mid);
+    let overlapReason=null;
+    if(aPick){
+      if(aPick.btKey===pick.btKey)return false; // 完全同腳
+      const bothTop10=isTop10(aPick.bt)&&isTop10(pick.bt);
+      if(!allowOverlap&&!bothTop10)return false;
+      overlapReason=bothTop10?"top10":"fallback";
+    }
+    yoloLegs.push({...pick,_overlapReason:overlapReason});
+    yoloUsed.add(mid);
+    return true;
+  };
+  // Pass 1: 嚴格不重複 (同場雙方都 top 10% 才例外)
   for(const pick of yoloPicks){
     if(yoloLegs.length>=5)break;
-    const mid=matchupId(pick.matchup);
-    if(yoloUsed.has(mid))continue;
-    yoloLegs.push(pick);
-    yoloUsed.add(mid);
+    tryAddYolo(pick,false);
   }
-  const yoloParlay=yoloLegs.length>=3?{legs:yoloLegs,combinedMinOdds:null}:null;
+  // Pass 2: 場次不足時放寬重複限制
+  let fallbackUsed=false;
+  if(yoloLegs.length<5){
+    for(const pick of yoloPicks){
+      if(yoloLegs.length>=5)break;
+      if(tryAddYolo(pick,true))fallbackUsed=true;
+    }
+  }
+  const yoloParlay=yoloLegs.length>=3?{legs:yoloLegs,combinedMinOdds:null,fallbackUsed}:null;
 
   return{stableParlays,yoloParlay,totalStable:stablePicks.length,totalYolo:yoloPicks.length};
 }
@@ -2721,6 +2747,8 @@ function RecommendPanel({matchups,uid,state,setState}){
           <span style={{fontSize:13,fontWeight:600}}>{awayZh} @ {homeZh}</span>
           <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:tagBg,color:tagCol,fontWeight:600}}>{btShort}</span>
           {!isYolo&&(bt.is_top_5_pct?<span style={{fontSize:10,color:C.acc,fontWeight:700}}>🔥Top5%</span>:bt.is_top_10_pct&&<span style={{fontSize:10,color:C.g,fontWeight:700}}>⭐Top10%</span>)}
+          {isYolo&&leg._overlapReason==="top10"&&<span title="A、B 區此場次玩法都在 Top 10%，交叉驗證" style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"rgba(16,185,129,0.15)",color:C.g,fontWeight:600}}>A 區交叉</span>}
+          {isYolo&&leg._overlapReason==="fallback"&&<span title="場次不足，B 區與 A 區重疊（不同玩法）" style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"rgba(251,191,36,0.15)",color:"#fbbf24",fontWeight:600}}>場次重疊</span>}
         </div>
         <span style={{fontSize:11,color:C.d,...mono}}>分 {leg.score.toFixed(0)}</span>
       </div>
@@ -2916,7 +2944,12 @@ function RecommendPanel({matchups,uid,state,setState}){
       </div>
       {!result.yoloParlay?<div style={{textAlign:"center",padding:20,color:C.d,fontSize:12}}>
         高賠場次不足（可用 {result.totalYolo} 場，需至少 3 場）
-      </div>:renderParlay(result.yoloParlay,99,"🎲 高賠一搏 · 串 "+result.yoloParlay.legs.length+" 關","#a78bfa","#7c3aed","rgba(139,92,246,0.06)",true)}
+      </div>:<>
+        {result.yoloParlay.fallbackUsed&&<div style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.4)",borderRadius:6,padding:"6px 10px",marginBottom:8,fontSize:11,color:"#fbbf24",lineHeight:1.5}}>
+          ⚠️ 當天場次不足，B 區部分腳與 A 區重疊（不同玩法）
+        </div>}
+        {renderParlay(result.yoloParlay,99,"🎲 高賠一搏 · 串 "+result.yoloParlay.legs.length+" 關","#a78bfa","#7c3aed","rgba(139,92,246,0.06)",true)}
+      </>}
     </div>}
   </div>;
 }
