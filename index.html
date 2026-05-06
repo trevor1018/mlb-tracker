@@ -893,18 +893,34 @@ function ResultsView({games,addGames,updateGame,deleteGame}){
     try{
       const fetched=await fetchMLBGames(importDate);
       if(!fetched.length){setImportResult({ok:false,msg:"該日無可匯入的比賽（未開打/延賽除外）"});setImporting(false);return}
-      const existIds=new Set(games.map(g=>g.id));
-      // 已匯入過但仍在進行中的，重新更新（沿用更新流程而非 addGames）
-      const newGames=fetched.filter(g=>!existIds.has(g.id));
-      const inProgressUpdates=fetched.filter(g=>existIds.has(g.id)&&g.final===false);
-      if(!newGames.length&&!inProgressUpdates.length){setImportResult({ok:true,msg:`${fetched.length} 場比賽皆已匯入且皆完賽`});setImporting(false);return}
+      // 比對「已存的版本」決定要不要更新：
+      //   1. 不存在 → addGames（新增）
+      //   2. 已存且 (前次存的是進行中 OR 比分有變動) → updateGame（更新；含「進行中→完賽」狀態翻轉）
+      //   3. 已存且完全沒變 → skip
+      const existMap=new Map(games.map(g=>[g.id,g]));
+      const newGames=[];
+      const updates=[];
+      let nowFinalized=0;
+      for(const g of fetched){
+        const prev=existMap.get(g.id);
+        if(!prev){newGames.push(g);continue}
+        const prevInProg=prev.final===false;
+        const scoreChanged=Number(prev.awayScore)!==Number(g.awayScore)||Number(prev.homeScore)!==Number(g.homeScore);
+        const statusChanged=Boolean(prev.final)!==Boolean(g.final);
+        if(prevInProg||scoreChanged||statusChanged){
+          updates.push(g);
+          if(prevInProg&&g.final)nowFinalized++;
+        }
+      }
+      if(!newGames.length&&!updates.length){setImportResult({ok:true,msg:`${fetched.length} 場比賽皆已匯入且皆完賽`});setImporting(false);return}
       if(newGames.length)await addGames(newGames);
-      for(const g of inProgressUpdates)await updateGame(g.id,g);
-      const inProgCount=fetched.filter(g=>g.final===false).length;
+      for(const g of updates)await updateGame(g.id,g);
+      const stillInProg=fetched.filter(g=>g.final===false).length;
       const parts=[];
       if(newGames.length)parts.push(`新增 ${newGames.length} 場`);
-      if(inProgressUpdates.length)parts.push(`更新 ${inProgressUpdates.length} 場進行中`);
-      if(inProgCount>0)parts.push(`(其中 ${inProgCount} 場進行中)`);
+      if(updates.length)parts.push(`更新 ${updates.length} 場`);
+      if(nowFinalized>0)parts.push(`(${nowFinalized} 場剛完賽)`);
+      else if(stillInProg>0)parts.push(`(${stillInProg} 場仍進行中)`);
       setImportResult({ok:true,msg:`✓ ${parts.join("，")}`});
     }catch(e){setImportResult({ok:false,msg:"匯入失敗："+e.message})}
     setImporting(false);
