@@ -78,7 +78,13 @@ async function fetchMLBGames(dateStr){
   const schRes=await fetch(`${MLB_API}/schedule?date=${dateStr}&sportId=1&hydrate=linescore,decisions`);
   const sch=await schRes.json();
   if(!sch.dates||!sch.dates.length)return[];
-  const gamesRaw=sch.dates[0].games.filter(g=>g.status.detailedState==="Final"||g.status.detailedState.startsWith("Completed"));
+  // 包含完賽 + 進行中（後者用於早鎖定的大小分）；過濾尚未開打、延賽、取消
+  const isFinalStatus=(s)=>s==="Final"||s.startsWith("Completed")||s==="Game Over";
+  const isInProgressStatus=(s)=>s==="In Progress"||s==="Manager challenge"||s==="Manager Challenge"||s==="Suspended";
+  const gamesRaw=sch.dates[0].games.filter(g=>{
+    const st=g.status.detailedState;
+    return isFinalStatus(st)||isInProgressStatus(st);
+  });
 
   // 2. For each game, fetch boxscore + playByPlay in parallel
   const results=await Promise.all(gamesRaw.map(async g=>{
@@ -123,6 +129,10 @@ async function fetchMLBGames(dateStr){
     // Decisions
     const dec=g.decisions||{};
 
+    const stDetail=g.status.detailedState;
+    const isFinal=isFinalStatus(stDetail);
+    const halfZh=ls?.inningHalf==="Top"?"上":ls?.inningHalf==="Bottom"?"下":"";
+    const inningStr=!isFinal&&ls?.currentInning?`${ls.currentInning}${halfZh}`:null;
     return{
       id:"mlb-"+g.gamePk,
       date:dateStr,
@@ -137,6 +147,9 @@ async function fetchMLBGames(dateStr){
       winner:dec.winner?.fullName||"",loser:dec.loser?.fullName||"",
       save:dec.save?.fullName||"",
       homeRuns,
+      final:isFinal,
+      inning:inningStr,
+      statusDetail:stDetail,
       note:"",
       createdAt:new Date().toISOString()
     };
@@ -401,17 +414,40 @@ function parseOcrText(fullText){
 }
 
 // ─── Bet logic ───
-function determineResult(leg,hs,as){
+// final=false 時，僅大/小分能在達標時提早鎖定（over 已過線必勝、under 已過線必敗）
+// 勝負/讓分/勝分差需等比賽結束才結算
+function determineResult(leg,hs,as,final=true){
   const h=Number(hs),a=Number(as);if(isNaN(h)||isNaN(a))return"pending";
   const t=h+a;
+  if(leg.market==="total"){
+    const l=Number(leg.line);
+    // 提早鎖定（不論 final）：總分已 > 線
+    if(t>l)return leg.selection==="over"?"win":"lose";
+    if(!final)return"pending";
+    if(t===l)return"push";
+    return leg.selection==="under"?"win":"lose"; // t<l
+  }
+  if(leg.market==="team_total_home"){
+    const l=Number(leg.line);
+    if(h>l)return leg.selection==="over"?"win":"lose";
+    if(!final)return"pending";
+    if(h===l)return"push";
+    return leg.selection==="under"?"win":"lose";
+  }
+  if(leg.market==="team_total_away"){
+    const l=Number(leg.line);
+    if(a>l)return leg.selection==="over"?"win":"lose";
+    if(!final)return"pending";
+    if(a===l)return"push";
+    return leg.selection==="under"?"win":"lose";
+  }
+  // 以下方向性盤口必須等完賽
+  if(!final)return"pending";
   if(leg.market==="normal"){if(h===a)return"push";return(leg.selection==="home"&&h>a)||(leg.selection==="away"&&a>h)?"win":"lose"}
   if(leg.market==="handi"){const s=Number(leg.line),adj=h+s;if(adj===a)return"push";return(leg.selection==="home"&&adj>a)||(leg.selection==="away"&&a>adj)?"win":"lose"}
-  if(leg.market==="total"){const l=Number(leg.line);if(t===l)return"push";return(leg.selection==="over"&&t>l)||(leg.selection==="under"&&t<l)?"win":"lose"}
-  if(leg.market==="team_total_home"){const l=Number(leg.line);if(h===l)return"push";return(leg.selection==="over"&&h>l)||(leg.selection==="under"&&h<l)?"win":"lose"}
-  if(leg.market==="team_total_away"){const l=Number(leg.line);if(a===l)return"push";return(leg.selection==="over"&&a>l)||(leg.selection==="under"&&a<l)?"win":"lose"}
   if(leg.market==="margin"){
     const diff=leg.selection==="home"?h-a:a-h;
-    if(diff<=0)return"lose"; // selected team didn't win
+    if(diff<=0)return"lose";
     if(leg.line==="3+")return diff>=3?"win":"lose";
     const exact=Number(leg.line);
     return diff===exact?"win":"lose";
@@ -773,9 +809,9 @@ function HistView({bets,updateBet,deleteBet}){
 function BetCard({bet,r,updateBet,deleteBet,ML}){
   const[mode,setMode]=useState("view"); // view | score | edit
   const sc=r.status==="win"?C.g:r.status==="lose"?C.r:C.m;
-  const upScore=(li,f,v)=>updateBet(bet.id,b=>{const nl=b.legs.map((l,i)=>{if(i!==li)return l;const u={...l,[f]:v};u.result=(u.homeScore!==""&&u.awayScore!=="")?determineResult(u,u.homeScore,u.awayScore):"pending";return u});return{...b,legs:nl}});
-  const upLeg=(li,f,v)=>updateBet(bet.id,b=>{const nl=b.legs.map((l,i)=>{if(i!==li)return l;const u={...l,[f]:v};if(u.homeScore!==""&&u.awayScore!=="")u.result=determineResult(u,u.homeScore,u.awayScore);return u});return{...b,legs:nl,totalOdds:Math.round(nl.reduce((a,l)=>a*(Number(l.odds)||1),1)*100)/100}});
-  const upAllDate=v=>updateBet(bet.id,b=>({...b,legs:b.legs.map(l=>{const u={...l,date:v};if(u.homeScore!==""&&u.awayScore!=="")u.result=determineResult(u,u.homeScore,u.awayScore);return u})}));
+  const upScore=(li,f,v)=>updateBet(bet.id,b=>{const nl=b.legs.map((l,i)=>{if(i!==li)return l;const u={...l,[f]:v};const fin=!u.gameInProgress;u.result=(u.homeScore!==""&&u.awayScore!=="")?determineResult(u,u.homeScore,u.awayScore,fin):"pending";return u});return{...b,legs:nl}});
+  const upLeg=(li,f,v)=>updateBet(bet.id,b=>{const nl=b.legs.map((l,i)=>{if(i!==li)return l;const u={...l,[f]:v};if(u.homeScore!==""&&u.awayScore!=="")u.result=determineResult(u,u.homeScore,u.awayScore,!u.gameInProgress);return u});return{...b,legs:nl,totalOdds:Math.round(nl.reduce((a,l)=>a*(Number(l.odds)||1),1)*100)/100}});
+  const upAllDate=v=>updateBet(bet.id,b=>({...b,legs:b.legs.map(l=>{const u={...l,date:v};if(u.homeScore!==""&&u.awayScore!=="")u.result=determineResult(u,u.homeScore,u.awayScore,!u.gameInProgress);return u})}));
   const upBetField=(f,v)=>updateBet(bet.id,b=>({...b,[f]:v}));
 
   const eInp={padding:"4px 6px",borderRadius:4,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,fontSize:12,outline:"none",boxSizing:"border-box"};
@@ -827,7 +863,7 @@ function BetCard({bet,r,updateBet,deleteBet,ML}){
     </div>
     {bet.legs.map((leg,i)=><div key={i} style={{fontSize:13,padding:"6px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
       <div style={{display:"flex",justifyContent:"space-between"}}><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:7,height:7,borderRadius:"50%",display:"inline-block",background:leg.result==="win"?C.g:leg.result==="lose"?C.r:C.m}}/><span>{leg.away} @ {leg.home}</span></div><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.d,fontSize:12}}>{Number(leg.odds).toFixed(2)}</span></div>
-      <div style={{fontSize:12,color:C.d,marginTop:2,marginLeft:13}}>{leg.market==="team_total_home"?`${leg.home}大小`:leg.market==="team_total_away"?`${leg.away}大小`:(ML[leg.market]||leg.market)}{fmtLine(leg.market,leg.line)} → <span style={{color:C.acc}}>{leg.selection==="home"?leg.home:leg.selection==="away"?leg.away:leg.selection==="over"?"大":"小"}</span>{(leg.homeScore!==""&&leg.awayScore!=="")&&<span style={{marginLeft:8,color:C.t}}>比數 {leg.awayScore}:{leg.homeScore}</span>}</div>
+      <div style={{fontSize:12,color:C.d,marginTop:2,marginLeft:13}}>{leg.market==="team_total_home"?`${leg.home}大小`:leg.market==="team_total_away"?`${leg.away}大小`:(ML[leg.market]||leg.market)}{fmtLine(leg.market,leg.line)} → <span style={{color:C.acc}}>{leg.selection==="home"?leg.home:leg.selection==="away"?leg.away:leg.selection==="over"?"大":"小"}</span>{(leg.homeScore!==""&&leg.awayScore!=="")&&<span style={{marginLeft:8,color:C.t}}>比數 {leg.awayScore}:{leg.homeScore}{leg.gameInProgress&&<span style={{marginLeft:4,color:"#fbbf24",fontSize:10,fontWeight:600}}>(進行中{leg.gameInning?` ${leg.gameInning}`:""})</span>}</span>}</div>
       {mode==="score"&&<div style={{display:"flex",gap:8,marginTop:6,marginLeft:13,alignItems:"center"}}><span style={{fontSize:11,color:C.d}}>{leg.away}</span><input type="number" value={leg.awayScore??""} onChange={e=>upScore(i,"awayScore",e.target.value)} style={{width:44,padding:4,borderRadius:4,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,textAlign:"center",fontSize:13,fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/><span style={{color:C.m}}>:</span><input type="number" value={leg.homeScore??""} onChange={e=>upScore(i,"homeScore",e.target.value)} style={{width:44,padding:4,borderRadius:4,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,textAlign:"center",fontSize:13,fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/><span style={{fontSize:11,color:C.d}}>{leg.home}</span></div>}
     </div>)}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,paddingTop:8,borderTop:`1px solid ${C.bd}`}}>
@@ -856,12 +892,20 @@ function ResultsView({games,addGames,updateGame,deleteGame}){
     setImporting(true);setImportResult(null);
     try{
       const fetched=await fetchMLBGames(importDate);
-      if(!fetched.length){setImportResult({ok:false,msg:"該日無已完賽的比賽"});setImporting(false);return}
+      if(!fetched.length){setImportResult({ok:false,msg:"該日無可匯入的比賽（未開打/延賽除外）"});setImporting(false);return}
       const existIds=new Set(games.map(g=>g.id));
+      // 已匯入過但仍在進行中的，重新更新（沿用更新流程而非 addGames）
       const newGames=fetched.filter(g=>!existIds.has(g.id));
-      if(!newGames.length){setImportResult({ok:true,msg:`${fetched.length} 場比賽皆已匯入過`});setImporting(false);return}
-      await addGames(newGames);
-      setImportResult({ok:true,msg:`成功匯入 ${newGames.length} 場比賽（共 ${fetched.length} 場）`});
+      const inProgressUpdates=fetched.filter(g=>existIds.has(g.id)&&g.final===false);
+      if(!newGames.length&&!inProgressUpdates.length){setImportResult({ok:true,msg:`${fetched.length} 場比賽皆已匯入且皆完賽`});setImporting(false);return}
+      if(newGames.length)await addGames(newGames);
+      for(const g of inProgressUpdates)await updateGame(g.id,g);
+      const inProgCount=fetched.filter(g=>g.final===false).length;
+      const parts=[];
+      if(newGames.length)parts.push(`新增 ${newGames.length} 場`);
+      if(inProgressUpdates.length)parts.push(`更新 ${inProgressUpdates.length} 場進行中`);
+      if(inProgCount>0)parts.push(`(其中 ${inProgCount} 場進行中)`);
+      setImportResult({ok:true,msg:`✓ ${parts.join("，")}`});
     }catch(e){setImportResult({ok:false,msg:"匯入失敗："+e.message})}
     setImporting(false);
   };
@@ -931,11 +975,13 @@ function GameCard({game:g,updateGame,deleteGame}){
   const hdr={fontSize:11,color:C.m,padding:"4px 0",textAlign:"center",borderBottom:`1px solid ${C.bd}`};
   const cell={fontSize:11,padding:"3px 0",textAlign:"center",...mono};
 
-  return<div style={{background:C.card,borderRadius:10,padding:"12px 16px",marginBottom:6,border:`1px solid ${C.bd}`}}>
+  const inProgress=g.final===false;
+  return<div style={{background:C.card,borderRadius:10,padding:"12px 16px",marginBottom:6,border:`1px solid ${inProgress?"#fbbf24":C.bd}`}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-      <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
         <span style={{fontSize:11,color:C.d}}>{g.date}</span>
         {g.awayEn&&<span style={{fontSize:10,color:C.m}}>{g.awayEn} @ {g.homeEn}</span>}
+        {inProgress&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"rgba(251,191,36,0.15)",color:"#fbbf24",fontWeight:700}}>進行中{g.inning?` ${g.inning}`:""}</span>}
       </div>
       <div style={{display:"flex",gap:10}}>
         {hasMLB&&<button onClick={()=>setDetail(!detail)} style={{background:"none",border:"none",color:detail?C.acc:C.d,cursor:"pointer",fontSize:11}}>{detail?"收合":"詳細"}</button>}
@@ -944,9 +990,9 @@ function GameCard({game:g,updateGame,deleteGame}){
       </div>
     </div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"6px 0"}}>
-      <span style={{fontSize:14,fontWeight:w===g.away?700:400,color:w===g.away?C.g:C.t}}>{g.away}</span>
-      <span style={{...mono,fontSize:18,fontWeight:700}}>{g.awayScore} <span style={{color:C.m}}>:</span> {g.homeScore}</span>
-      <span style={{fontSize:14,fontWeight:w===g.home?700:400,color:w===g.home?C.g:C.t}}>{g.home}</span>
+      <span style={{fontSize:14,fontWeight:!inProgress&&w===g.away?700:400,color:!inProgress&&w===g.away?C.g:C.t}}>{g.away}</span>
+      <span style={{...mono,fontSize:18,fontWeight:700,color:inProgress?"#fbbf24":C.t}}>{g.awayScore} <span style={{color:C.m}}>:</span> {g.homeScore}</span>
+      <span style={{fontSize:14,fontWeight:!inProgress&&w===g.home?700:400,color:!inProgress&&w===g.home?C.g:C.t}}>{g.home}</span>
     </div>
     <div style={{display:"flex",gap:8,fontSize:11,color:C.d,flexWrap:"wrap"}}>
       <span>總分 {total}</span><span>·</span><span>分差 {margin}</span>
@@ -3183,8 +3229,15 @@ function App(){
       const nl=b.legs.map(l=>{
         for(const game of gamesToSync){
           if(l.date===game.date&&l.away===game.away&&l.home===game.home){
-            const u={...l,homeScore:String(game.homeScore),awayScore:String(game.awayScore)};
-            u.result=determineResult(u,u.homeScore,u.awayScore);
+            const isFinal=game.final!==false; // 舊資料無 final 欄 → 視為已完賽
+            const u={
+              ...l,
+              homeScore:String(game.homeScore),
+              awayScore:String(game.awayScore),
+              gameInProgress:!isFinal,
+              gameInning:isFinal?null:(game.inning||null)
+            };
+            u.result=determineResult(u,u.homeScore,u.awayScore,isFinal);
             changed=true;return u;
           }
         }
