@@ -2559,11 +2559,11 @@ function generateRecommendations(matchups,excludes){
   });
   stablePicks.sort((a,b)=>b.score-a.score);
 
-  // 取前 5 高分，每場比賽只能用一次
+  // 取前 4 高分，每場比賽只能用一次（搭配台彩 4 選 3 串關玩法）
   const stableLegs=[];
   const stableUsed=new Set();
   for(const pick of stablePicks){
-    if(stableLegs.length>=5)break;
+    if(stableLegs.length>=4)break;
     const mid=matchupId(pick.matchup);
     if(stableUsed.has(mid))continue;
     stableLegs.push(pick);
@@ -2577,7 +2577,7 @@ function generateRecommendations(matchups,excludes){
     stableParlays.push({legs:stableLegs,combinedMinOdds:Math.sqrt(product)});
   }
 
-  // ═══ B區：高賠博弈 1×串5關 (本季數據) ═══
+  // ═══ B區：高賠博弈 1×串4關 (本季數據) ═══
   const yoloPicks=[];
   matchups.forEach(m=>{
     ["spread_1.5","spread_2.5","total_9.5"].forEach(k=>{
@@ -2595,7 +2595,7 @@ function generateRecommendations(matchups,excludes){
   const yoloLegs=[];
   const yoloUsed=new Set();
   const tryAddYolo=(pick,allowOverlap)=>{
-    if(yoloLegs.length>=5)return false;
+    if(yoloLegs.length>=4)return false;
     const mid=matchupId(pick.matchup);
     if(yoloUsed.has(mid))return false;
     const aPick=aUsedMap.get(mid);
@@ -2612,14 +2612,14 @@ function generateRecommendations(matchups,excludes){
   };
   // Pass 1: 嚴格不重複 (同場雙方都 top 10% 才例外)
   for(const pick of yoloPicks){
-    if(yoloLegs.length>=5)break;
+    if(yoloLegs.length>=4)break;
     tryAddYolo(pick,false);
   }
   // Pass 2: 場次不足時放寬重複限制
   let fallbackUsed=false;
-  if(yoloLegs.length<5){
+  if(yoloLegs.length<4){
     for(const pick of yoloPicks){
-      if(yoloLegs.length>=5)break;
+      if(yoloLegs.length>=4)break;
       if(tryAddYolo(pick,true))fallbackUsed=true;
     }
   }
@@ -2939,14 +2939,15 @@ function RecommendPanel({matchups,uid,state,setState}){
     <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
       <div style={{fontSize:13,fontWeight:700,color:C.acc,marginBottom:8}}>🎰 組合推薦</div>
       <div style={{fontSize:12,color:C.d,lineHeight:1.6}}>
-        <span style={{color:C.g}}>A 穩健推薦</span>：1 單 × 串 5 關，依 10 年歷史指標計算信心分數<br/>
-        <span style={{color:"#a78bfa"}}>B 高賠博弈</span>：1 單 × 串 5 關，依本季球隊火力 + 牛棚 + 先發近況，偏重讓分 2.5 / 大分 9.5
+        <span style={{color:C.g}}>A 穩健推薦</span>：1 組 4 選 3 串關（4 腳），依 10 年歷史指標計算信心分數<br/>
+        <span style={{color:"#a78bfa"}}>B 高賠博弈</span>：1 組 4 選 3 串關（4 腳），依本季球隊火力 + 牛棚 + 先發近況，偏重讓分 2.5 / 大分 9.5<br/>
+        <span style={{color:C.d,fontSize:11}}>📌 4 選 3 玩法：花 $400 買 4 張串 3 關（C(4,3)），每腳 ≥ 1.59 倒一關保本、≥ 2.0 倒一關 +100% ROI</span>
       </div>
     </div>
 
     {/* Generate button */}
     <button onClick={generate} disabled={!matchups||matchups.length===0} style={{width:"100%",padding:14,borderRadius:10,border:"none",fontSize:15,fontWeight:700,background:matchups&&matchups.length>0?C.acc:C.m,color:matchups&&matchups.length>0?"#000":C.d,cursor:matchups&&matchups.length>0?"pointer":"default",outline:"none",marginBottom:12}}>
-      一鍵生成推薦（2 組串 5 關）
+      一鍵生成推薦（2 組 4 選 3 串關）
     </button>
 
     {/* International Odds */}
@@ -2987,7 +2988,7 @@ function RecommendPanel({matchups,uid,state,setState}){
     {/* Results */}
     {result&&<div>
       {/* A: Stable 5-leg parlay */}
-      <div style={{fontSize:13,fontWeight:700,color:C.g,marginBottom:8}}>🛡️ A 穩健推薦 · 串 5 關</div>
+      <div style={{fontSize:13,fontWeight:700,color:C.g,marginBottom:8}}>🛡️ A 穩健推薦 · 4 選 3 串關（4 腳）</div>
       {result.stableParlays.length===0?<div style={{textAlign:"center",padding:20,color:C.d,fontSize:12,marginBottom:12}}>
         穩健場次不足（可用 {result.totalStable} 場，需至少 3 場）
       </div>:<>
@@ -2995,12 +2996,12 @@ function RecommendPanel({matchups,uid,state,setState}){
           const anyTop5=p.legs.some(l=>l.bt.is_top_5_pct);
           const allTop10=p.legs.every(l=>l.bt.is_top_10_pct||l.bt.is_top_5_pct);
           const icon=anyTop5?"🔥 ":allTop10?"⭐ ":"";
-          return renderParlay(p,i,`${icon}穩健 · 串 ${p.legs.length} 關`,anyTop5?C.acc:allTop10?C.g:C.acc,anyTop5?C.acc:allTop10?C.g:C.bd,anyTop5?"rgba(245,158,11,0.06)":allTop10?"rgba(16,185,129,0.06)":C.card,false);
+          return renderParlay(p,i,`${icon}穩健 · ${p.legs.length} 腳（4 選 3）`,anyTop5?C.acc:allTop10?C.g:C.acc,anyTop5?C.acc:allTop10?C.g:C.bd,anyTop5?"rgba(245,158,11,0.06)":allTop10?"rgba(16,185,129,0.06)":C.card,false);
         })}
       </>}
 
       {/* B: YOLO parlay */}
-      <div style={{fontSize:13,fontWeight:700,color:"#a78bfa",marginTop:16,marginBottom:8}}>🎲 B 高賠博弈 · 串 5 關</div>
+      <div style={{fontSize:13,fontWeight:700,color:"#a78bfa",marginTop:16,marginBottom:8}}>🎲 B 高賠博弈 · 4 選 3 串關（4 腳）</div>
       <div style={{fontSize:11,color:C.d,marginBottom:8,lineHeight:1.5}}>
         ⚠️ 風險極高 · 依本季球隊火力、牛棚疲勞、先發近況選出高賠組合
       </div>
@@ -3010,7 +3011,7 @@ function RecommendPanel({matchups,uid,state,setState}){
         {result.yoloParlay.fallbackUsed&&<div style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.4)",borderRadius:6,padding:"6px 10px",marginBottom:8,fontSize:11,color:"#fbbf24",lineHeight:1.5}}>
           ⚠️ 當天場次不足，B 區部分腳與 A 區重疊（不同玩法）
         </div>}
-        {renderParlay(result.yoloParlay,99,"🎲 高賠一搏 · 串 "+result.yoloParlay.legs.length+" 關","#a78bfa","#7c3aed","rgba(139,92,246,0.06)",true)}
+        {renderParlay(result.yoloParlay,99,"🎲 高賠一搏 · "+result.yoloParlay.legs.length+" 腳（4 選 3）","#a78bfa","#7c3aed","rgba(139,92,246,0.06)",true)}
       </>}
     </div>}
   </div>;
