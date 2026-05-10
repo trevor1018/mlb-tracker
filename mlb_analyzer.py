@@ -21,6 +21,7 @@ MLB 投注分析工具 — 統計相關性回測 + 牛棚追蹤 + 每日分析
   daily 2025-09-28     → 歷史日期
 """
 import json, re, sys, os, time
+from collections import deque
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field, asdict
 from math import comb, sqrt
@@ -109,6 +110,20 @@ COMPOSITES_DEF = [
     ("ops+sp_fip+home", [("ops", 1, "team"), ("sp_fip", -1, "sp")], True),
     ("pyth+ops+sp_fip+home", [("pyth_pct", 1, "team"), ("ops", 1, "team"), ("sp_fip", -1, "sp")], True),
     ("run_diff+sp_fip+home", [("run_diff_per_game", 1, "team"), ("sp_fip", -1, "sp")], True),
+    # === Elo 評分 (10 年回測 standalone 57.5%, 最強單一指標) ===
+    # source="elo" 在 compute_directional_composite 特殊處理
+    ("elo_only", [("elo_diff", 1, "elo")], False),
+    ("elo+ops", [("elo_diff", 1, "elo"), ("ops", 1, "team")], False),
+    ("elo+sp_fip", [("elo_diff", 1, "elo"), ("sp_fip", -1, "sp")], False),
+    ("elo+ops+sp_fip", [("elo_diff", 1, "elo"), ("ops", 1, "team"), ("sp_fip", -1, "sp")], False),
+    ("elo+run_diff+sp_fip", [("elo_diff", 1, "elo"), ("run_diff_per_game", 1, "team"), ("sp_fip", -1, "sp")], False),
+    # === 滾動近 N 場 (2025 ML: 比整季更具預測力) ===
+    ("ops_r10+era", [("ops_recent10", 1, "team"), ("era", -1, "team")], False),
+    ("rdiff_r10+sp_fip", [("run_diff_per_game_recent10", 1, "team"), ("sp_fip", -1, "sp")], False),
+    ("elo+ops_r10", [("elo_diff", 1, "elo"), ("ops_recent10", 1, "team")], False),
+    # === Bullpen 品質 (14 天) ===
+    ("ops+bp_era_14d", [("ops", 1, "team"), ("bp_era_14d", -1, "team")], False),
+    ("elo+bp_era_14d", [("elo_diff", 1, "elo"), ("bp_era_14d", -1, "team")], False),
 ]
 
 # 總和型複合指標 (total - 大小分用)
@@ -178,14 +193,27 @@ TEAM_ZH = {
 }
 
 # 指標名 → snapshot 欄位名稱對照 (單一指標回測與分層回測共用)
+# 註: team 級 k_bb_ratio 已移除 (2025 ML 研究證實會拖低準確度)
 STAT_KEY_MAP = {
     "ops": "ops", "slg": "slg", "obp": "obp", "avg": "avg",
     "runs_pg": "runs_per_game", "hr_pg": "hr_per_game",
     "bb_rate": "bb_rate", "so_rate": "so_rate",
     "era": "era", "whip": "whip", "fip": "fip",
-    "k9": "k9", "bb9": "bb9", "k_bb_ratio": "k_bb_ratio",
+    "k9": "k9", "bb9": "bb9",
     "ra_pg": "ra_per_game", "bp_fatigue": "bp_fatigue",
     "win_pct": "win_pct", "run_diff_pg": "run_diff_per_game", "pyth_pct": "pyth_pct",
+    # 滾動近 N 場指標 (近 5 場 / 近 10 場 — 比整季更具預測力)
+    "runs_pg_r5": "runs_per_game_recent5",
+    "runs_pg_r10": "runs_per_game_recent10",
+    "ra_pg_r5": "ra_per_game_recent5",
+    "ra_pg_r10": "ra_per_game_recent10",
+    "ops_r10": "ops_recent10",
+    "win_pct_r10": "win_pct_recent10",
+    "run_diff_pg_r10": "run_diff_per_game_recent10",
+    # 牛棚品質 (近 14 天)
+    "bp_era_14d": "bp_era_14d",
+    "bp_whip_14d": "bp_whip_14d",
+    # 先發投手指標 (sp_k_bb 保留 — SP 級的 K/BB 仍有預測力)
     "sp_era": "sp_era", "sp_whip": "sp_whip", "sp_fip": "sp_fip",
     "sp_k9": "sp_k9", "sp_bb9": "sp_bb9", "sp_k_bb": "sp_k_bb", "sp_hr9": "sp_hr9",
 }
@@ -354,6 +382,66 @@ def compute_park_factors(games, min_home_games=10):
             park_factors[team] = round(avg / league_avg, 3)
 
     return park_factors, league_avg
+
+
+@dataclass
+class EloTracker:
+    """MLB Elo 評分系統 (FiveThirtyEight 風格)
+
+    K = 4: MLB 比賽隨機性高，K-factor 偏小 (NFL 用 ~20)
+    HFA = 24: 主場優勢 24 elo 點 ≈ +3.5% 勝率
+    跨季 75% 留存 + 25% 回歸 1500 (FiveThirtyEight 標準)
+    MoV multiplier: 大勝得 +elo (對手陣容差距大時放大訊號)
+    """
+    K: float = 4.0
+    HFA: float = 24.0
+    INITIAL: float = 1500.0
+    SEASON_REVERT: float = 0.75
+    ratings: dict = field(default_factory=dict)
+
+    def get(self, team):
+        return self.ratings.get(team, self.INITIAL)
+
+    def expected_home_win(self, home, away):
+        """主隊勝率 (含主場優勢)"""
+        diff = (self.get(home) + self.HFA) - self.get(away)
+        return 1.0 / (1.0 + 10 ** (-diff / 400))
+
+    def update(self, home, away, home_won, mov=1):
+        """更新評分; mov = 比分差 (越大訊號越強)"""
+        e_home = self.expected_home_win(home, away)
+        s_home = 1.0 if home_won else 0.0
+        # MoV multiplier (簡化版): 每多 1 分 +10%, 上限 +50%
+        mov_mult = 1.0 + 0.1 * min(max(mov - 1, 0), 5)
+        delta = self.K * mov_mult * (s_home - e_home)
+        self.ratings[home] = self.get(home) + delta
+        self.ratings[away] = self.get(away) - delta
+
+    def revert_to_mean(self):
+        """跨季: 75% 留存 + 25% 回歸 1500"""
+        for team in list(self.ratings.keys()):
+            self.ratings[team] = self.INITIAL + (self.ratings[team] - self.INITIAL) * self.SEASON_REVERT
+
+
+def build_elo_from_games(games, until_date=None):
+    """從歷史比賽建立 Elo 狀態 (按日期順序處理, 跨季自動 revert)。
+
+    until_date: 'YYYY-MM-DD' 或 None — 只處理此日期前的比賽
+    回傳: EloTracker 實例
+    """
+    elo = EloTracker()
+    sorted_games = sorted(games, key=lambda g: (g.date, g.game_pk))
+    last_season = None
+    for g in sorted_games:
+        if until_date and g.date >= until_date:
+            break
+        game_season = int(g.date[:4])
+        if last_season is not None and game_season != last_season:
+            elo.revert_to_mean()
+        last_season = game_season
+        mov = abs(g.home_score - g.away_score)
+        elo.update(g.home_name, g.away_name, g.winner_side == 'home', mov=mov)
+    return elo
 
 
 def compute_series_info(games, max_gap_days=2):
@@ -857,10 +945,14 @@ class TeamCumulative:
     p_so: int = 0
     p_hr: int = 0
     runs_allowed: int = 0
-    # 牛棚歷史 (近N天用 bullpen_log)
-    bullpen_log: list = field(default_factory=list)  # [(date, outs, pitches, count)]
+    # 牛棚歷史 (近 N 天 ERA / WHIP / fatigue)
+    # entry: {'date', 'outs', 'pitches', 'count', 'h', 'er', 'bb', 'so', 'hr'}
+    bullpen_log: list = field(default_factory=list)
+    # 滾動近 N 場 (近 5 / 10 / 15 場指標)
+    # entry: {'date', 'rs', 'ra', 'won', 'ab', 'h', '2b', '3b', 'hr', 'bb', 'hbp', 'sf'}
+    recent_log: deque = field(default_factory=lambda: deque(maxlen=15))
 
-    def add_game(self, date, stats: TeamGameStats, won: bool):
+    def add_game(self, date, stats: TeamGameStats, won: bool, starter: 'StarterStats' = None):
         self.games += 1
         if won:
             self.wins += 1
@@ -883,7 +975,36 @@ class TeamCumulative:
         self.p_so += stats.p_so
         self.p_hr += stats.p_hr
         self.runs_allowed += stats.p_r
-        self.bullpen_log.append((date, stats.relief_outs, stats.relief_pitches, stats.relief_count))
+
+        # 牛棚 = 全隊投球 - 先發 (從現有 cached 資料就能算)
+        if starter:
+            bp_outs = max(0, stats.p_outs - starter.outs)
+            bp_h = max(0, stats.p_h - starter.h)
+            bp_er = max(0, stats.p_er - starter.er)
+            bp_bb = max(0, stats.p_bb - starter.bb)
+            bp_so = max(0, stats.p_so - starter.so)
+            bp_hr = max(0, stats.p_hr - starter.hr)
+        else:
+            bp_outs = stats.relief_outs
+            bp_h = bp_er = bp_bb = bp_so = bp_hr = 0
+        self.bullpen_log.append({
+            'date': date,
+            'outs': bp_outs,
+            'pitches': stats.relief_pitches,
+            'count': stats.relief_count,
+            'h': bp_h, 'er': bp_er, 'bb': bp_bb, 'so': bp_so, 'hr': bp_hr,
+        })
+
+        # 滾動近 N 場 log (deque 自動限制最後 15 場)
+        self.recent_log.append({
+            'date': date,
+            'rs': stats.runs,
+            'ra': stats.p_r,
+            'won': won,
+            'ab': stats.ab, 'h': stats.h,
+            '2b': stats.doubles, '3b': stats.triples, 'hr': stats.hr,
+            'bb': stats.bb, 'hbp': stats.hbp, 'sf': stats.sf,
+        })
 
     def snapshot(self, as_of_date=None):
         """產出快照 — 計算所有率值"""
@@ -914,35 +1035,104 @@ class TeamCumulative:
         s['k9'] = (self.p_so / ip) * 9
         s['bb9'] = (self.p_bb / ip) * 9
         s['hr9'] = (self.p_hr / ip) * 9
-        s['k_bb_ratio'] = self.p_so / self.p_bb if self.p_bb > 0 else self.p_so
+        # k_bb_ratio (team) 已移除 — 2025 ML 研究證實會降低預測準確度
         s['ra_per_game'] = self.runs_allowed / self.games if self.games > 0 else 0
 
         # 得失分差
         s['run_diff'] = self.runs_scored - self.runs_allowed
         s['run_diff_per_game'] = s['run_diff'] / self.games if self.games > 0 else 0
 
-        # 畢氏期望勝率
-        rs2 = self.runs_scored ** 2
-        ra2 = self.runs_allowed ** 2
-        s['pyth_pct'] = rs2 / (rs2 + ra2) if (rs2 + ra2) > 0 else 0.5
+        # 畢氏期望勝率 — Pythagenpat (動態指數, 比固定指數 2 更準)
+        # exp = ((RS+RA)/G)^0.287, by David Smyth
+        if self.games > 0 and (self.runs_scored + self.runs_allowed) > 0:
+            rpg = (self.runs_scored + self.runs_allowed) / self.games
+            exp = max(0.5, rpg ** 0.287)  # clamp 避免極端低分時出問題
+            rs_e = self.runs_scored ** exp
+            ra_e = self.runs_allowed ** exp
+            s['pyth_pct'] = rs_e / (rs_e + ra_e) if (rs_e + ra_e) > 0 else 0.5
+        else:
+            s['pyth_pct'] = 0.5
 
-        # 牛棚疲勞
+        # === 滾動近 N 場指標 (5 / 10 / 15) ===
+        # 2025 ML 研究: 近 5 場勝差比整季均值更具預測力
+        log = list(self.recent_log)
+        for n in (5, 10, 15):
+            slice_n = log[-n:] if len(log) >= 1 else []
+            ng = len(slice_n)
+            if ng > 0:
+                rs_sum = sum(g['rs'] for g in slice_n)
+                ra_sum = sum(g['ra'] for g in slice_n)
+                wins_n = sum(1 for g in slice_n if g['won'])
+                ab_sum = sum(g['ab'] for g in slice_n)
+                h_sum = sum(g['h'] for g in slice_n)
+                bb_sum = sum(g['bb'] for g in slice_n)
+                hbp_sum = sum(g['hbp'] for g in slice_n)
+                sf_sum = sum(g['sf'] for g in slice_n)
+                tb = sum(g['h'] + g['2b'] + 2 * g['3b'] + 3 * g['hr'] for g in slice_n)
+                pa = ab_sum + bb_sum + hbp_sum + sf_sum
+                obp_n = (h_sum + bb_sum + hbp_sum) / pa if pa > 0 else 0
+                slg_n = tb / ab_sum if ab_sum > 0 else 0
+                s[f'runs_per_game_recent{n}'] = rs_sum / ng
+                s[f'ra_per_game_recent{n}'] = ra_sum / ng
+                s[f'win_pct_recent{n}'] = wins_n / ng
+                s[f'run_diff_per_game_recent{n}'] = (rs_sum - ra_sum) / ng
+                s[f'ops_recent{n}'] = obp_n + slg_n
+                s[f'games_recent{n}'] = ng
+            else:
+                s[f'runs_per_game_recent{n}'] = 0
+                s[f'ra_per_game_recent{n}'] = 0
+                s[f'win_pct_recent{n}'] = 0.5
+                s[f'run_diff_per_game_recent{n}'] = 0
+                s[f'ops_recent{n}'] = 0
+                s[f'games_recent{n}'] = 0
+
+        # === 牛棚 — 疲勞 (3 天) + 品質 (14 天 ERA / WHIP) ===
         if as_of_date:
-            cutoff = datetime.strptime(as_of_date, "%Y-%m-%d") - timedelta(days=BULLPEN_WINDOW)
-            recent = [(d, o, p, c) for d, o, p, c in self.bullpen_log
-                      if datetime.strptime(d, "%Y-%m-%d") > cutoff]
-            s['bp_outs_3d'] = sum(o for _, o, _, _ in recent)
-            s['bp_pitches_3d'] = sum(p for _, p, _, _ in recent)
-            s['bp_count_3d'] = sum(c for _, _, _, c in recent)
-            # 疲勞分數 (0-1)，基準：3天平均約 9 outs / 135 pitches
-            fatigue_ip = s['bp_outs_3d'] / 9.0   # 相對於 3 局/天的基準
+            asof_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
+            cutoff_3d = asof_dt - timedelta(days=BULLPEN_WINDOW)
+            cutoff_14d = asof_dt - timedelta(days=14)
+
+            recent_3d = [e for e in self.bullpen_log
+                         if datetime.strptime(e['date'], "%Y-%m-%d") > cutoff_3d]
+            recent_14d = [e for e in self.bullpen_log
+                          if datetime.strptime(e['date'], "%Y-%m-%d") > cutoff_14d]
+
+            # 疲勞 (3 天)
+            s['bp_outs_3d'] = sum(e['outs'] for e in recent_3d)
+            s['bp_pitches_3d'] = sum(e['pitches'] for e in recent_3d)
+            s['bp_count_3d'] = sum(e['count'] for e in recent_3d)
+            fatigue_ip = s['bp_outs_3d'] / 9.0
             fatigue_pitch = s['bp_pitches_3d'] / 135.0
             s['bp_fatigue'] = min(1.0, (fatigue_ip * 0.4 + fatigue_pitch * 0.6))
+
+            # 品質 (14 天 ERA / WHIP) — 業界研究: 比整季更準
+            bp_outs_14 = sum(e['outs'] for e in recent_14d)
+            bp_h_14 = sum(e['h'] for e in recent_14d)
+            bp_er_14 = sum(e['er'] for e in recent_14d)
+            bp_bb_14 = sum(e['bb'] for e in recent_14d)
+            bp_ip_14 = bp_outs_14 / 3 if bp_outs_14 > 0 else 0
+            if bp_ip_14 >= 5:  # 至少 5 IP 才有意義 (太少樣本不可靠)
+                s['bp_era_14d'] = (bp_er_14 / bp_ip_14) * 9
+                s['bp_whip_14d'] = (bp_bb_14 + bp_h_14) / bp_ip_14
+                s['bp_ip_14d'] = round(bp_ip_14, 1)
+            else:
+                # 不足 5 IP, 用整季牛棚 fallback
+                bp_outs_total = sum(e['outs'] for e in self.bullpen_log)
+                bp_h_total = sum(e['h'] for e in self.bullpen_log)
+                bp_er_total = sum(e['er'] for e in self.bullpen_log)
+                bp_bb_total = sum(e['bb'] for e in self.bullpen_log)
+                bp_ip_total = bp_outs_total / 3 if bp_outs_total > 0 else 1
+                s['bp_era_14d'] = (bp_er_total / bp_ip_total) * 9 if bp_outs_total > 0 else 4.0
+                s['bp_whip_14d'] = (bp_bb_total + bp_h_total) / bp_ip_total if bp_outs_total > 0 else 1.3
+                s['bp_ip_14d'] = round(bp_ip_total, 1)
         else:
             s['bp_outs_3d'] = 0
             s['bp_pitches_3d'] = 0
             s['bp_count_3d'] = 0
             s['bp_fatigue'] = 0
+            s['bp_era_14d'] = 4.0
+            s['bp_whip_14d'] = 1.3
+            s['bp_ip_14d'] = 0
 
         return s
 
@@ -1546,6 +1736,9 @@ def run_correlation_analysis(games):
     pitcher_trackers = {}    # 投手累積 (per starter)
     current_season = None
 
+    # Elo 追蹤器 (跨季 75% 留存; 不在跨季時重置)
+    elo = EloTracker()
+
     # 收集 matchup 數據
     matchups = []
     has_starter_data = any(g.away_starter.pitcher_id > 0 for g in games[:20])
@@ -1553,10 +1746,11 @@ def run_correlation_analysis(games):
     for g in games:
         game_season = int(g.date[:4])
 
-        # 跨季時重置 trackers
+        # 跨季時重置 team / pitcher trackers, Elo 則做回歸 (75% 留存)
         if game_season != current_season:
             if current_season is not None:
-                print(f"  → 進入 {game_season} 賽季 (重置累積追蹤)")
+                print(f"  → 進入 {game_season} 賽季 (重置累積追蹤, Elo 75% 留存)")
+                elo.revert_to_mean()
             trackers = {}
             pitcher_trackers = {}
             current_season = game_season
@@ -1581,6 +1775,11 @@ def run_correlation_analysis(games):
             if sp_id in pitcher_trackers:
                 home_sp_snap = pitcher_trackers[sp_id].snapshot()
 
+        # 取賽前 Elo (用於 matchup 預測, 必須在 elo.update() 前!)
+        home_elo_pre = elo.get(g.home_name)
+        away_elo_pre = elo.get(g.away_name)
+        elo_home_win_prob = elo.expected_home_win(g.home_name, g.away_name)
+
         # 只有雙方球隊都打了足夠場次才納入
         if away_snap['games'] >= MIN_GAMES and home_snap['games'] >= MIN_GAMES:
             m = {
@@ -1598,6 +1797,10 @@ def run_correlation_analysis(games):
                 'park_factor': pf_all.get(g.home_name, 1.0),
                 'weather': weather_cache.get(str(g.game_pk)),
                 'series': series_info.get(g.game_pk, {}),
+                'home_elo': round(home_elo_pre, 1),
+                'away_elo': round(away_elo_pre, 1),
+                'elo_diff': round(home_elo_pre + elo.HFA - away_elo_pre, 1),  # home 視角
+                'elo_home_win_prob': round(elo_home_win_prob, 3),
             }
             # 預先計算每個 bet type 的 outcome
             for bt_key, _, _, _, outcome_fn in BET_TYPES:
@@ -1605,8 +1808,12 @@ def run_correlation_analysis(games):
             matchups.append(m)
 
         # 更新球隊累積（在記錄 matchup 之後！）
-        trackers[g.away_name].add_game(g.date, g.away_stats, g.winner_side == "away")
-        trackers[g.home_name].add_game(g.date, g.home_stats, g.winner_side == "home")
+        trackers[g.away_name].add_game(g.date, g.away_stats, g.winner_side == "away", g.away_starter)
+        trackers[g.home_name].add_game(g.date, g.home_stats, g.winner_side == "home", g.home_starter)
+
+        # 更新 Elo (賽後)
+        mov = abs(g.home_score - g.away_score)
+        elo.update(g.home_name, g.away_name, g.winner_side == "home", mov=mov)
 
         # 更新投手累積
         if g.away_starter.pitcher_id > 0:
@@ -1646,11 +1853,24 @@ def run_correlation_analysis(games):
         ("fip",         lambda s: s['fip'],                "lower",  "positive"),
         ("k9",          lambda s: s['k9'],                 "higher", "negative"),
         ("bb9",         lambda s: s['bb9'],                "lower",  "positive"),
-        ("k_bb_ratio",  lambda s: s['k_bb_ratio'],         "higher", "negative"),
+        # k_bb_ratio (team) 已移除 — 2025 ML 研究: 拖低準確度
         ("ra_pg",       lambda s: s['ra_per_game'],        "lower",  "positive"),
         ("bp_fatigue",  lambda s: s['bp_fatigue'],         "lower",  "positive"),
+        # 滾動近 N 場 (2025 ML 研究: 比整季更具預測力)
+        ("runs_pg_r5",     lambda s: s['runs_per_game_recent5'],     "higher", "positive"),
+        ("runs_pg_r10",    lambda s: s['runs_per_game_recent10'],    "higher", "positive"),
+        ("ra_pg_r5",       lambda s: s['ra_per_game_recent5'],       "lower",  "positive"),
+        ("ra_pg_r10",      lambda s: s['ra_per_game_recent10'],      "lower",  "positive"),
+        ("ops_r10",        lambda s: s['ops_recent10'],              "higher", "positive"),
+        ("win_pct_r10",    lambda s: s['win_pct_recent10'],          "higher", "neutral"),
+        ("run_diff_pg_r10",lambda s: s['run_diff_per_game_recent10'],"higher", "neutral"),
+        # 牛棚品質 (14 天 ERA / WHIP)
+        ("bp_era_14d",  lambda s: s['bp_era_14d'],         "lower",  "positive"),
+        ("bp_whip_14d", lambda s: s['bp_whip_14d'],        "lower",  "positive"),
+        # 情境型指標 (special handling)
         ("home_adv",    None,                               "home",   "neutral"),
         ("home_leading_series", None,                       "home_leading", "neutral"),
+        ("elo_advantage", None,                             "elo",    "neutral"),
     ]
 
     # 投手相關指標 (今日先發投手 — 個別累積)
@@ -1683,6 +1903,10 @@ def run_correlation_analysis(games):
         pf_val = m.get('park_factor')
         if pf_val is not None:
             all_values.setdefault(('pf', 'park_factor'), []).append(pf_val)
+        # Elo diff (home 視角, 含 HFA)
+        elo_diff_val = m.get('elo_diff')
+        if elo_diff_val is not None:
+            all_values.setdefault(('elo', 'elo_diff'), []).append(elo_diff_val)
         # 天氣
         w = m.get('weather')
         if w:
@@ -1716,6 +1940,12 @@ def run_correlation_analysis(games):
                 if hw <= aw:
                     continue  # 主隊未領先 → 無訊號, 排除本場
                 predicted = "home"
+            elif stat_name == "elo_advantage":
+                # Elo 差距 (含主場優勢, home 視角)
+                elo_edge = m.get('elo_diff', 0)
+                if abs(elo_edge) < 5:  # Elo 太接近 → 無訊號
+                    continue
+                predicted = "home" if elo_edge > 0 else "away"
             else:
                 if source == 'team':
                     a_snap = m['away_snap']
@@ -1806,7 +2036,8 @@ def run_correlation_analysis(games):
             for stat_name, getter, direction, _ in single_stats:
                 c, t = test_directional(matchups, stat_name, getter, direction, 'team', bt_key)
                 label = {"higher": "高者勝", "lower": "低者勝",
-                         "home": "主場", "home_leading": "主隊系列賽領先"}[direction]
+                         "home": "主場", "home_leading": "主隊系列賽領先",
+                         "elo": "Elo 較高方"}[direction]
                 add_result(bt_key, stat_name, c, t, label)
                 if t > 0:
                     r = results[bt_key][stat_name]
@@ -1891,6 +2122,14 @@ def run_correlation_analysis(games):
     def compute_directional_composite(m, components, use_home_adv):
         score = 0
         for stat_key, weight, source in components:
+            if source == "elo":
+                # Elo 差距 (含主場優勢, home 視角) → 轉 z-score
+                # 標準差用 elo_diff 樣本 std (約 60-80 分左右)
+                elo_diff_val = m.get('elo_diff', 0)
+                elo_std = stat_stds.get(('elo', 'elo_diff'), 60) or 60
+                z = elo_diff_val / elo_std  # 已是 home 視角, 不用減 mean
+                score += z * weight
+                continue
             if source == "team":
                 a_snap = m['away_snap']
                 h_snap = m['home_snap']
@@ -2116,6 +2355,11 @@ def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_
                 def fn(m):
                     score = 0
                     for stat_key, weight, source in comps:
+                        if source == "elo":
+                            elo_diff_val = m.get('elo_diff', 0)
+                            elo_std = stat_stds.get(('elo', 'elo_diff'), 60) or 60
+                            score += (elo_diff_val / elo_std) * weight
+                            continue
                         if source == "team":
                             a_snap = m['away_snap']; h_snap = m['home_snap']
                         else:
@@ -2132,6 +2376,10 @@ def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_
                         score += ((h_val - mean) / std - (a_val - mean) / std) * weight
                     if home_bonus:
                         score += HOME_ADV_BONUS
+                    # 主隊系列賽領先加成 (與 compute_directional_composite 一致)
+                    si = m.get('series', {})
+                    if si.get('home_series_wins_before', 0) > si.get('away_series_wins_before', 0):
+                        score += SERIES_LEAD_BONUS
                     return score, ("home" if score > 0 else "away")
                 return fn
             bucket_targets.append((f"comp:{comp_name}", make_comp_fn(components, use_home_adv)))
@@ -2388,6 +2636,12 @@ def save_baseline(data):
                 entry['category'] = 'situational'
             elif name == 'home_leading_series':
                 entry['category'] = 'situational'
+            elif name == 'elo_advantage':
+                entry['category'] = 'situational'
+            elif name.startswith('bp_'):
+                entry['category'] = 'bullpen'
+            elif name.endswith('_r5') or name.endswith('_r10'):
+                entry['category'] = 'recent'
             elif name == 'bp_fatigue':
                 entry['category'] = 'bullpen'
                 entry['warning'] = '10 年大樣本驗證為無效 (≈50%)，僅作參考'
@@ -2465,8 +2719,8 @@ def build_current_trackers(games, cutoff_date=None):
             if name not in team_trackers:
                 team_trackers[name] = TeamCumulative()
 
-        team_trackers[g.away_name].add_game(g.date, g.away_stats, g.winner_side == "away")
-        team_trackers[g.home_name].add_game(g.date, g.home_stats, g.winner_side == "home")
+        team_trackers[g.away_name].add_game(g.date, g.away_stats, g.winner_side == "away", g.away_starter)
+        team_trackers[g.home_name].add_game(g.date, g.home_stats, g.winner_side == "home", g.home_starter)
 
         if g.away_starter.pitcher_id > 0:
             pid = g.away_starter.pitcher_id
@@ -2526,6 +2780,12 @@ def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
             score = 0
             valid = True
             for stat_key, weight, source in components:
+                if source == "elo":
+                    elo_diff_val = (kwargs.get('elo_info') or {}).get('elo_diff', 0)
+                    elo_std = stds.get(('elo', 'elo_diff'), 60) or 60
+                    z = elo_diff_val / elo_std
+                    score += z * weight
+                    continue
                 if source == "team":
                     a_val = away_snap.get(stat_key)
                     h_val = home_snap.get(stat_key)
@@ -2806,6 +3066,10 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
     park_factors = {**season_pf, **baseline_pf}  # baseline 覆蓋當季 (更穩定)
     print(f"  Park factors: {len(park_factors)} 座球場 (baseline {len(baseline_pf)}, 當季 {len(season_pf)})")
 
+    # Elo 評分: 從當季開賽到 today (跨季 75% 留存; 但這裡只看當季資料)
+    elo = build_elo_from_games(games, until_date=today)
+    print(f"  Elo: {len(elo.ratings)} 隊已評分")
+
     # 載入球場元資料 (座標、屋頂)
     venues = load_venues()
 
@@ -2868,6 +3132,11 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 ('run_diff_per_game', 'higher'), ('pyth_pct', 'higher'),
                 ('runs_per_game', 'higher'), ('ra_per_game', 'lower'),
                 ('bp_fatigue', 'lower'),  # 參考用, 有警告
+                # 滾動近 N 場 (2025 ML 研究: 比整季更具預測力)
+                ('runs_per_game_recent10', 'higher'), ('ra_per_game_recent10', 'lower'),
+                ('ops_recent10', 'higher'), ('win_pct_recent10', 'higher'),
+                # 牛棚品質 (14 天)
+                ('bp_era_14d', 'lower'), ('bp_whip_14d', 'lower'),
             ]
             for stat, direction in team_key_stats:
                 a = away_snap.get(stat, 0)
@@ -2920,6 +3189,19 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
             # 系列賽情境 (今日是系列賽第幾戰、主客目前戰績) - 需在複合分數前算好
             series_context = compute_today_series_context(games, away_team, home_team, today)
 
+            # Elo 賽前評分 (含主場優勢)
+            home_elo = elo.get(home_team)
+            away_elo = elo.get(away_team)
+            elo_diff = home_elo + elo.HFA - away_elo  # home 視角
+            elo_home_win_prob = elo.expected_home_win(home_team, away_team)
+            elo_info = {
+                'home_elo': round(home_elo, 1),
+                'away_elo': round(away_elo, 1),
+                'elo_diff': round(elo_diff, 1),
+                'home_win_prob': round(elo_home_win_prob, 3),
+                'predicts': 'home' if elo_diff > 5 else ('away' if elo_diff < -5 else 'even'),
+            }
+
             # 預先合併大小分的 profitable_filters (同一組 z-score 共享篩選)
             total_bt_keys = [k for k, _, t, _, _ in BET_TYPES if t == 'total']
             total_filters_union = {}  # {(stat, top_pct): filter_dict}
@@ -2955,6 +3237,7 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                     current_season_means=current_season_means if bt_type == 'total' else None,
                     park_factor=pf,
                     series_context=series_context,
+                    elo_info=elo_info,
                 )
 
                 # 大小分盤口: 用共享的 filters 和 thresholds
@@ -3165,6 +3448,7 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                     'home': home_form,
                 },
                 'series_context': series_context,
+                'elo': elo_info,
                 'expected_total': expected_total_val,
                 'expected_total_breakdown': expected_total_breakdown,
                 'away_edges': away_edges,

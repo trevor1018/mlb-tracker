@@ -1800,7 +1800,16 @@ function getMetricMeta(key){
   if(key.startsWith("comp:"))return{name:key.replace("comp:",""),cat:"composite"};
   if(key.startsWith("sp_"))return{name:key.toUpperCase(),cat:"sp"};
   if(key==="bp_fatigue")return{name:"🔋 牛棚疲勞",cat:"bullpen"};
+  if(key==="bp_era_14d")return{name:"🔋 14天牛棚 ERA",cat:"bullpen"};
+  if(key==="bp_whip_14d")return{name:"🔋 14天牛棚 WHIP",cat:"bullpen"};
   if(key==="home_adv")return{name:"🏠 主場優勢",cat:"situational"};
+  if(key==="elo_advantage")return{name:"♟️ Elo 優勢",cat:"situational"};
+  if(key==="home_leading_series")return{name:"📈 主場系列賽領先",cat:"situational"};
+  if(key==="runs_per_game_recent10")return{name:"📊 近10場 RPG",cat:"recent"};
+  if(key==="ra_per_game_recent10")return{name:"📊 近10場 RA/G",cat:"recent"};
+  if(key==="ops_recent10")return{name:"📊 近10場 OPS",cat:"recent"};
+  if(key==="win_pct_recent10")return{name:"📊 近10場勝率",cat:"recent"};
+  if(/_r10$|_recent10$|^runs_pg_r10$|^ra_pg_r10$/.test(key))return{name:key,cat:"recent"};
   return{name:key,cat:"team"};
 }
 
@@ -1879,6 +1888,9 @@ function IndicatorRanking({ranking,btKey}){
       <Pill sel={catFilter==="composite"} onClick={()=>setCatFilter("composite")}>複合</Pill>
       <Pill sel={catFilter==="starter"} onClick={()=>setCatFilter("starter")}>先發</Pill>
       <Pill sel={catFilter==="team"} onClick={()=>setCatFilter("team")}>球隊</Pill>
+      <Pill sel={catFilter==="situational"} onClick={()=>setCatFilter("situational")}>情境</Pill>
+      <Pill sel={catFilter==="recent"} onClick={()=>setCatFilter("recent")}>近場</Pill>
+      <Pill sel={catFilter==="bullpen"} onClick={()=>setCatFilter("bullpen")}>牛棚</Pill>
     </div>
 
     {filtered.map((r,i)=>{
@@ -1902,7 +1914,8 @@ function IndicatorRanking({ranking,btKey}){
             {hasHomeBonus&&<span style={{fontSize:10,color:C.g,background:C.gD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>主場修正</span>}
             {r.name.includes("+pf")&&<span style={{fontSize:10,color:"#60a5fa",background:"rgba(96,165,250,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>🏟️ 球場</span>}
             {cat==="bullpen"&&<span style={{fontSize:10,color:"#f59e0b",background:"rgba(245,158,11,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>牛棚 ⚠️</span>}
-            {cat==="situational"&&<span style={{fontSize:10,color:C.d,background:"rgba(107,114,128,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>情境</span>}
+            {cat==="situational"&&<span style={{fontSize:10,color:"#a78bfa",background:"rgba(139,92,246,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>情境</span>}
+            {cat==="recent"&&<span style={{fontSize:10,color:C.g,background:"rgba(16,185,129,0.15)",padding:"2px 6px",borderRadius:4,fontWeight:600}}>近場</span>}
             {r.significant&&<span style={{fontSize:10,color:C.g,background:C.gD,padding:"2px 6px",borderRadius:4,fontWeight:600}}>顯著</span>}
           </div>
           <span style={{fontSize:16,fontWeight:700,...mono,color:col}}>{r.pct?.toFixed(1)}%</span>
@@ -2240,17 +2253,64 @@ function MatchupCardV3({m}){
         </div>
       </div>}
 
-      {/* Team Section */}
-      {Object.keys(teamComps).length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
-        <div style={{fontSize:12,fontWeight:700,color:C.t,marginBottom:8}}>📊 球隊整季數據</div>
-        <div>
-          {Object.entries(teamComps).map(([k,c])=>{
-            const meta=getMetricMeta(k);
-            const warn=k==="bp_fatigue";
-            return<StatRow key={k} label={meta.name} away={c.away} home={c.home} edge={c.edge} awayZh={awayZh} homeZh={homeZh} warn={warn}/>;
-          })}
-        </div>
-      </div>}
+      {/* Elo Section */}
+      {m.elo&&(()=>{
+        const e=m.elo;
+        const homeProb=e.home_win_prob||0;
+        const awayProb=1-homeProb;
+        const homeEdge=e.elo_diff>0;
+        const eloPredictsZh=e.predicts==="home"?homeZh:e.predicts==="away"?awayZh:"勢均力敵";
+        return<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#a78bfa"}}>♟️ Elo 評分</div>
+            <div style={{fontSize:11,color:C.d}}>
+              預測 <span style={{color:e.predicts==="home"?C.acc:e.predicts==="away"?C.g:C.d,fontWeight:700}}>{eloPredictsZh}</span>
+              {e.elo_diff!=null&&<span style={{marginLeft:6,fontFamily:"'JetBrains Mono',monospace",color:C.m}}>(Δ{e.elo_diff>0?"+":""}{e.elo_diff.toFixed(1)})</span>}
+            </div>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:13,marginBottom:6}}>
+            <div><span style={{color:C.g,fontWeight:600}}>{awayZh}</span> <span style={{fontFamily:"'JetBrains Mono',monospace",color:C.t,fontWeight:700}}>{e.away_elo?.toFixed(0)}</span></div>
+            <div style={{color:C.m,fontSize:11}}>vs</div>
+            <div><span style={{fontFamily:"'JetBrains Mono',monospace",color:C.t,fontWeight:700}}>{e.home_elo?.toFixed(0)}</span> <span style={{color:C.acc,fontWeight:600}}>{homeZh}</span></div>
+          </div>
+          {/* 勝率條 (客左 / 主右) */}
+          <div style={{display:"flex",height:8,background:C.bg,borderRadius:4,overflow:"hidden",border:`1px solid ${C.bd}`,marginBottom:4}}>
+            <div style={{width:`${(awayProb*100).toFixed(0)}%`,background:C.g,transition:"width .3s"}}/>
+            <div style={{width:`${(homeProb*100).toFixed(0)}%`,background:C.acc,transition:"width .3s"}}/>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.d,fontFamily:"'JetBrains Mono',monospace"}}>
+            <span>{(awayProb*100).toFixed(1)}%</span>
+            <span style={{color:C.m}}>含主場優勢 +24</span>
+            <span>{(homeProb*100).toFixed(1)}%</span>
+          </div>
+        </div>;
+      })()}
+
+      {/* Team Section — 分組顯示：整季 / 近10場 / 牛棚 */}
+      {Object.keys(teamComps).length>0&&(()=>{
+        const groups={season:[],recent:[],bullpen:[]};
+        Object.entries(teamComps).forEach(([k,c])=>{
+          const cat=getMetricMeta(k).cat;
+          if(cat==="recent")groups.recent.push([k,c]);
+          else if(cat==="bullpen"||k==="bp_fatigue")groups.bullpen.push([k,c]);
+          else groups.season.push([k,c]);
+        });
+        const renderGroup=(title,emoji,color,entries)=>entries.length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
+          <div style={{fontSize:12,fontWeight:700,color,marginBottom:8}}>{emoji} {title}</div>
+          <div>
+            {entries.map(([k,c])=>{
+              const meta=getMetricMeta(k);
+              const warn=k==="bp_fatigue";
+              return<StatRow key={k} label={meta.name} away={c.away} home={c.home} edge={c.edge} awayZh={awayZh} homeZh={homeZh} warn={warn}/>;
+            })}
+          </div>
+        </div>;
+        return<>
+          {renderGroup("球隊整季數據","📊",C.t,groups.season)}
+          {renderGroup("近 10 場狀態","🔥",C.g,groups.recent)}
+          {renderGroup("牛棚指標","🛡️","#f59e0b",groups.bullpen)}
+        </>;
+      })()}
 
       {/* Bet Type Tabs */}
       {availableBts.length>0&&<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`}}>
@@ -2391,6 +2451,16 @@ function scorePick(matchup,btKey){
     }else if(aw>hw){
       if(bt.predicted==="away")score+=8; // 客隊領先較弱訊號
     }
+  }
+
+  // Elo 同向加分（僅方向性盤口）— 10年回測 elo_advantage 57.5% vs 基準 53.4% (z=+22.11)
+  // |elo_diff| > 30 視為強訊號，加倍權重
+  const elo=matchup.elo;
+  if(elo&&elo.predicts&&(btKey==="ml"||btKey==="handi"||btKey.startsWith("spread_"))){
+    const aligned=elo.predicts===bt.predicted;
+    const strong=Math.abs(elo.elo_diff||0)>30;
+    if(aligned)score+=strong?25:15;
+    else if(elo.predicts!=="even")score-=strong?15:8;
   }
 
   return{
@@ -2548,7 +2618,7 @@ function generateRecommendations(matchups,excludes){
   const matchupId=(m)=>`${m.away}@${m.home}`;
   const blocked=expandExcludes(excludes||new Set());
 
-  // ═══ A區：穩健推薦 1×串5關 (10年指標) ═══
+  // ═══ 穩健推薦 1×4 選 3 串關 (10年指標) ═══
   const stablePicks=[];
   matchups.forEach(m=>{
     Object.keys(m.bet_types||{}).forEach(k=>{
@@ -2577,55 +2647,7 @@ function generateRecommendations(matchups,excludes){
     stableParlays.push({legs:stableLegs,combinedMinOdds:Math.sqrt(product)});
   }
 
-  // ═══ B區：高賠博弈 1×串4關 (本季數據) ═══
-  const yoloPicks=[];
-  matchups.forEach(m=>{
-    ["spread_1.5","spread_2.5","total_9.5"].forEach(k=>{
-      if(blocked.has(matchupId(m)+"::"+k))return;
-      const p=scoreYoloPick(m,k);
-      if(p)yoloPicks.push(p);
-    });
-  });
-  yoloPicks.sort((a,b)=>b.score-a.score);
-
-  // A/B 場次盡量不重複；同場不同玩法且雙方都在 top 10% 才允許重複，否則 pass2 fallback
-  const aUsedMap=new Map();
-  stableLegs.forEach(p=>aUsedMap.set(matchupId(p.matchup),p));
-  const isTop10=(bt)=>!!(bt&&(bt.is_top_5_pct||bt.is_top_10_pct));
-  const yoloLegs=[];
-  const yoloUsed=new Set();
-  const tryAddYolo=(pick,allowOverlap)=>{
-    if(yoloLegs.length>=4)return false;
-    const mid=matchupId(pick.matchup);
-    if(yoloUsed.has(mid))return false;
-    const aPick=aUsedMap.get(mid);
-    let overlapReason=null;
-    if(aPick){
-      if(aPick.btKey===pick.btKey)return false; // 完全同腳
-      const bothTop10=isTop10(aPick.bt)&&isTop10(pick.bt);
-      if(!allowOverlap&&!bothTop10)return false;
-      overlapReason=bothTop10?"top10":"fallback";
-    }
-    yoloLegs.push({...pick,_overlapReason:overlapReason});
-    yoloUsed.add(mid);
-    return true;
-  };
-  // Pass 1: 嚴格不重複 (同場雙方都 top 10% 才例外)
-  for(const pick of yoloPicks){
-    if(yoloLegs.length>=4)break;
-    tryAddYolo(pick,false);
-  }
-  // Pass 2: 場次不足時放寬重複限制
-  let fallbackUsed=false;
-  if(yoloLegs.length<4){
-    for(const pick of yoloPicks){
-      if(yoloLegs.length>=4)break;
-      if(tryAddYolo(pick,true))fallbackUsed=true;
-    }
-  }
-  const yoloParlay=yoloLegs.length>=3?{legs:yoloLegs,combinedMinOdds:null,fallbackUsed}:null;
-
-  return{stableParlays,yoloParlay,totalStable:stablePicks.length,totalYolo:yoloPicks.length};
+  return{stableParlays,totalStable:stablePicks.length};
 }
 
 // ─── Odds API (the-odds-api.com) ───
@@ -2837,6 +2859,19 @@ function RecommendPanel({matchups,uid,state,setState}){
           {aligned?" (+2.3pp 歷史勝率)":" · 推薦方向與領先隊相反"}
         </div>;
       })()}
+      {(()=>{
+        const elo=m.elo;
+        if(!elo||!elo.predicts||elo.predicts==="even")return null;
+        const isDirectional=leg.btKey==="ml"||leg.btKey==="handi"||leg.btKey.startsWith("spread_");
+        if(!isDirectional)return null;
+        const aligned=elo.predicts===bt.predicted;
+        const strong=Math.abs(elo.elo_diff||0)>30;
+        const eloPredictedZh=elo.predicts==="home"?homeZh:awayZh;
+        return<div style={{fontSize:10,marginTop:3,color:aligned?C.g:C.acc,...mono}}>
+          {aligned?"✓":"⚠"} Elo 看好 {eloPredictedZh} (Δ{elo.elo_diff>0?"+":""}{elo.elo_diff?.toFixed(1)}{strong?", 強訊號":""})
+          {aligned?" · 與推薦同向":" · 與推薦反向"}
+        </div>;
+      })()}
       {!isYolo&&leg.bestHitRate>0&&<div style={{fontSize:11,color:C.d,marginTop:2,...mono}}>
         最佳篩選歷史命中 <span style={{color:C.g,fontWeight:700}}>{leg.bestHitRate.toFixed(1)}%</span>
         {leg.bestMinOdds&&<> · 該腳最低賠率 <span style={{color:C.acc}}>{leg.bestMinOdds.toFixed(2)}</span></>}
@@ -2939,15 +2974,14 @@ function RecommendPanel({matchups,uid,state,setState}){
     <div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`,marginBottom:12}}>
       <div style={{fontSize:13,fontWeight:700,color:C.acc,marginBottom:8}}>🎰 組合推薦</div>
       <div style={{fontSize:12,color:C.d,lineHeight:1.6}}>
-        <span style={{color:C.g}}>A 穩健推薦</span>：1 組 4 選 3 串關（4 腳），依 10 年歷史指標計算信心分數<br/>
-        <span style={{color:"#a78bfa"}}>B 高賠博弈</span>：1 組 4 選 3 串關（4 腳），依本季球隊火力 + 牛棚 + 先發近況，偏重讓分 2.5 / 大分 9.5<br/>
+        <span style={{color:C.g}}>穩健推薦</span>：1 組 4 選 3 串關（4 腳），依 10 年歷史指標 Top 5%/10% 篩選，集中火力提高勝率<br/>
         <span style={{color:C.d,fontSize:11}}>📌 4 選 3 玩法：花 $400 買 4 張串 3 關（C(4,3)），每腳 ≥ 1.59 倒一關保本、≥ 2.0 倒一關 +100% ROI</span>
       </div>
     </div>
 
     {/* Generate button */}
     <button onClick={generate} disabled={!matchups||matchups.length===0} style={{width:"100%",padding:14,borderRadius:10,border:"none",fontSize:15,fontWeight:700,background:matchups&&matchups.length>0?C.acc:C.m,color:matchups&&matchups.length>0?"#000":C.d,cursor:matchups&&matchups.length>0?"pointer":"default",outline:"none",marginBottom:12}}>
-      一鍵生成推薦（2 組 4 選 3 串關）
+      一鍵生成推薦（4 選 3 串關）
     </button>
 
     {/* International Odds */}
@@ -2987,10 +3021,9 @@ function RecommendPanel({matchups,uid,state,setState}){
 
     {/* Results */}
     {result&&<div>
-      {/* A: Stable 5-leg parlay */}
-      <div style={{fontSize:13,fontWeight:700,color:C.g,marginBottom:8}}>🛡️ A 穩健推薦 · 4 選 3 串關（4 腳）</div>
+      <div style={{fontSize:13,fontWeight:700,color:C.g,marginBottom:8}}>🛡️ 穩健推薦 · 4 選 3 串關（4 腳）</div>
       {result.stableParlays.length===0?<div style={{textAlign:"center",padding:20,color:C.d,fontSize:12,marginBottom:12}}>
-        穩健場次不足（可用 {result.totalStable} 場，需至少 3 場）
+        場次不足（可用 {result.totalStable} 場，需至少 3 場）
       </div>:<>
         {result.stableParlays.map((p,i)=>{
           const anyTop5=p.legs.some(l=>l.bt.is_top_5_pct);
@@ -2998,20 +3031,6 @@ function RecommendPanel({matchups,uid,state,setState}){
           const icon=anyTop5?"🔥 ":allTop10?"⭐ ":"";
           return renderParlay(p,i,`${icon}穩健 · ${p.legs.length} 腳（4 選 3）`,anyTop5?C.acc:allTop10?C.g:C.acc,anyTop5?C.acc:allTop10?C.g:C.bd,anyTop5?"rgba(245,158,11,0.06)":allTop10?"rgba(16,185,129,0.06)":C.card,false);
         })}
-      </>}
-
-      {/* B: YOLO parlay */}
-      <div style={{fontSize:13,fontWeight:700,color:"#a78bfa",marginTop:16,marginBottom:8}}>🎲 B 高賠博弈 · 4 選 3 串關（4 腳）</div>
-      <div style={{fontSize:11,color:C.d,marginBottom:8,lineHeight:1.5}}>
-        ⚠️ 風險極高 · 依本季球隊火力、牛棚疲勞、先發近況選出高賠組合
-      </div>
-      {!result.yoloParlay?<div style={{textAlign:"center",padding:20,color:C.d,fontSize:12}}>
-        高賠場次不足（可用 {result.totalYolo} 場，需至少 3 場）
-      </div>:<>
-        {result.yoloParlay.fallbackUsed&&<div style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.4)",borderRadius:6,padding:"6px 10px",marginBottom:8,fontSize:11,color:"#fbbf24",lineHeight:1.5}}>
-          ⚠️ 當天場次不足，B 區部分腳與 A 區重疊（不同玩法）
-        </div>}
-        {renderParlay(result.yoloParlay,99,"🎲 高賠一搏 · "+result.yoloParlay.legs.length+" 腳（4 選 3）","#a78bfa","#7c3aed","rgba(139,92,246,0.06)",true)}
       </>}
     </div>}
   </div>;
