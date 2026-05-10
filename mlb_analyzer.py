@@ -124,6 +124,8 @@ COMPOSITES_DEF = [
     # === Bullpen 品質 (14 天) ===
     ("ops+bp_era_14d", [("ops", 1, "team"), ("bp_era_14d", -1, "team")], False),
     ("elo+bp_era_14d", [("elo_diff", 1, "elo"), ("bp_era_14d", -1, "team")], False),
+    # 註: xStats ML composites 已移除 — 10 年回測證實對 ML 是反向訊號 (look-ahead bias)
+    # xStats 仍會出現在 daily JSON 給前端做 regression flag, 但不進方向預測
 ]
 
 # 總和型複合指標 (total - 大小分用)
@@ -171,6 +173,8 @@ TOTAL_COMPOSITES_DEF = [
     ("ops+fip+pf",         [("ops", 1, "team"), ("fip", 1, "team"), ("park_factor", 1, "pf")]),
     ("ops+sp_fip+pf",      [("ops", 1, "team"), ("sp_fip", 1, "sp"), ("park_factor", 1, "pf")]),
     ("runs+sp_era+pf",     [("runs_per_game", 1, "team"), ("sp_era", 1, "sp"), ("park_factor", 1, "pf")]),
+    # 註: xStats total composites 已移除 — 10 年回測 look-ahead bias 不可信
+    # 點時間 daily 端有 xstats 物件給前端做顯示
 ]
 
 TEAM_ZH = {
@@ -190,6 +194,22 @@ TEAM_ZH = {
     "Seattle Mariners": "水手", "St. Louis Cardinals": "紅雀",
     "Tampa Bay Rays": "光芒", "Texas Rangers": "遊騎兵",
     "Toronto Blue Jays": "藍鳥", "Washington Nationals": "國民",
+}
+
+# Baseball Savant team_id (3 字母縮寫) → 我們系統用的全名
+SAVANT_ABBR_TO_FULL = {
+    'NYY': 'New York Yankees', 'BOS': 'Boston Red Sox', 'TOR': 'Toronto Blue Jays',
+    'TB':  'Tampa Bay Rays', 'BAL': 'Baltimore Orioles',
+    'CWS': 'Chicago White Sox', 'CLE': 'Cleveland Guardians', 'DET': 'Detroit Tigers',
+    'KC':  'Kansas City Royals', 'MIN': 'Minnesota Twins',
+    'HOU': 'Houston Astros', 'TEX': 'Texas Rangers', 'SEA': 'Seattle Mariners',
+    'LAA': 'Los Angeles Angels', 'ATH': 'Athletics',
+    'NYM': 'New York Mets', 'PHI': 'Philadelphia Phillies', 'ATL': 'Atlanta Braves',
+    'WSH': 'Washington Nationals', 'MIA': 'Miami Marlins',
+    'CHC': 'Chicago Cubs', 'STL': 'St. Louis Cardinals', 'MIL': 'Milwaukee Brewers',
+    'CIN': 'Cincinnati Reds', 'PIT': 'Pittsburgh Pirates',
+    'LAD': 'Los Angeles Dodgers', 'SF': 'San Francisco Giants', 'SD': 'San Diego Padres',
+    'AZ':  'Arizona Diamondbacks', 'COL': 'Colorado Rockies',
 }
 
 # 指標名 → snapshot 欄位名稱對照 (單一指標回測與分層回測共用)
@@ -382,6 +402,95 @@ def compute_park_factors(games, min_home_games=10):
             park_factors[team] = round(avg / league_avg, 3)
 
     return park_factors, league_avg
+
+
+def fetch_team_xstats(season, force_refresh=False, max_age_hours=24):
+    """從 Baseball Savant 抓賽季團隊 xStats (xwOBA / xBA / xSLG)。
+
+    回傳 dict:
+    {
+      'batting': { 'New York Yankees': {pa, woba, est_woba, woba_diff, ...}, ... },
+      'pitching': { 'New York Yankees': {pa, woba_against, est_woba_against, ...}, ... }
+    }
+
+    woba_diff (打者) = est_woba - woba
+        > 0 → 打者「不夠運」, 應該打更好 → 預期將上修 (利多)
+        < 0 → 打者「太好運」, 應該打更差 → 預期將下修 (利空)
+
+    woba_diff (投手) = est_woba_against - woba_against
+        > 0 → 投手「太好運」, 應該被打更好 → 預期將上修 (利空, 投手變差)
+        < 0 → 投手「不夠運」, 應該被打更差 → 預期將下修 (利多, 投手變好)
+
+    每隊一行, 全季累積數據。force_refresh=False 且 cache <24h 直接讀 cache。
+    """
+    cache_file = os.path.join(CACHE_DIR, f"xstats_{season}.json")
+    if not force_refresh and os.path.exists(cache_file):
+        age_hours = (time.time() - os.path.getmtime(cache_file)) / 3600
+        if age_hours < max_age_hours:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+
+    import csv as _csv
+    from io import StringIO
+
+    result = {'batting': {}, 'pitching': {}}
+    for kind, key in [('batter-team', 'batting'), ('pitcher-team', 'pitching')]:
+        url = (f"https://baseballsavant.mlb.com/leaderboard/expected_statistics"
+               f"?type={kind}&year={season}&position=&team=&min=q&csv=true")
+        try:
+            req = Request(url, headers={"User-Agent": "MLB-Analyzer/1.0"})
+            with urlopen(req, timeout=30) as resp:
+                csv_text = resp.read().decode('utf-8-sig')
+        except Exception as e:
+            print(f"  [!] xStats {kind} {season} 抓取失敗: {e}")
+            continue
+
+        reader = _csv.DictReader(StringIO(csv_text))
+        for row in reader:
+            abbr = (row.get('team_id') or '').strip()
+            full = SAVANT_ABBR_TO_FULL.get(abbr)
+            if not full:
+                continue
+            try:
+                woba = float(row.get('woba', 0) or 0)
+                est_woba = float(row.get('est_woba', 0) or 0)
+                ba = float(row.get('ba', 0) or 0)
+                est_ba = float(row.get('est_ba', 0) or 0)
+                slg = float(row.get('slg', 0) or 0)
+                est_slg = float(row.get('est_slg', 0) or 0)
+                pa = int(row.get('pa', 0) or 0)
+            except (ValueError, TypeError):
+                continue
+            result[key][full] = {
+                'pa': pa,
+                'woba': round(woba, 4),
+                'est_woba': round(est_woba, 4),
+                'woba_diff': round(est_woba - woba, 4),  # est - actual
+                'ba': round(ba, 4),
+                'est_ba': round(est_ba, 4),
+                'ba_diff': round(est_ba - ba, 4),
+                'slg': round(slg, 4),
+                'est_slg': round(est_slg, 4),
+                'slg_diff': round(est_slg - slg, 4),
+            }
+
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    with open(cache_file, 'w', encoding='utf-8') as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    return result
+
+
+def load_all_xstats(seasons, force_refresh=False):
+    """批次抓多季 xStats (回測用)。回傳 {season: {batting, pitching}}"""
+    out = {}
+    for s in seasons:
+        print(f"  抓 {s} 賽季 xStats...", end=' ')
+        x = fetch_team_xstats(s, force_refresh=force_refresh)
+        nb = len(x.get('batting', {}))
+        np_ = len(x.get('pitching', {}))
+        print(f"打擊 {nb} 隊, 投球 {np_} 隊")
+        out[s] = x
+    return out
 
 
 @dataclass
@@ -1731,6 +1840,12 @@ def run_correlation_analysis(games):
     series_info = compute_series_info(games)
     print(f"  天氣快取: {len(weather_cache)} 場, Park factors: {len(pf_all)} 球場, 系列賽標記: {len(series_info)} 場")
 
+    # xStats (Baseball Savant) — 每季抓一次. 注意: 回測用全季 xStats 有 look-ahead bias,
+    # 僅作概念驗證; 實戰 (daily) 用當前 point-in-time 值
+    seasons_in_data_pre = sorted(set(int(g.date[:4]) for g in games))
+    print(f"\n=== xStats (Baseball Savant) ===")
+    xstats_by_season = load_all_xstats(seasons_in_data_pre)
+
     # 累積追蹤器 - 每季獨立 (避免跨季污染)
     trackers = {}            # 球隊累積
     pitcher_trackers = {}    # 投手累積 (per starter)
@@ -1780,6 +1895,13 @@ def run_correlation_analysis(games):
         away_elo_pre = elo.get(g.away_name)
         elo_home_win_prob = elo.expected_home_win(g.home_name, g.away_name)
 
+        # xStats (該季全季 xwOBA 數據) — 4 個 diff: 雙方打擊 / 雙方投球
+        season_xs = xstats_by_season.get(game_season, {'batting': {}, 'pitching': {}})
+        away_bat_x = season_xs['batting'].get(g.away_name, {}).get('woba_diff')
+        home_bat_x = season_xs['batting'].get(g.home_name, {}).get('woba_diff')
+        away_pit_x = season_xs['pitching'].get(g.away_name, {}).get('woba_diff')
+        home_pit_x = season_xs['pitching'].get(g.home_name, {}).get('woba_diff')
+
         # 只有雙方球隊都打了足夠場次才納入
         if away_snap['games'] >= MIN_GAMES and home_snap['games'] >= MIN_GAMES:
             m = {
@@ -1801,6 +1923,23 @@ def run_correlation_analysis(games):
                 'away_elo': round(away_elo_pre, 1),
                 'elo_diff': round(home_elo_pre + elo.HFA - away_elo_pre, 1),  # home 視角
                 'elo_home_win_prob': round(elo_home_win_prob, 3),
+                # xStats 回歸訊號 (None 時跳過)
+                'x_bat_away': away_bat_x,
+                'x_bat_home': home_bat_x,
+                'x_pit_away': away_pit_x,
+                'x_pit_home': home_pit_x,
+                # 衍生訊號:
+                # x_ml_edge (home 視角 ML): home 預期表現 - away 預期表現
+                #   = (home_bat - home_pit_diff) - (away_bat - away_pit)
+                'x_ml_edge': (
+                    None if None in (away_bat_x, home_bat_x, away_pit_x, home_pit_x)
+                    else round((home_bat_x - home_pit_x) - (away_bat_x - away_pit_x), 4)
+                ),
+                # x_total_signal (大小分): 兩隊打擊 + 對方投球差距總和, 大 = 偏大分
+                'x_total_signal': (
+                    None if None in (away_bat_x, home_bat_x, away_pit_x, home_pit_x)
+                    else round(away_bat_x + home_bat_x - away_pit_x - home_pit_x, 4)
+                ),
             }
             # 預先計算每個 bet type 的 outcome
             for bt_key, _, _, _, outcome_fn in BET_TYPES:
@@ -1871,6 +2010,7 @@ def run_correlation_analysis(games):
         ("home_adv",    None,                               "home",   "neutral"),
         ("home_leading_series", None,                       "home_leading", "neutral"),
         ("elo_advantage", None,                             "elo",    "neutral"),
+        # x_ml_edge_adv 移除 — 10 年回測證實是反向訊號 (look-ahead bias)
     ]
 
     # 投手相關指標 (今日先發投手 — 個別累積)
@@ -1907,6 +2047,13 @@ def run_correlation_analysis(games):
         elo_diff_val = m.get('elo_diff')
         if elo_diff_val is not None:
             all_values.setdefault(('elo', 'elo_diff'), []).append(elo_diff_val)
+        # xStats matchup-level signals
+        x_ml_val = m.get('x_ml_edge')
+        if x_ml_val is not None:
+            all_values.setdefault(('x', 'x_ml_edge'), []).append(x_ml_val)
+        x_tot_val = m.get('x_total_signal')
+        if x_tot_val is not None:
+            all_values.setdefault(('x', 'x_total_signal'), []).append(x_tot_val)
         # 天氣
         w = m.get('weather')
         if w:
@@ -1946,6 +2093,12 @@ def run_correlation_analysis(games):
                 if abs(elo_edge) < 5:  # Elo 太接近 → 無訊號
                     continue
                 predicted = "home" if elo_edge > 0 else "away"
+            elif stat_name == "x_ml_edge_adv":
+                # xStats 預期優勢 (home 視角): 雙方打擊+對方投球的回歸訊號合併
+                x_edge = m.get('x_ml_edge')
+                if x_edge is None or abs(x_edge) < 0.005:
+                    continue  # 無資料或差距太小
+                predicted = "home" if x_edge > 0 else "away"
             else:
                 if source == 'team':
                     a_snap = m['away_snap']
@@ -2037,7 +2190,7 @@ def run_correlation_analysis(games):
                 c, t = test_directional(matchups, stat_name, getter, direction, 'team', bt_key)
                 label = {"higher": "高者勝", "lower": "低者勝",
                          "home": "主場", "home_leading": "主隊系列賽領先",
-                         "elo": "Elo 較高方"}[direction]
+                         "elo": "Elo 較高方", "x_ml": "xStats 預期優勢"}[direction]
                 add_result(bt_key, stat_name, c, t, label)
                 if t > 0:
                     r = results[bt_key][stat_name]
@@ -2130,6 +2283,15 @@ def run_correlation_analysis(games):
                 z = elo_diff_val / elo_std  # 已是 home 視角, 不用減 mean
                 score += z * weight
                 continue
+            if source == "x":
+                # xStats matchup-level signal (x_ml_edge 或 x_total_signal)
+                x_val = m.get(stat_key)
+                if x_val is None:
+                    return None
+                x_std = stat_stds.get(('x', stat_key), 0.02) or 0.02
+                z = x_val / x_std
+                score += z * weight
+                continue
             if source == "team":
                 a_snap = m['away_snap']
                 h_snap = m['home_snap']
@@ -2167,6 +2329,16 @@ def run_correlation_analysis(games):
                 pf_mean = stat_means.get(('pf', 'park_factor'), 1.0)
                 pf_std = stat_stds.get(('pf', 'park_factor'), 0.1) or 0.1
                 z = (pf_val - pf_mean) / pf_std
+                score += z * weight
+                continue
+            if source == "x":
+                # xStats matchup-level signal (x_total_signal)
+                x_val = m.get(stat_key)
+                if x_val is None:
+                    return None
+                x_mean = stat_means.get(('x', stat_key), 0)
+                x_std = stat_stds.get(('x', stat_key), 0.02) or 0.02
+                z = (x_val - x_mean) / x_std
                 score += z * weight
                 continue
             if source == "team":
@@ -2360,6 +2532,13 @@ def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_
                             elo_std = stat_stds.get(('elo', 'elo_diff'), 60) or 60
                             score += (elo_diff_val / elo_std) * weight
                             continue
+                        if source == "x":
+                            x_val = m.get(stat_key)
+                            if x_val is None:
+                                return None, None
+                            x_std = stat_stds.get(('x', stat_key), 0.02) or 0.02
+                            score += (x_val / x_std) * weight
+                            continue
                         if source == "team":
                             a_snap = m['away_snap']; h_snap = m['home_snap']
                         else:
@@ -2452,6 +2631,15 @@ def run_bucket_analysis_for_bet_type(matchups, single_stats, sp_stats, bet_type_
                             pf_mean = stat_means.get(('pf', 'park_factor'), 1.0)
                             pf_std = stat_stds.get(('pf', 'park_factor'), 0.1) or 0.1
                             z = (pf_val - pf_mean) / pf_std
+                            score += z * weight
+                            continue
+                        if source == "x":
+                            x_val = m.get(stat_key)
+                            if x_val is None:
+                                return None, None
+                            x_mean = stat_means.get(('x', stat_key), 0)
+                            x_std = stat_stds.get(('x', stat_key), 0.02) or 0.02
+                            z = (x_val - x_mean) / x_std
                             score += z * weight
                             continue
                         if source == "team":
@@ -2638,6 +2826,8 @@ def save_baseline(data):
                 entry['category'] = 'situational'
             elif name == 'elo_advantage':
                 entry['category'] = 'situational'
+            elif name == 'x_ml_edge_adv':
+                entry['category'] = 'xstats'
             elif name.startswith('bp_'):
                 entry['category'] = 'bullpen'
             elif name.endswith('_r5') or name.endswith('_r10'):
@@ -2786,6 +2976,15 @@ def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
                     z = elo_diff_val / elo_std
                     score += z * weight
                     continue
+                if source == "x":
+                    xstats_info = kwargs.get('xstats_info') or {}
+                    x_val = xstats_info.get(stat_key)
+                    if x_val is None:
+                        valid = False; break
+                    x_std = stds.get(('x', stat_key), 0.02) or 0.02
+                    z = x_val / x_std  # mean ~ 0
+                    score += z * weight
+                    continue
                 if source == "team":
                     a_val = away_snap.get(stat_key)
                     h_val = home_snap.get(stat_key)
@@ -2844,6 +3043,16 @@ def compute_composite_scores_for_bet_type(bt_key, bt_type, away_snap, home_snap,
                     pf_mean = means.get(('pf', 'park_factor'), 1.0)
                     pf_std = stds.get(('pf', 'park_factor'), 0.1) or 0.1
                     z = (pf_val - pf_mean) / pf_std
+                    score += z * weight
+                    continue
+                if source == "x":
+                    xstats_info = kwargs.get('xstats_info') or {}
+                    x_val = xstats_info.get(stat_key)
+                    if x_val is None:
+                        valid = False; break
+                    x_mean = means.get(('x', stat_key), 0)
+                    x_std = stds.get(('x', stat_key), 0.02) or 0.02
+                    z = (x_val - x_mean) / x_std
                     score += z * weight
                     continue
                 if source == "team":
@@ -3070,6 +3279,11 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
     elo = build_elo_from_games(games, until_date=today)
     print(f"  Elo: {len(elo.ratings)} 隊已評分")
 
+    # xStats (Baseball Savant) — 當季當前點時間值
+    print(f"  抓 xStats (Baseball Savant)...")
+    xstats = fetch_team_xstats(CURRENT_SEASON)
+    print(f"  xStats: 打擊 {len(xstats.get('batting', {}))} 隊, 投球 {len(xstats.get('pitching', {}))} 隊")
+
     # 載入球場元資料 (座標、屋頂)
     venues = load_venues()
 
@@ -3202,6 +3416,37 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 'predicts': 'home' if elo_diff > 5 else ('away' if elo_diff < -5 else 'even'),
             }
 
+            # xStats 訊號 (matchup-level)
+            away_bat_x = xstats['batting'].get(away_team, {}).get('woba_diff')
+            home_bat_x = xstats['batting'].get(home_team, {}).get('woba_diff')
+            away_pit_x = xstats['pitching'].get(away_team, {}).get('woba_diff')
+            home_pit_x = xstats['pitching'].get(home_team, {}).get('woba_diff')
+            xstats_info = {
+                'x_bat_away': away_bat_x,
+                'x_bat_home': home_bat_x,
+                'x_pit_away': away_pit_x,
+                'x_pit_home': home_pit_x,
+                'x_ml_edge': (
+                    None if None in (away_bat_x, home_bat_x, away_pit_x, home_pit_x)
+                    else round((home_bat_x - home_pit_x) - (away_bat_x - away_pit_x), 4)
+                ),
+                'x_total_signal': (
+                    None if None in (away_bat_x, home_bat_x, away_pit_x, home_pit_x)
+                    else round(away_bat_x + home_bat_x - away_pit_x - home_pit_x, 4)
+                ),
+            }
+            # 預測方向 (給前端顯示)
+            x_edge = xstats_info.get('x_ml_edge')
+            xstats_info['ml_predicts'] = (
+                'home' if x_edge is not None and x_edge > 0.005
+                else ('away' if x_edge is not None and x_edge < -0.005 else 'even')
+            )
+            x_tot = xstats_info.get('x_total_signal')
+            xstats_info['total_predicts'] = (
+                'over' if x_tot is not None and x_tot > 0.01
+                else ('under' if x_tot is not None and x_tot < -0.01 else 'even')
+            )
+
             # 預先合併大小分的 profitable_filters (同一組 z-score 共享篩選)
             total_bt_keys = [k for k, _, t, _, _ in BET_TYPES if t == 'total']
             total_filters_union = {}  # {(stat, top_pct): filter_dict}
@@ -3238,6 +3483,7 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                     park_factor=pf,
                     series_context=series_context,
                     elo_info=elo_info,
+                    xstats_info=xstats_info,
                 )
 
                 # 大小分盤口: 用共享的 filters 和 thresholds
@@ -3449,6 +3695,7 @@ def generate_daily_analysis(games, target_date=None, top5_only=False):
                 },
                 'series_context': series_context,
                 'elo': elo_info,
+                'xstats': xstats_info,
                 'expected_total': expected_total_val,
                 'expected_total_breakdown': expected_total_breakdown,
                 'away_edges': away_edges,

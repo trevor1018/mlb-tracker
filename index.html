@@ -2286,6 +2286,46 @@ function MatchupCardV3({m}){
         </div>;
       })()}
 
+      {/* xStats Section — Statcast 預期數據（不影響評分，純 sanity check） */}
+      {m.xstats&&(()=>{
+        const xs=m.xstats;
+        const mlPredZh=xs.ml_predicts==="home"?homeZh:xs.ml_predicts==="away"?awayZh:"勢均力敵";
+        const totalZh=xs.total_predicts==="over"?"偏大":xs.total_predicts==="under"?"偏小":"持平";
+        // 運氣 icon：好運=☠️（要回歸下修）、衰運=🍀（預期上修）
+        const luckIcon=(side,kind)=>{
+          const v=xs[`x_${kind}_${side}`];
+          if(v==null)return null;
+          if(kind==="bat"){
+            if(v>0.020)return{icon:"🍀",zh:"打擊運氣差，預期回升"};
+            if(v<-0.020)return{icon:"☠️",zh:"打擊運氣好，預期下修"};
+          }else{
+            if(v>0.015)return{icon:"☠️",zh:"投手運氣好，預期變差"};
+            if(v<-0.015)return{icon:"🍀",zh:"投手運氣差，預期變好"};
+          }
+          return null;
+        };
+        const luckLines=[
+          {side:"away",zh:awayZh,bat:luckIcon("away","bat"),pit:luckIcon("away","pit")},
+          {side:"home",zh:homeZh,bat:luckIcon("home","bat"),pit:luckIcon("home","pit")},
+        ].filter(l=>l.bat||l.pit);
+        const mlEdgeColor=Math.abs(xs.x_ml_edge||0)>=0.02?(xs.x_ml_edge>0?C.acc:C.g):C.d;
+        return<div style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:4}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#34d399"}}>📡 Statcast xStats</div>
+            <div style={{fontSize:10,color:C.m}}>看運氣 / 預期回歸（不參與評分）</div>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.d,marginBottom:luckLines.length?6:0,fontFamily:"'JetBrains Mono',monospace"}}>
+            <span>ML 預期：<span style={{color:xs.ml_predicts==="home"?C.acc:xs.ml_predicts==="away"?C.g:C.d,fontWeight:700}}>{mlPredZh}</span> <span style={{color:mlEdgeColor}}>(Δ{xs.x_ml_edge>0?"+":""}{xs.x_ml_edge?.toFixed(3)})</span></span>
+            <span>大小：<span style={{color:xs.total_predicts==="over"?C.acc:xs.total_predicts==="under"?C.g:C.d,fontWeight:700}}>{totalZh}</span> <span style={{color:C.m}}>({xs.x_total_signal>0?"+":""}{xs.x_total_signal?.toFixed(3)})</span></span>
+          </div>
+          {luckLines.map(l=><div key={l.side} style={{fontSize:10,color:C.d,marginTop:2,fontFamily:"'JetBrains Mono',monospace"}}>
+            <span style={{color:l.side==="away"?C.g:C.acc,fontWeight:600}}>{l.zh}</span>
+            {l.bat&&<span style={{marginLeft:6}}>{l.bat.icon} {l.bat.zh}</span>}
+            {l.pit&&<span style={{marginLeft:6}}>{l.pit.icon} {l.pit.zh}</span>}
+          </div>)}
+        </div>;
+      })()}
+
       {/* Team Section — 分組顯示：整季 / 近10場 / 牛棚 */}
       {Object.keys(teamComps).length>0&&(()=>{
         const groups={season:[],recent:[],bullpen:[]};
@@ -2871,6 +2911,24 @@ function RecommendPanel({matchups,uid,state,setState}){
           {aligned?"✓":"⚠"} Elo 看好 {eloPredictedZh} (Δ{elo.elo_diff>0?"+":""}{elo.elo_diff?.toFixed(1)}{strong?", 強訊號":""})
           {aligned?" · 與推薦同向":" · 與推薦反向"}
         </div>;
+      })()}
+      {/* xStats sanity check（純顯示，不影響評分）*/}
+      {(()=>{
+        const xs=m.xstats;
+        if(!xs)return null;
+        const btk=leg.btKey;
+        const isMLish=btk==="ml"||btk==="handi"||btk.startsWith("spread_");
+        const isTotal=btk.startsWith("total_");
+        let warn=null;
+        if(isMLish&&xs.ml_predicts&&xs.ml_predicts!=="even"&&xs.ml_predicts!==bt.predicted){
+          const opponentZh=xs.ml_predicts==="home"?homeZh:awayZh;
+          warn=`⚠️ xStats 認為 ${opponentZh} 較可能上修 (Δ ${xs.x_ml_edge>0?"+":""}${xs.x_ml_edge?.toFixed(3)})`;
+        }else if(isTotal&&xs.total_predicts&&xs.total_predicts!=="even"&&xs.total_predicts!==bt.predicted){
+          const dirZh=xs.total_predicts==="over"?"大":"小";
+          warn=`⚠️ xStats 認為大小分將回歸到「${dirZh}」(訊號 ${xs.x_total_signal>0?"+":""}${xs.x_total_signal?.toFixed(3)})`;
+        }
+        if(!warn)return null;
+        return<div style={{fontSize:10,marginTop:3,color:C.acc,...mono}}>{warn}</div>;
       })()}
       {!isYolo&&leg.bestHitRate>0&&<div style={{fontSize:11,color:C.d,marginTop:2,...mono}}>
         最佳篩選歷史命中 <span style={{color:C.g,fontWeight:700}}>{leg.bestHitRate.toFixed(1)}%</span>

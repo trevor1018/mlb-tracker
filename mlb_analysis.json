@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-10T18:06:35.207396",
+  "generated_at": "2026-05-10T19:12:45.119512",
   "date": "2026-05-10",
   "current_season": 2026,
   "current_season_games": 588,
@@ -7933,10 +7933,10 @@
         "park_factor": 0.908
       },
       "weather": {
-        "temp_f": 64.3,
-        "humidity": 73,
-        "wind_mph": 8.8,
-        "wind_dir_deg": 264,
+        "temp_f": 63.3,
+        "humidity": 76,
+        "wind_mph": 9.0,
+        "wind_dir_deg": 267,
         "precip_prob": 0
       },
       "team_comparisons": {
@@ -8128,6 +8128,16 @@
         "elo_diff": -5.6,
         "home_win_prob": 0.492,
         "predicts": "away"
+      },
+      "xstats": {
+        "x_bat_away": 0.002,
+        "x_bat_home": 0.005,
+        "x_pit_away": 0.011,
+        "x_pit_home": -0.002,
+        "x_ml_edge": 0.016,
+        "x_total_signal": -0.002,
+        "ml_predicts": "home",
+        "total_predicts": "even"
       },
       "expected_total": 5.74,
       "expected_total_breakdown": {
@@ -9880,11 +9890,11 @@
         "park_factor": 1.049
       },
       "weather": {
-        "temp_f": 83.7,
-        "humidity": 27,
-        "wind_mph": 7.9,
-        "wind_dir_deg": 248,
-        "precip_prob": 4
+        "temp_f": 82.9,
+        "humidity": 28,
+        "wind_mph": 8.9,
+        "wind_dir_deg": 242,
+        "precip_prob": 6
       },
       "team_comparisons": {
         "ops": {
@@ -10075,6 +10085,16 @@
         "elo_diff": 5.7,
         "home_win_prob": 0.508,
         "predicts": "home"
+      },
+      "xstats": {
+        "x_bat_away": -0.002,
+        "x_bat_home": 0.003,
+        "x_pit_away": -0.013,
+        "x_pit_home": -0.02,
+        "x_ml_edge": 0.012,
+        "x_total_signal": 0.034,
+        "ml_predicts": "home",
+        "total_predicts": "over"
       },
       "expected_total": 6.89,
       "expected_total_breakdown": {
@@ -11532,6 +11552,16 @@
         "home_win_prob": 0.557,
         "predicts": "home"
       },
+      "xstats": {
+        "x_bat_away": -0.001,
+        "x_bat_home": 0.0,
+        "x_pit_away": -0.003,
+        "x_pit_home": -0.002,
+        "x_ml_edge": 0.0,
+        "x_total_signal": 0.004,
+        "ml_predicts": "even",
+        "total_predicts": "even"
+      },
       "expected_total": 6.44,
       "expected_total_breakdown": {
         "away_offense": 2.74,
@@ -12379,11 +12409,11 @@
         "park_factor": 1.11
       },
       "weather": {
-        "temp_f": 73.4,
-        "humidity": 48,
-        "wind_mph": 12.5,
-        "wind_dir_deg": 215,
-        "precip_prob": 10
+        "temp_f": 72.6,
+        "humidity": 49,
+        "wind_mph": 11.7,
+        "wind_dir_deg": 209,
+        "precip_prob": 8
       },
       "team_comparisons": {
         "ops": {
@@ -12574,6 +12604,16 @@
         "elo_diff": -8.0,
         "home_win_prob": 0.488,
         "predicts": "away"
+      },
+      "xstats": {
+        "x_bat_away": -0.01,
+        "x_bat_home": 0.007,
+        "x_pit_away": 0.034,
+        "x_pit_home": 0.02,
+        "x_ml_edge": 0.031,
+        "x_total_signal": -0.057,
+        "ml_predicts": "home",
+        "total_predicts": "under"
       },
       "expected_total": 5.59,
       "expected_total_breakdown": {
@@ -13976,11 +14016,11 @@
         "park_factor": 1.065
       },
       "weather": {
-        "temp_f": 74.1,
+        "temp_f": 73.6,
         "humidity": 33,
         "wind_mph": 8.5,
-        "wind_dir_deg": 317,
-        "precip_prob": 1
+        "wind_dir_deg": 313,
+        "precip_prob": 0
       },
       "team_comparisons": {
         "ops": {
@@ -14171,6 +14211,16 @@
         "elo_diff": 42.4,
         "home_win_prob": 0.561,
         "predicts": "home"
+      },
+      "xstats": {
+        "x_bat_away": -0.001,
+        "x_bat_home": 0.025,
+        "x_pit_away": -0.023,
+        "x_pit_home": 0.011,
+        "x_ml_edge": -0.008,
+        "x_total_signal": 0.036,
+        "ml_predicts": "away",
+        "total_predicts": "over"
       },
       "expected_total": 6.71,
       "expected_total_breakdown": {
@@ -15301,6 +15351,16 @@
         "home_win_prob": 0.547,
         "predicts": "home"
       },
+      "xstats": {
+        "x_bat_away": 0.025,
+        "x_bat_home": -0.004,
+        "x_pit_away": 0.002,
+        "x_pit_home": 0.017,
+        "x_ml_edge": -0.044,
+        "x_total_signal": 0.002,
+        "ml_predicts": "away",
+        "total_predicts": "even"
+      },
       "expected_total": 6.34,
       "expected_total_breakdown": {
         "away_offense": 2.94,
@@ -16122,10 +16182,10 @@
         "park_factor": 0.973
       },
       "weather": {
-        "temp_f": 56.9,
-        "humidity": 40,
-        "wind_mph": 11.2,
-        "wind_dir_deg": 85,
+        "temp_f": 57.0,
+        "humidity": 36,
+        "wind_mph": 10.7,
+        "wind_dir_deg": 80,
         "precip_prob": 0
       },
       "team_comparisons": {
@@ -16317,6 +16377,16 @@
         "elo_diff": 23.2,
         "home_win_prob": 0.533,
         "predicts": "home"
+      },
+      "xstats": {
+        "x_bat_away": 0.011,
+        "x_bat_home": 0.009,
+        "x_pit_away": 0.003,
+        "x_pit_home": 0.004,
+        "x_ml_edge": -0.003,
+        "x_total_signal": 0.013,
+        "ml_predicts": "even",
+        "total_predicts": "over"
       },
       "expected_total": 5.91,
       "expected_total_breakdown": {
@@ -17595,10 +17665,10 @@
         "park_factor": 0.905
       },
       "weather": {
-        "temp_f": 56.4,
-        "humidity": 33,
-        "wind_mph": 6.5,
-        "wind_dir_deg": 329,
+        "temp_f": 56.1,
+        "humidity": 37,
+        "wind_mph": 6.8,
+        "wind_dir_deg": 328,
         "precip_prob": 0
       },
       "team_comparisons": {
@@ -17754,6 +17824,16 @@
         "elo_diff": 39.2,
         "home_win_prob": 0.556,
         "predicts": "home"
+      },
+      "xstats": {
+        "x_bat_away": -0.003,
+        "x_bat_home": 0.005,
+        "x_pit_away": -0.002,
+        "x_pit_home": 0.001,
+        "x_ml_edge": 0.005,
+        "x_total_signal": 0.003,
+        "ml_predicts": "even",
+        "total_predicts": "even"
       },
       "expected_total": 5.99,
       "expected_total_breakdown": {
@@ -18790,6 +18870,16 @@
         "elo_diff": 19.1,
         "home_win_prob": 0.527,
         "predicts": "home"
+      },
+      "xstats": {
+        "x_bat_away": 0.005,
+        "x_bat_home": -0.012,
+        "x_pit_away": 0.006,
+        "x_pit_home": 0.014,
+        "x_ml_edge": -0.025,
+        "x_total_signal": -0.027,
+        "ml_predicts": "away",
+        "total_predicts": "under"
       },
       "expected_total": 6.68,
       "expected_total_breakdown": {
@@ -20118,11 +20208,11 @@
         "park_factor": 1.011
       },
       "weather": {
-        "temp_f": 81.3,
-        "humidity": 31,
-        "wind_mph": 9.0,
-        "wind_dir_deg": 235,
-        "precip_prob": 3
+        "temp_f": 80.4,
+        "humidity": 32,
+        "wind_mph": 9.9,
+        "wind_dir_deg": 234,
+        "precip_prob": 4
       },
       "team_comparisons": {
         "ops": {
@@ -20313,6 +20403,16 @@
         "elo_diff": 33.4,
         "home_win_prob": 0.548,
         "predicts": "home"
+      },
+      "xstats": {
+        "x_bat_away": -0.014,
+        "x_bat_home": 0.006,
+        "x_pit_away": -0.005,
+        "x_pit_home": -0.03,
+        "x_ml_edge": 0.045,
+        "x_total_signal": 0.027,
+        "ml_predicts": "home",
+        "total_predicts": "over"
       },
       "expected_total": 6.66,
       "expected_total_breakdown": {
@@ -21625,10 +21725,10 @@
         "park_factor": 1.018
       },
       "weather": {
-        "temp_f": 70.8,
-        "humidity": 21,
-        "wind_mph": 7.7,
-        "wind_dir_deg": 22,
+        "temp_f": 70.3,
+        "humidity": 20,
+        "wind_mph": 8.1,
+        "wind_dir_deg": 16,
         "precip_prob": 1
       },
       "team_comparisons": {
@@ -21784,6 +21884,16 @@
         "elo_diff": 25.8,
         "home_win_prob": 0.537,
         "predicts": "home"
+      },
+      "xstats": {
+        "x_bat_away": 0.018,
+        "x_bat_home": -0.001,
+        "x_pit_away": -0.003,
+        "x_pit_home": 0.008,
+        "x_ml_edge": -0.03,
+        "x_total_signal": 0.012,
+        "ml_predicts": "away",
+        "total_predicts": "over"
       },
       "expected_total": 7.44,
       "expected_total_breakdown": {
@@ -22613,10 +22723,10 @@
         "park_factor": 0.924
       },
       "weather": {
-        "temp_f": 70.7,
-        "humidity": 71,
-        "wind_mph": 7.3,
-        "wind_dir_deg": 247,
+        "temp_f": 71.0,
+        "humidity": 70,
+        "wind_mph": 7.4,
+        "wind_dir_deg": 241,
         "precip_prob": 0
       },
       "team_comparisons": {
@@ -22815,6 +22925,16 @@
         "elo_diff": 21.8,
         "home_win_prob": 0.531,
         "predicts": "home"
+      },
+      "xstats": {
+        "x_bat_away": 0.005,
+        "x_bat_home": 0.019,
+        "x_pit_away": 0.021,
+        "x_pit_home": -0.011,
+        "x_ml_edge": 0.046,
+        "x_total_signal": 0.014,
+        "ml_predicts": "home",
+        "total_predicts": "over"
       },
       "expected_total": 6.99,
       "expected_total_breakdown": {
@@ -24204,6 +24324,16 @@
         "home_win_prob": 0.514,
         "predicts": "home"
       },
+      "xstats": {
+        "x_bat_away": 0.007,
+        "x_bat_home": 0.003,
+        "x_pit_away": 0.013,
+        "x_pit_home": 0.0,
+        "x_ml_edge": 0.009,
+        "x_total_signal": -0.003,
+        "ml_predicts": "home",
+        "total_predicts": "even"
+      },
       "expected_total": 6.88,
       "expected_total_breakdown": {
         "away_offense": 3.86,
@@ -25264,6 +25394,16 @@
         "elo_diff": -10.7,
         "home_win_prob": 0.485,
         "predicts": "away"
+      },
+      "xstats": {
+        "x_bat_away": -0.007,
+        "x_bat_home": 0.006,
+        "x_pit_away": 0.019,
+        "x_pit_home": 0.015,
+        "x_ml_edge": 0.017,
+        "x_total_signal": -0.035,
+        "ml_predicts": "home",
+        "total_predicts": "under"
       },
       "expected_total": 6.69,
       "expected_total_breakdown": {
@@ -26625,10 +26765,10 @@
         "park_factor": 0.946
       },
       "weather": {
-        "temp_f": 76.8,
-        "humidity": 53,
-        "wind_mph": 4.8,
-        "wind_dir_deg": 214,
+        "temp_f": 76.7,
+        "humidity": 57,
+        "wind_mph": 5.3,
+        "wind_dir_deg": 216,
         "precip_prob": 0
       },
       "team_comparisons": {
@@ -26820,6 +26960,16 @@
         "elo_diff": 14.2,
         "home_win_prob": 0.52,
         "predicts": "home"
+      },
+      "xstats": {
+        "x_bat_away": -0.004,
+        "x_bat_home": 0.005,
+        "x_pit_away": 0.011,
+        "x_pit_home": 0.019,
+        "x_ml_edge": 0.001,
+        "x_total_signal": -0.029,
+        "ml_predicts": "even",
+        "total_predicts": "under"
       },
       "expected_total": 5.36,
       "expected_total_breakdown": {
