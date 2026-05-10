@@ -378,31 +378,80 @@ function parseOcrText(fullText){
   });
 
   // 6. Group legs into bets using bet markers
-  // Use the BET date (first date right after each 兩關 marker = Taiwan投注日 = US game date)
+  // 「N 關 + M 腳 (M>N)」表示 C(M,N) 套餐式投注：產生 C(M,N) 個 N 關串關，每注金額 = 票面 / C(M,N)
+  // 範例：兩關 + 4 腳 NT$600 → C(4,2)=6 注 × NT$100，每注串 2 關
+  const nCr=(n,k)=>{
+    if(k<0||k>n)return 0;
+    if(k===0||k===n)return 1;
+    let r=1;
+    for(let i=0;i<k;i++)r=r*(n-i)/(i+1);
+    return Math.round(r);
+  };
+  const combinations=(arr,k)=>{
+    if(k===0)return[[]];
+    if(k>arr.length)return[];
+    const out=[];
+    const buf=[];
+    const helper=(start)=>{
+      if(buf.length===k){out.push([...buf]);return}
+      for(let i=start;i<arr.length;i++){
+        buf.push(arr[i]);helper(i+1);buf.pop();
+      }
+    };
+    helper(0);
+    return out;
+  };
+
   const bets=[];
   let legIdx=0;
   for(let bi=0;bi<betMarkers.length;bi++){
     const bm=betMarkers[bi];
+    const nextMarkerLi=bi+1<betMarkers.length?betMarkers[bi+1].li:Infinity;
     // Find bet date: first date immediately after the marker
     let betDate="";
     for(let j=bm.li+1;j<Math.min(bm.li+4,lines.length);j++){
       const dm=lines[j].match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
       if(dm){betDate=`${dm[1]}-${String(dm[2]).padStart(2,"0")}-${String(dm[3]).padStart(2,"0")}`;break}
     }
-    const betLegs=[];
-    for(let k=0;k<bm.count&&legIdx<parsedLegs.length;k++){
-      const leg={...parsedLegs[legIdx++]};
-      leg.date=betDate; // override with bet date
-      betLegs.push(leg);
+    // 收所有「在此 marker 與下一 marker 之間」的 legs（讓 N 腳全部歸給本票）
+    const ticketLegs=[];
+    while(legIdx<parsedLegs.length&&anchors[legIdx].li<nextMarkerLi){
+      const leg={...parsedLegs[legIdx]};
+      leg.date=betDate;
+      ticketLegs.push(leg);
+      legIdx++;
     }
-    if(!betLegs.length)continue;
-    bets.push({
-      type:bm.count>1?"parlay":"single",
-      legs_count:bm.count,
-      date:betDate,
-      amount:ntdAll[bi*2]||100,
-      legs:betLegs
-    });
+    if(!ticketLegs.length)continue;
+
+    const N=ticketLegs.length;        // 該票實際腳數
+    const k=bm.count;                 // marker 標的串關數
+    const ticketAmount=ntdAll[bi*2]||100;
+
+    if(N<=k||k<=1){
+      // 一般串關（含單場、腳數剛好等於串關數）
+      const useLegs=N>k?ticketLegs.slice(0,k):ticketLegs;
+      bets.push({
+        type:k>1?"parlay":"single",
+        legs_count:k,
+        date:betDate,
+        amount:ticketAmount,
+        legs:useLegs
+      });
+    }else{
+      // N > k：套餐式投注，展開 C(N,k) 注
+      const combos=combinations(ticketLegs,k);
+      const perAmount=Math.round(ticketAmount/combos.length);
+      combos.forEach((comboLegs,ci)=>{
+        bets.push({
+          type:"parlay",
+          legs_count:k,
+          date:betDate,
+          amount:perAmount,
+          combo_meta:{kind:`C(${N},${k})`,index:ci+1,total:combos.length,ticketAmount},
+          legs:comboLegs.map(l=>({...l}))
+        });
+      });
+    }
   }
 
   // Fallback: if no markers found, treat all legs as one bet
@@ -663,16 +712,18 @@ function AddBetView({addBet,uid}){
         };
       };
       const betType=bet.legs_count>1?"parlay":"single";
+      const cm=bet.combo_meta;
+      const comboNote=cm?`套餐 ${cm.kind} #${cm.index}/${cm.total} (票面 NT$${cm.ticketAmount})`:"";
       if(betType==="single"){
         // Single: each leg is a separate bet (same as manual submit)
         bet.legs.forEach(l=>{
           const leg=mk(l);
-          addBet({id:genId(),type:"single",legs:[leg],amount:Number(bet.amount)||100,totalOdds:leg.odds,note:"",createdAt:new Date().toISOString()});
+          addBet({id:genId(),type:"single",legs:[leg],amount:Number(bet.amount)||100,totalOdds:leg.odds,note:comboNote,createdAt:new Date().toISOString()});
         });
       }else{
         const betLegs=bet.legs.map(mk);
         const tOdds=betLegs.reduce((a,l)=>a*(l.odds||1),1);
-        addBet({id:genId(),type:"parlay",legs:betLegs,amount:Number(bet.amount)||100,totalOdds:Math.round(tOdds*100)/100,note:"",createdAt:new Date().toISOString()});
+        addBet({id:genId(),type:"parlay",legs:betLegs,amount:Number(bet.amount)||100,totalOdds:Math.round(tOdds*100)/100,note:comboNote,createdAt:new Date().toISOString()});
       }
     });
     setScanResults(null);
@@ -715,10 +766,12 @@ function AddBetView({addBet,uid}){
         const betType=bet.legs_count>1?`串${bet.legs_count}關`:"單場";
         const totalOdds=bet.legs.reduce((a,l)=>a*(Number(l.odds)||1),1);
         const payout=Math.round((bet.amount||100)*totalOdds);
-        return<div key={bi} style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${C.bd}`,marginBottom:6}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        const cm=bet.combo_meta;
+        return<div key={bi} style={{background:C.bg,borderRadius:8,padding:10,border:`1px solid ${cm?"#a78bfa":C.bd}`,marginBottom:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:4}}>
             <div>
               <span style={{fontSize:12,fontWeight:600}}>{betType} · {bet.date} · NT${bet.amount}</span>
+              {cm&&<span style={{fontSize:10,marginLeft:6,padding:"1px 6px",borderRadius:4,background:"rgba(139,92,246,0.15)",color:"#a78bfa",fontWeight:600}}>套餐 {cm.kind} #{cm.index}/{cm.total} · 票面 NT${cm.ticketAmount}</span>}
               <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:C.acc,marginLeft:8}}>×{totalOdds.toFixed(2)} = <span style={{color:C.g,fontWeight:700}}>${payout.toLocaleString()}</span></span>
             </div>
             <button onClick={()=>applyScanBet(bet)} style={{background:C.acc,border:"none",borderRadius:6,padding:"4px 10px",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none"}}>填入表單</button>
