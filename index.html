@@ -2292,6 +2292,34 @@ function MatchupCardV3({m}){
         </div>;
       })()}
 
+      {/* 投手品質提示（實戰回測：sp_era 對大小分 72% 命中） */}
+      {(()=>{
+        const era=spComps.sp_era;
+        if(!era||era.away==null||era.home==null)return null;
+        const a=era.away,h=era.home;
+        const both_good=a<3.5&&h<3.5;
+        const both_bad=a>5.0&&h>5.0;
+        const gap=Math.abs(a-h);
+        const huge_gap=gap>2.0;
+        let hint=null,color=C.acc,bg="rgba(245,158,11,0.1)";
+        if(both_good){
+          hint=`⚾ 投手對決日 (雙方 SP ERA < 3.5) → 大小分強烈傾向「小」`;
+          color=C.b;bg="rgba(59,130,246,0.1)";
+        }else if(both_bad){
+          hint=`🔥 打擊日 (雙方 SP ERA > 5.0) → 大小分強烈傾向「大」`;
+          color="#ef4444";bg="rgba(239,68,68,0.1)";
+        }else if(huge_gap){
+          const goodSide=a<h?awayZh:homeZh;
+          hint=`⚠️ SP ERA 差距大 (Δ${gap.toFixed(2)}) → 讓分有利於 ${goodSide}`;
+          color=C.acc;bg="rgba(245,158,11,0.1)";
+        }
+        if(!hint)return null;
+        return<div style={{background:bg,border:`1px solid ${color}`,borderRadius:6,padding:"6px 10px",marginBottom:8,fontSize:12,fontWeight:600,color}}>
+          {hint}
+          <span style={{fontSize:10,color:C.m,fontWeight:400,marginLeft:6,fontFamily:"'JetBrains Mono',monospace"}}>(客 {a.toFixed(2)} / 主 {h.toFixed(2)})</span>
+        </div>;
+      })()}
+
       {/* SP Recent Starts (always open in analysis) */}
       <SpRecentPanel away={m.away_sp} home={m.home_sp} awayZh={awayZh} homeZh={homeZh} awayRecent={m.away_sp_recent} homeRecent={m.home_sp_recent}/>
 
@@ -2492,6 +2520,31 @@ function simulateParlay(legs,trials=5000){
   return{legProbs,combined};
 }
 
+// ─── 實戰高命中指標 (2026 用戶 345 leg 回測) ───
+// 對 user 過去一個月實際下注 leg 對照真實結果，命中率顯著高於 baseline 的指標
+// → 在 scorePick 加額外 bonus，讓推薦更偏向「使用者實戰驗證」過的訊號
+const HIGH_HR_INDICATORS={
+  ml:{
+    "bp_era_14d":20,              // 實戰 59.3% (z 顯著)
+    "comp:elo+bp_era_14d":15,
+    "sp_whip":12,
+    "whip":10,
+  },
+  total:{
+    "comp:sp_era_only":50,        // 實戰 72.2% 壓倒性最強
+    "xstats_total":40,            // 實戰 69.9% (xStats 對大小分順向)
+    "comp:runs+2sp_era":30,
+    "comp:sp_fip_only":25,
+    "comp:ops+sp_era":25,
+  },
+  spread:{
+    "runs_per_game_recent10":35,  // 實戰 70.6% 最強
+    "sp_era":25,
+    "comp:ops+sp_whip":25,
+    "ops":20,
+  },
+};
+
 // ─── Recommendation Scoring ───
 function scorePick(matchup,btKey){
   const bt=matchup.bet_types?.[btKey];
@@ -2518,6 +2571,27 @@ function scorePick(matchup,btKey){
     }
   });
   score+=filters.length*5; // 5 bonus per matched filter count
+
+  // 實戰高命中指標加分 (見 HIGH_HR_INDICATORS)
+  // 命中規則（避免雙重加分，從強到弱依序判斷）：
+  //   1. matched_filters[i].stat 完全等於 → 滿分
+  //   2. composite_scores[key] 完全等於 → 半分
+  //   3. composite_scores 任一 key 包含 substring → 1/3 分（覆蓋 sp_era ⊂ comp:ops+sp_era 等）
+  const cat=btKey==="ml"?"ml":btKey.startsWith("total_")?"total":btKey.startsWith("spread_")?"spread":null;
+  if(cat){
+    const bonusMap=HIGH_HR_INDICATORS[cat]||{};
+    const compScores=bt.composite_scores||{};
+    const filterStats=new Set(filters.map(f=>f.stat));
+    Object.entries(bonusMap).forEach(([statName,b])=>{
+      if(filterStats.has(statName)){score+=b}
+      else if(compScores[statName]&&compScores[statName].bucket){score+=b*0.5}
+      else{
+        // substring fallback：找 composite_scores 任一 key 含此 statName
+        const hit=Object.entries(compScores).find(([k,v])=>k.includes(statName)&&v&&v.bucket);
+        if(hit)score+=b*(1/3);
+      }
+    });
+  }
 
   // Confidence bonus
   const confBonus={high:30,medium:15,low:5};
@@ -2965,23 +3039,32 @@ function RecommendPanel({matchups,uid,state,setState}){
           {aligned?" · 與推薦同向":" · 與推薦反向"}
         </div>;
       })()}
-      {/* xStats sanity check（純顯示，不影響評分）*/}
+      {/* xStats 分盤口處理：
+            ML/讓分 → 維持反向 sanity check (10年理論 contrarian)
+            大小分 → 順向確認 (實戰回測 69.9% 順向) */}
       {(()=>{
         const xs=m.xstats;
         if(!xs)return null;
         const btk=leg.btKey;
         const isMLish=btk==="ml"||btk==="handi"||btk.startsWith("spread_");
         const isTotal=btk.startsWith("total_");
-        let warn=null;
         if(isMLish&&xs.ml_predicts&&xs.ml_predicts!=="even"&&xs.ml_predicts!==bt.predicted){
           const opponentZh=xs.ml_predicts==="home"?homeZh:awayZh;
-          warn=`⚠️ xStats 認為 ${opponentZh} 較可能上修 (Δ ${xs.x_ml_edge>0?"+":""}${xs.x_ml_edge?.toFixed(3)})`;
-        }else if(isTotal&&xs.total_predicts&&xs.total_predicts!=="even"&&xs.total_predicts!==bt.predicted){
-          const dirZh=xs.total_predicts==="over"?"大":"小";
-          warn=`⚠️ xStats 認為大小分將回歸到「${dirZh}」(訊號 ${xs.x_total_signal>0?"+":""}${xs.x_total_signal?.toFixed(3)})`;
+          return<div style={{fontSize:10,marginTop:3,color:C.acc,...mono}}>
+            ⚠️ xStats 認為 {opponentZh} 較可能上修 (Δ {xs.x_ml_edge>0?"+":""}{xs.x_ml_edge?.toFixed(3)})
+          </div>;
         }
-        if(!warn)return null;
-        return<div style={{fontSize:10,marginTop:3,color:C.acc,...mono}}>{warn}</div>;
+        if(isTotal&&xs.total_predicts&&xs.total_predicts!=="even"){
+          const aligned=xs.total_predicts===bt.predicted;
+          if(aligned)return<div style={{fontSize:10,marginTop:3,color:C.g,...mono}}>
+            ✓ xStats 同向 (實戰 70% 順向，訊號 {xs.x_total_signal>0?"+":""}{xs.x_total_signal?.toFixed(3)})
+          </div>;
+          const dirZh=xs.total_predicts==="over"?"大":"小";
+          return<div style={{fontSize:10,marginTop:3,color:C.r,...mono}}>
+            ⚠️ xStats 反向看「{dirZh}」(實戰順向，建議跳過 · 訊號 {xs.x_total_signal>0?"+":""}{xs.x_total_signal?.toFixed(3)})
+          </div>;
+        }
+        return null;
       })()}
       {!isYolo&&leg.bestHitRate>0&&<div style={{fontSize:11,color:C.d,marginTop:2,...mono}}>
         最佳篩選歷史命中 <span style={{color:C.g,fontWeight:700}}>{leg.bestHitRate.toFixed(1)}%</span>
