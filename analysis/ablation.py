@@ -65,6 +65,20 @@ GROUPS = {
 }
 BASE_GROUP = "基本盤（勝率/得失分/Elo/主客/日夜）"
 
+# 精簡版：每個概念只留一兩個欄位，測試「降維後是否比全套更好」
+LEAN = {
+    "對位精簡": ["my_bat_vs_oppSP_hand_woba", "op_bat_vs_oppSP_hand_woba",
+                 "my_sp_woba_vs_us", "op_sp_woba_vs_us"],
+    "先發品質精簡": ["sp_r9_diff", "my_sp_r9", "op_sp_r9", "my_sp_k9", "op_sp_k9",
+                     "my_sp_ip_per_start", "op_sp_ip_per_start"],
+    "球場天氣": ["park_factor", "temp", "wind_speed", "roof"],
+    "球種精簡": ["my_bat_vs_oppSP_main_woba", "op_bat_vs_oppSP_main_woba",
+                 "my_bat_vs_oppSP_2nd_woba", "op_bat_vs_oppSP_2nd_woba"],
+    "牛棚精簡": ["my_bp_r9_14", "op_bp_r9_14"],
+    "近期精簡": ["my_rpg_l10", "op_rpg_l10", "my_rapg_l10", "op_rapg_l10",
+                 "my_woba_l15", "op_woba_l15"],
+}
+
 
 def walk_forward(tg, X, target="runs", seed=7):
     y = tg[target].astype(float).to_numpy()
@@ -188,7 +202,32 @@ def main():
             + (f" | 只用基本盤+它 MAE {onlys[g]['mae']} ({onlys[g]['mae_vs_base']:+.4f})"
                if g in onlys else ""))
 
+    # ── 精簡版對照 ──
+    variants = {}
+    lean_all = list(base_cols)
+    for name, feats in LEAN.items():
+        have = [c for c in feats if c in cols]
+        if not have:
+            continue
+        sel = sorted(set(base_cols) | set(have))
+        v = repeat_eval(tg, Xall[sel], seeds)
+        v["mae_vs_base"] = round(v["mae"] - results["base_only"]["mae"], 4)
+        v["cols"] = len(sel)
+        variants[f"基本盤+{name}"] = v
+        lean_all += have
+        log(f"  基本盤+{name}（{len(sel)} 欄）→ MAE {v['mae']} ({v['mae_vs_base']:+.4f})")
+    lean_all = sorted(set(lean_all))
+    v = repeat_eval(tg, Xall[lean_all], seeds)
+    v["mae_vs_base"] = round(v["mae"] - results["base_only"]["mae"], 4)
+    v["mae_vs_full"] = round(v["mae"] - full["mae"], 4)
+    v["cols"] = len(lean_all)
+    variants["精簡全套"] = v
+    log(f"  精簡全套（{len(lean_all)} 欄，全套是 {len(cols)} 欄）→ MAE {v['mae']} "
+        f"（vs 基本盤 {v['mae_vs_base']:+.4f}、vs 全套 {v['mae_vs_full']:+.4f}）")
+    variants["_lean_columns"] = lean_all
+
     out = {"season": 2026, "seeds": seeds, "noise_mae_sd": full["sd"].get("mae"),
+           "variants": variants,
            "full": full, "base_only": results["base_only"],
            "drop_one": drops, "base_plus_one": onlys,
            "groups": {g: [c for c in f if c in cols] for g, f in GROUPS.items()},
