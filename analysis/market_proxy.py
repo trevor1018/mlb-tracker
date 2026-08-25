@@ -36,7 +36,21 @@ LINES = (7.5, 8.5, 9.5, 10.5)
 TEAM_LINES = (3.5, 4.5, 5.5)
 
 
-def walk_forward(tg, X, seed=7):
+def load_history(seasons, min_gp=20):
+    import os
+    from common import ROOT
+    frames = []
+    for sea in seasons:
+        f = os.path.join(ROOT, "data", str(sea).strip(), "teamgames.parquet")
+        if not os.path.exists(f):
+            continue
+        h = pd.read_parquet(f)
+        h = h[(h["my_gp"] >= min_gp) & (h["op_gp"] >= min_gp)]
+        frames.append(add_derived(h.copy(), "tg"))
+    return pd.concat(frames, ignore_index=True) if frames else None
+
+
+def walk_forward(tg, X, seed=7, hist=None, cols=None):
     y = tg["runs"].astype(float).to_numpy()
     dates = tg["date"].to_numpy()
     mu = np.full(len(tg), np.nan)
@@ -52,9 +66,15 @@ def walk_forward(tg, X, seed=7):
                                           learning_rate=0.05, min_samples_leaf=40,
                                           l2_regularization=1.0, early_stopping=True,
                                           validation_fraction=0.15, random_state=seed)
-        m.fit(X[tr], y[tr])
+        if hist is not None and len(hist):
+            Xh = design(hist, "tg").reindex(columns=X.columns)
+            Xfit = pd.concat([Xh, X[tr]], ignore_index=True)
+            yfit = np.concatenate([hist["runs"].astype(float).to_numpy(), y[tr]])
+        else:
+            Xfit, yfit = X[tr], y[tr]
+        m.fit(Xfit, yfit)
         mu[te] = m.predict(X[te])
-        alphas[cut] = fit_alpha(y[tr], m.predict(X[tr]))
+        alphas[cut] = fit_alpha(yfit, m.predict(Xfit))
     return mu, float(np.median(list(alphas.values()))) if alphas else 0.25
 
 
@@ -98,6 +118,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--payout", type=float, default=0.90)
     ap.add_argument("--edge", type=float, default=1.05)
+    ap.add_argument("--history", default="2024,2025")
     args = ap.parse_args()
 
     tg = pd.read_parquet(f"{DATA}/teamgames.parquet")
@@ -107,8 +128,11 @@ def main():
     proxy_cols = [c for c in PROXY_COLS if c in Xall.columns]
     log(f"完整模型 {len(Xall.columns)} 欄；代理模型 {len(proxy_cols)} 欄：{proxy_cols}")
 
-    mu_full, a_full = walk_forward(tg, Xall)
-    mu_prox, a_prox = walk_forward(tg, Xall[proxy_cols])
+    past = load_history([x for x in args.history.split(",") if x.strip()]) if args.history else None
+    if past is not None:
+        log(f"併入過去球季訓練資料：{args.history} 共 {len(past)} 列（兩個模型都併）")
+    mu_full, a_full = walk_forward(tg, Xall, hist=past)
+    mu_prox, a_prox = walk_forward(tg, Xall[proxy_cols], hist=past)
     ok = ~np.isnan(mu_full) & ~np.isnan(mu_prox)
     y = tg["runs"].astype(float).to_numpy()
     mae_full = float(np.mean(np.abs(y[ok] - mu_full[ok])))

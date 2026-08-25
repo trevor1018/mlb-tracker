@@ -100,12 +100,32 @@ def market_probs(pmf_a, pmf_b, total_lines=(6.5, 7.5, 8.5, 9.5, 10.5, 11.5),
     return out
 
 
-def walk_forward_runs(tg, target="runs"):
-    """回傳每個 team-game 的預測得分（樣本外）與各折 alpha。"""
+FEATURE_SETS = {
+    # 16 欄「莊家一定知道」的資訊（market_proxy 實測樣本外 MAE 最好）
+    "proxy": ["park_factor", "temp", "roof", "wind_speed",
+              "my_sp_r9", "op_sp_r9", "my_sp_ip_per_start", "op_sp_ip_per_start",
+              "my_rpg", "op_rpg", "my_rapg", "op_rapg", "is_home", "day_game",
+              "my_win_pct", "op_win_pct"],
+}
+
+
+def walk_forward_runs(tg, target="runs", hist=None, features=None):
+    """回傳每個 team-game 的預測得分（樣本外）與各折 alpha。
+
+    hist：可選的「過去球季」資料（例如 2024+2025），會併進每一折的訓練集。
+    因為是過去的球季，不會造成資訊洩漏。
+    """
     tg = tg.sort_values(["date", "pk"]).reset_index(drop=True)
     X = design(tg, "tg")
+    if features:
+        keep = [c for c in features if c in X.columns]
+        X = X[keep]
     y = tg[target].astype(float).to_numpy()
     dates = tg["date"].to_numpy()
+    Xh = yh = None
+    if hist is not None and len(hist):
+        Xh = design(hist, "tg").reindex(columns=X.columns)
+        yh = hist[target].astype(float).to_numpy()
     mu = np.full(len(tg), np.nan)
     alphas = {}
     bounds = REFIT_DATES + ["2026-12-31"]
@@ -119,10 +139,14 @@ def walk_forward_runs(tg, target="runs"):
                                           learning_rate=0.05, min_samples_leaf=40,
                                           l2_regularization=1.0, early_stopping=True,
                                           validation_fraction=0.15, random_state=7)
-        m.fit(X[tr], y[tr])
+        if Xh is not None:
+            Xfit = pd.concat([Xh, X[tr]], ignore_index=True)
+            yfit = np.concatenate([yh, y[tr]])
+        else:
+            Xfit, yfit = X[tr], y[tr]
+        m.fit(Xfit, yfit)
         mu[te] = m.predict(X[te])
-        mu_tr = m.predict(X[tr])
-        alphas[cut] = fit_alpha(y[tr], mu_tr)
+        alphas[cut] = fit_alpha(yfit, m.predict(Xfit))
     return tg, mu, alphas
 
 
@@ -235,13 +259,34 @@ def evaluate(pairs, label=""):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--min-gp", type=int, default=20)
+    ap.add_argument("--features", default="full",
+                    help="full = 全部欄位；proxy = 16 欄精簡（樣本外 MAE 較好）")
+    ap.add_argument("--history", default="2024,2025",
+                    help="併進訓練集的過去球季（實測平均 AUC +0.011）；設成空字串則只用本季")
     args = ap.parse_args()
 
     tg = pd.read_parquet(f"{DATA}/teamgames.parquet")
     tg = add_derived(tg[(tg["my_gp"] >= args.min_gp) & (tg["op_gp"] >= args.min_gp)].copy(), "tg")
+    hist = None
+    if args.history:
+        import os
+        from common import ROOT
+        frames = []
+        for sea in args.history.split(","):
+            f = os.path.join(ROOT, "data", sea.strip(), "teamgames.parquet")
+            if os.path.exists(f):
+                h = pd.read_parquet(f)
+                h = h[(h["my_gp"] >= args.min_gp) & (h["op_gp"] >= args.min_gp)]
+                frames.append(add_derived(h.copy(), "tg"))
+        if frames:
+            hist = pd.concat(frames, ignore_index=True)
+            log(f"併入過去球季訓練資料：{args.history} 共 {len(hist)} 列")
     log(f"資料 {len(tg)} 列")
 
-    tg9, mu9, a9 = walk_forward_runs(tg, "runs")
+    feats = FEATURE_SETS.get(args.features)
+    if feats:
+        log(f"使用特徵組：{args.features}（{len(feats)} 欄）")
+    tg9, mu9, a9 = walk_forward_runs(tg, "runs", hist=hist, features=feats)
     ok = ~np.isnan(mu9)
     mae = float(np.mean(np.abs(tg9["runs"].to_numpy()[ok] - mu9[ok])))
     base_mae = float(np.mean(np.abs(tg9["runs"].to_numpy()[ok] - tg9["runs"].to_numpy()[ok].mean())))
@@ -251,7 +296,7 @@ def main():
     long9.to_parquet(f"{DATA}/oos_market_probs.parquet", index=False)
     log(f"寫出 data/oos_market_probs.parquet（{len(long9):,} 列）")
 
-    tg5, mu5, a5 = walk_forward_runs(tg, "runs_f5")
+    tg5, mu5, a5 = walk_forward_runs(tg, "runs_f5", hist=hist, features=feats)
     ok5 = ~np.isnan(mu5)
     mae5 = float(np.mean(np.abs(tg5["runs_f5"].to_numpy()[ok5] - mu5[ok5])))
     log(f"前5局得分模型：樣本外 MAE {mae5:.3f}")
