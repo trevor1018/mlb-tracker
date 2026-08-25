@@ -81,6 +81,10 @@ class PitcherRoll:
         self.day_starts = 0
         self.night_starts = 0
         self.home_starts = 0
+        self.xw_sum = 0.0
+        self.xw_n = 0.0
+        self.game_r = []      # 每次先發的失分
+        self.game_ip = []     # 每次先發的局數
 
 
 def ip_to_float(ip):
@@ -139,6 +143,7 @@ def snap_side(side, tid, spid, opp_spid, teams, pitchers, people, d, day_game):
         f"{side}_elo": R.elo,
         f"{side}_rpg": np.mean(R.runs) if R.runs else np.nan,
         f"{side}_rpg_l10": np.mean(R.runs[-10:]) if R.runs else np.nan,
+        f"{side}_runs_std15": np.std(R.runs[-15:]) if len(R.runs) >= 5 else np.nan,
         f"{side}_rapg": np.mean(R.allowed) if R.allowed else np.nan,
         f"{side}_rapg_l10": np.mean(R.allowed[-10:]) if R.allowed else np.nan,
         f"{side}_rest": (d - dat(R.last_date)).days if R.last_date else np.nan,
@@ -191,6 +196,10 @@ def snap_side(side, tid, spid, opp_spid, teams, pitchers, people, d, day_game):
             f"{side}_sp_fb_velo": np.mean(P.velos[-3:]) if P.velos else np.nan,
             f"{side}_sp_velo_delta": (np.mean(P.velos[-1:]) - np.mean(P.velos)) if len(P.velos) >= 4 else np.nan,
             f"{side}_sp_day_starts": P.day_starts,
+            f"{side}_sp_xwoba": shrunk(P.xw_sum, P.xw_n, LEAGUE_WOBA, 40),
+            f"{side}_sp_last3_r9": (shrunk(sum(P.game_r[-3:]) * 9, sum(P.game_ip[-3:]),
+                                           LEAGUE_R9, 8) if P.game_ip else np.nan),
+            f"{side}_sp_last3_ip": (np.mean(P.game_ip[-3:]) if P.game_ip else np.nan),
             f"{side}_sp_woba_day": shrunk(P.woba["D"], P.pa["D"], LEAGUE_WOBA, 40),
             f"{side}_sp_woba_night": shrunk(P.woba["N"], P.pa["N"], LEAGUE_WOBA, 40),
             f"{side}_sp_woba_daypart": shrunk(P.woba["D" if day_game else "N"],
@@ -217,7 +226,8 @@ def snap_side(side, tid, spid, opp_spid, teams, pitchers, people, d, day_game):
                   "sp_woba_vsL", "sp_woba_vsR", "sp_whiff", "sp_rest", "sp_fb_velo",
                   "sp_velo_delta", "sp_day_starts", "sp_fastball_pct", "sp_breaking_pct",
                   "sp_offspeed_pct", "sp_cutter_pct", "sp_woba_day", "sp_woba_night",
-                  "sp_woba_daypart", "sp_woba_venueside"):
+                  "sp_woba_daypart", "sp_woba_venueside", "sp_xwoba",
+                  "sp_last3_r9", "sp_last3_ip"):
             f[f"{side}_{k}"] = np.nan
         f[f"{side}_sp_main"] = None
         f[f"{side}_sp_profile"] = None
@@ -414,6 +424,7 @@ def main():
         p_pa = defaultdict(lambda: defaultdict(float))
         p_woba = defaultdict(lambda: defaultdict(float))
         p_swing, p_whiff = defaultdict(float), defaultdict(float)
+        p_xw_sum, p_xw_n = defaultdict(float), defaultdict(float)
         if pb is not None:
             for _, x in pb.iterrows():
                 pid = int(x["pitcher"])
@@ -422,6 +433,8 @@ def main():
                 p_woba[pid][stand] += x["woba_sum"]
                 p_swing[pid] += x["swings"]
                 p_whiff[pid] += x["whiffs"]
+                p_xw_sum[pid] += float(x["xwoba_sum"] or 0)
+                p_xw_n[pid] += float(x["xwoba_n"] or 0)
         ub = usage_by_game.get(pk)
         usage_now = defaultdict(lambda: defaultdict(float))
         if ub is not None:
@@ -460,6 +473,10 @@ def main():
                     P.woba[key] += tot_wb
                 P.swing += p_swing[s["id"]]
                 P.whiff += p_whiff[s["id"]]
+                P.xw_sum += p_xw_sum[s["id"]]
+                P.xw_n += p_xw_n[s["id"]]
+                P.game_r.append(s.get("r") or 0)
+                P.game_ip.append(ip_to_float(s.get("ip")))
                 for grp, nn in usage_now[s["id"]].items():
                     P.usage[grp] += nn
                 v = velos.get(s["id"])

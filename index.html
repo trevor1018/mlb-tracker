@@ -466,6 +466,45 @@ function ConditionsView({A}){
       </Muted>}
     </Card>)}
 
+    {A.multiseason&&(A.multiseason.teamgame||A.multiseason.game)&&<Card style={{marginTop:14}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>
+        跨球季驗證（{A.multiseason.train.join("+")} 挖掘 → {A.multiseason.test} 驗證）</div>
+      <Muted style={{marginBottom:8}}>
+        最硬的一關：換了球季、球員陣容都變了還撐得住，才可能是真規律。
+      </Muted>
+      {["teamgame","game"].map(k=>{
+        const d=A.multiseason[k];
+        if(!d)return null;
+        const holds=d.rows.filter(r=>r.holds);
+        return<div key={k} style={{marginBottom:10}}>
+          <Muted style={{color:C.t,fontWeight:700,marginBottom:4}}>
+            {k==="teamgame"?"隊伍視角":"全場總分"}：候選 {d.candidates} 組，
+            跨季都撐住 <b style={{color:holds.length?C.g:C.r}}>{d.holds}</b> 組
+          </Muted>
+          {holds.slice(0,10).map((r,i)=><div key={i} style={{padding:"6px 0",
+            borderTop:"1px solid "+C.bd}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:600}}>{r.market_zh}</div>
+                <Muted>{r.label}</Muted>
+              </div>
+              <div style={{textAlign:"right",fontFamily:"'JetBrains Mono',monospace"}}>
+                <div style={{fontSize:13,fontWeight:700,color:rateColor(r.test_rate)}}>
+                  {pctS(r.test_rate,0)}</div>
+                <Muted>訓練 {pctS(r.train_rate,0)}</Muted>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
+              {Object.entries(r.by_season).map(([sea,v])=><Tag key={sea}
+                color={v.rate>=0.7?C.g:C.d} bg={v.rate>=0.7?C.gD:"rgba(139,153,173,0.12)"}>
+                {sea} {pctS(v.rate,0)}（{v.n}）</Tag>)}
+              <Tag color={C.d} bg="rgba(139,153,173,0.12)">保本 {r.be_odds}</Tag>
+            </div>
+          </div>)}
+        </div>;
+      })}
+    </Card>}
+
     {c.oos?.length>0&&<Card style={{marginTop:14}}>
       <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>樣本外檢驗（{c.cut} 之前挖掘 → 之後驗證）</div>
       <Muted style={{marginBottom:8}}>訓練期挑出的高命中條件，到了測試期還剩多少 —— 這是最誠實的一張表。</Muted>
@@ -885,6 +924,45 @@ function ModelsView({A}){
         </div>}
       </Card>;
     })}
+    {A.ablation&&<Card style={{marginTop:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>特徵族群消融實驗</div>
+      <Muted style={{marginBottom:8}}>
+        把某一族群整組拿掉，看樣本外得分預測誤差（MAE）變差多少 —— 這是判斷
+        「這些細分項到底有沒有用」最直接的方法。
+        <b style={{color:C.t}}>種子間標準差 {A.ablation.noise_mae_sd}</b> 是雜訊尺度，
+        差異沒超過它的兩倍就不能算有貢獻。全特徵 MAE {A.ablation.full.mae}、
+        只用基本盤 MAE {A.ablation.base_only.mae}。
+      </Muted>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",fontSize:11}}>
+          <thead><tr style={{color:C.d,textAlign:"left"}}>
+            <th style={{padding:"4px 6px"}}>族群</th><th>欄數</th>
+            <th>拿掉後 MAE 變化</th><th>大小分 AUC 變化</th><th>判定</th>
+          </tr></thead>
+          <tbody>{Object.entries(A.ablation.drop_one)
+            .sort((a,b)=>b[1].mae_delta-a[1].mae_delta)
+            .map(([g,d])=>{
+              const sig=d.mae_delta>2*A.ablation.noise_mae_sd;
+              return<tr key={g} style={{borderTop:"1px solid "+C.bd}}>
+                <td style={{padding:"4px 6px"}}>{g}</td>
+                <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{d.n_features}</td>
+                <td style={{fontFamily:"'JetBrains Mono',monospace",color:sig?C.g:C.m}}>
+                  {d.mae_delta>0?"+":""}{d.mae_delta.toFixed(4)}</td>
+                <td style={{fontFamily:"'JetBrains Mono',monospace",
+                  color:d.auc_delta_over85<-0.01?C.g:C.m}}>
+                  {d.auc_delta_over85>0?"+":""}{d.auc_delta_over85.toFixed(4)}</td>
+                <td><Tag color={sig?C.g:C.d} bg={sig?C.gD:"rgba(139,153,173,0.12)"}>
+                  {sig?"有貢獻":"看不出貢獻"}</Tag></td>
+              </tr>;
+            })}</tbody>
+        </table>
+      </div>
+      <Muted style={{marginTop:8}}>
+        「看不出貢獻」不等於沒用 —— 只有 {A.ablation.full.games} 場樣本外資料，
+        小於雜訊尺度的效果偵測不到；也可能只在特定對位才有效（那要靠條件頁）。
+      </Muted>
+    </Card>}
+
     {A.importance&&Object.keys(A.importance).length>0&&<Card style={{marginTop:12}}>
       <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>哪些分項特徵真的有用</div>
       <Muted style={{marginBottom:8}}>permutation importance：打亂該特徵後樣本外 AUC 掉多少。</Muted>

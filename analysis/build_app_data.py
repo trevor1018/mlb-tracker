@@ -58,6 +58,14 @@ def main():
         BT = jload(f"{OUTPUT}/backtest.json")
     except Exception:
         BT = None
+    try:
+        AB = jload(f"{OUTPUT}/ablation.json")
+    except Exception:
+        AB = None
+    try:
+        MS = jload(f"{OUTPUT}/multiseason.json")
+    except Exception:
+        MS = None
 
     conds = {"tierA": [], "tierB": [], "oos": []}
     for scope, key in (("隊伍", "teamgame"), ("全場", "game")):
@@ -167,6 +175,32 @@ def main():
             "parlays": {k: {kk: vv for kk, vv in v.items() if kk != "log"}
                         for k, v in BT["parlays"].items()},
             "parlay_log": {k: v.get("log", [])[-6:] for k, v in BT["parlays"].items()},
+        },
+        "ablation": None if not AB else {
+            "noise_mae_sd": AB["noise_mae_sd"], "seeds": AB["seeds"],
+            "full": {k: v for k, v in AB["full"].items() if k != "sd"},
+            "base_only": {k: v for k, v in AB["base_only"].items() if k != "sd"},
+            "drop_one": {g: {"mae": d["mae"], "mae_delta": d["mae_delta"],
+                             "auc_over85": d.get("auc_over_8.5"),
+                             "auc_delta_over85": d["auc_delta_over85"],
+                             "auc_delta_win": d["auc_delta_win"],
+                             "n_features": len(AB["groups"].get(g, []))}
+                         for g, d in AB["drop_one"].items()},
+            "base_plus_one": {g: {"mae": o["mae"], "mae_vs_base": o["mae_vs_base"]}
+                              for g, o in AB["base_plus_one"].items()},
+        },
+        "multiseason": None if not MS else {
+            "train": MS["train_seasons"], "test": MS["test_season"],
+            "teamgame": None if not MS.get("teamgame") else {
+                "candidates": MS["teamgame"]["candidates"],
+                "holds": MS["teamgame"]["holds"],
+                "rows": [{k: v for k, v in r.items() if k != "pred_names"}
+                         for r in MS["teamgame"]["rows"][:40]]},
+            "game": None if not MS.get("game") else {
+                "candidates": MS["game"]["candidates"],
+                "holds": MS["game"]["holds"],
+                "rows": [{k: v for k, v in r.items() if k != "pred_names"}
+                         for r in MS["game"]["rows"][:40]]},
         },
         "importance": M.get("importance", {}),
         "slate": slate,

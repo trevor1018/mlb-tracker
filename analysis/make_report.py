@@ -56,21 +56,15 @@ def main():
     C = jload(f"{OUTPUT}/conditions.json")
     T = jload(f"{OUTPUT}/team_conditions.json")
     S = jload(f"{OUTPUT}/team_splits.json")
-    M = MR = BT = SL = None
-    for name, var in (("models", "M"), ("models_runs", "MR"),
-                      ("backtest", "BT"), ("slate", "SL")):
+    loaded = {}
+    for name in ("models", "models_runs", "backtest", "slate", "ablation", "multiseason"):
         try:
-            v = jload(f"{OUTPUT}/{name}.json")
+            loaded[name] = jload(f"{OUTPUT}/{name}.json")
         except Exception:
-            v = None
-        if var == "M":
-            M = v
-        elif var == "MR":
-            MR = v
-        elif var == "BT":
-            BT = v
-        else:
-            SL = v
+            loaded[name] = None
+    M, MR, BT, SL = (loaded["models"], loaded["models_runs"],
+                     loaded["backtest"], loaded["slate"])
+    AB, MS = loaded["ablation"], loaded["multiseason"]
 
     nA_tg = len(C["teamgame"]["tierA"])
     nA_g = len(C["game"]["tierA"])
@@ -173,6 +167,44 @@ def main():
                     [[k, v["days"], f_pct(v["leg_hit_rate"], 0),
                       f_pct(v["ticket_hit_rate"], 0), f_pct(v["roi"], 0)]
                      for k, v in BT["parlays"].items()]), ""]
+
+    if AB:
+        noise = AB["noise_mae_sd"]
+        L += ["## 5.5 特徵族群消融實驗：這些細分項真的有用嗎", "",
+              "把某一族群整組拿掉，看樣本外得分預測誤差（MAE）變差多少。"
+              f"種子間標準差 **{noise}** 是雜訊尺度 —— 差異沒超過它的兩倍就不算有貢獻。"
+              f"全特徵 MAE {AB['full']['mae']}、只用基本盤 MAE {AB['base_only']['mae']}。", "",
+              table(["族群", "欄數", "拿掉後 MAE 變化", "大小分 AUC 變化", "判定"],
+                    [[g, len(AB["groups"].get(g, [])),
+                      f"{d['mae_delta']:+.4f}", f"{d['auc_delta_over85']:+.4f}",
+                      "**有貢獻**" if d["mae_delta"] > 2 * noise else "看不出貢獻"]
+                     for g, d in sorted(AB["drop_one"].items(),
+                                        key=lambda kv: -kv[1]["mae_delta"])]), "",
+              "**這張表的意思**：只有「球場與天氣」明顯有貢獻。"
+              "使用者原本期待的「打者對左右投 / 對球種 / 日夜場」這些細分項，"
+              "在整體平均上看不出獨立貢獻 —— 但注意兩點：",
+              "1. 只有約 1000 場樣本外資料，小於雜訊尺度的效果偵測不到；",
+              "2. 這是「平均而言」；細分項可能只在特定對位才有威力，"
+              "那要靠條件挖掘（第 2 節）與跨季驗證去抓。", ""]
+
+    if MS and (MS.get("teamgame") or MS.get("game")):
+        L += [f"## 5.6 跨球季驗證（{'+'.join(map(str, MS['train_seasons']))} 挖掘 → "
+              f"{MS['test_season']} 驗證）", "",
+              "最硬的一關：球季換了、球員陣容也變了，條件還撐得住才可能是真規律。", ""]
+        for key, name in (("teamgame", "隊伍視角"), ("game", "全場總分")):
+            d = MS.get(key)
+            if not d:
+                continue
+            holds = [r for r in d["rows"] if r["holds"]]
+            L += [f"**{name}**：候選 {d['candidates']} 組，跨季都撐住 **{d['holds']}** 組", ""]
+            if holds:
+                L += [table(["玩法", "條件", "訓練期", f"{MS['test_season']} 測試",
+                             "各季命中率", "保本賠率"],
+                            [[r["market_zh"], r["label"][:52],
+                              f"{r['train_rate']:.0%}（{r['train_n']}）",
+                              f"{r['test_rate']:.0%}（{r['test_n']}）",
+                              " / ".join(f"{k}:{v['rate']:.0%}" for k, v in r["by_season"].items()),
+                              f"{r['be_odds']:.2f}"] for r in holds[:15]]), ""]
 
     L += ["## 6. 單隊分項亮點（Statcast）", ""]
     tm = S["teams"]
