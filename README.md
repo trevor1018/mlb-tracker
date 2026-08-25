@@ -102,6 +102,29 @@ output/{season}/   過去球季的分析結果
 
 ### 每日更新
 
+已設好 Windows 工作排程 `MLB-DailyUpdate`：**每天台灣時間 00:00 自動執行**
+（`analysis/daily_run.ps1` → `daily_update.py --push`），約 4-6 分鐘跑完並自動部署。
+記錄檔在 `data/logs/daily_*.log`（保留最近 14 份）。
+
+```powershell
+# 手動立刻跑一次
+Start-ScheduledTask -TaskName "MLB-DailyUpdate"
+# 看狀態與下次執行時間
+Get-ScheduledTaskInfo -TaskName "MLB-DailyUpdate"
+# 暫停 / 恢復
+Disable-ScheduledTask -TaskName "MLB-DailyUpdate"
+Enable-ScheduledTask  -TaskName "MLB-DailyUpdate"
+```
+
+排程注意事項：
+- 以「使用者已登入」身分執行 —— 電腦關機或登出時不會跑，但開機後會補跑
+  （`StartWhenAvailable`）
+- 兩個踩過的坑已修好：`.ps1` 要存 UTF-8 with BOM（PS 5.1 才讀得懂中文）、
+  要設 `FOR_DISABLE_CONSOLE_CTRL_HANDLER=1`（否則 numpy/scipy 底層的 Intel Fortran
+  runtime 會因 console 關閉事件中止，出現 `forrtl: error (200)`）
+
+也可以直接手動跑：
+
 ```bash
 cd analysis
 python daily_update.py            # 更新到美西昨天

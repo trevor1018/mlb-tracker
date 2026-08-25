@@ -8,6 +8,10 @@ $ErrorActionPreference = "Continue"
 # window-CLOSE event" 而中止。這個環境變數就是官方的關閉方法。
 $env:FOR_DISABLE_CONSOLE_CTRL_HANDLER = "1"
 $env:PYTHONUNBUFFERED = "1"
+
+# 排程環境的 console 預設是 cp950，Python 的中文輸出會變亂碼寫進記錄檔
+$env:PYTHONIOENCODING = "utf-8"
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $Root = Split-Path -Parent $PSScriptRoot
 $LogDir = Join-Path $Root "data\logs"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
