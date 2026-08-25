@@ -36,14 +36,19 @@ RAW_DIR = os.path.join(DATA, "savant_raw")
 os.makedirs(RAW_DIR, exist_ok=True)
 
 
-def windows(start, end, days=3):
+# 窗口邊界必須固定！否則改個起始日就會讓整季快取全部失效重抓。
+# 一律以「球季 3/20」為格線錨點切 3 天一段。
+def windows(start, end, days=3, anchor=None):
     s = dt.date.fromisoformat(start)
     e = dt.date.fromisoformat(end)
+    a = dt.date.fromisoformat(anchor or f"{s.year}-03-20")
+    off = ((s - a).days // days) * days          # 往下取整到格線
+    cur = a + dt.timedelta(days=off)
     out = []
-    while s <= e:
-        w_end = min(s + dt.timedelta(days=days - 1), e)
-        out.append((s.isoformat(), w_end.isoformat()))
-        s = w_end + dt.timedelta(days=1)
+    while cur <= e:
+        w_end = cur + dt.timedelta(days=days - 1)
+        out.append((cur.isoformat(), w_end.isoformat()))
+        cur = w_end + dt.timedelta(days=1)
     return out
 
 
