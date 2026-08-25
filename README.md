@@ -1,69 +1,30 @@
-# ⚾ MLB 投注追蹤 V1
+# ⚾ MLB 投注追蹤
 
-台灣運彩 MLB 投注追蹤與賽果分析工具。支援跨裝置同步、MLB 官方數據自動匯入。
+台灣運彩 MLB 投注追蹤與賽果分析工具。目前為**重建中的空白骨架**，等待新的資料分析方式接入。
 
 ## 線上使用
 
 <https://trevor1018.github.io/mlb-tracker/>
 
-## 功能總覽
+## 目前狀態
 
-### 投注紀錄
-- 支援**單場**與**串關**（最多 5 關）投注紀錄
-- 玩法：不讓分、讓分、大小分
-- 自訂萬年曆日期選擇器（同一張單統一日期）
-- 投注紀錄可完整編輯（日期、隊伍、玩法、賠率、金額等）
-- 可手動填入比數，或由賽果自動帶入判定勝負
-
-### 賽果紀錄
-- **MLB API 自動匯入**：選擇日期後一鍵匯入當天所有已完賽比賽
-- 匯入資料包含：
-  - 雙方隊名（中英文）
-  - 最終比分、安打數、失誤數
-  - 逐局得分 (Linescore)
-  - 先發投手數據：IP、H、R、ER、BB、SO、HR、投球數/好球數
-  - 勝投 (W)、敗投 (L)、救援 (SV)
-  - 全壘打明細（打者、局數、描述）
-- 賽果卡片可展開「詳細」查看完整數據
-- 列表頁依日期篩選（預設美西太平洋時間）
-- 匯入賽果後自動同步更新對應投注紀錄的比數與勝負判定
-- 不重複匯入（以 MLB gamePk 為 ID）
-
-### 統計分析
-
-#### 各區戰績
-- 即時從 MLB API 抓取當季各分區戰績
-- 美聯 / 國聯共 6 個分區
-- 顯示：W、L、勝率、GB、連勝/敗、L10、主場戰績、客場戰績
-
-#### 球隊數據
-- **單隊模式**：選擇一隊查看完整數據
-- **比較模式**：左右兩欄各選一隊並排比較
-- 數據項目：
-  - 連勝/敗、總場次
-  - 近 5 / 10 / 20 場戰績
-  - 主場 / 客場勝敗
-  - 場均得分、失分、總分、勝場均分差
-  - 盤口數據：讓 1.5 過關率、大 7.5 / 8.5 / 9.5 命中率
-  - 分差分布（≤2 分、3-4 分、≥5 分）
-  - 近 10 場逐場明細
-
-#### 投注績效
-- 已結算注數、勝率、總投注、累積盈虧、ROI
-- 各玩法（不讓分 / 讓分 / 大小分）分別統計
-
-## 技術架構
-
-| 項目 | 技術 |
+| 頁面 | 內容 |
 |------|------|
-| 前端 | React 18 + Babel（單一 HTML 檔，CDN 載入） |
-| 樣式 | CSS-in-JS（inline styles） |
-| 字型 | Noto Sans TC + JetBrains Mono |
-| 資料庫 | Firebase Firestore（即時同步） |
-| 認證 | Firebase Auth（Google 登入） |
-| 快取 | localStorage（離線備援） |
-| 資料來源 | [MLB Stats API](https://statsapi.mlb.com)（免費、無需 key） |
-| 部署 | GitHub Pages |
+| 首頁 | Hello World + 環境資訊（React / Firebase 版本、日期、球隊對照表筆數） |
+| 維護 | 雲端資料筆數檢視、一鍵清除 `bets` / `games` 全部文件與 localStorage 快取 |
+
+舊版的投注 / 紀錄 / 賽果 / 統計 / 分析五個頁面與 Python 分析程式（`mlb_analyzer.py`、`backtest_user_bets.py`、`convergence_analysis.py`、`mlb_analysis.json`、`cache/`）已移除，需要時可從 git 歷史 commit `22b2ffe` 取回。
+
+## 保留的架構
+
+- **前端**：React 18 + Babel standalone（單一 HTML 檔，CDN 載入）
+- **樣式**：CSS-in-JS（inline styles）+ 深色主題常數 `C`
+- **UI atoms**：`Field` / `Inp` / `Sel` / `Pill` / `Stat` / `Card`
+- **認證**：Firebase Auth（Google 登入，popup 失敗自動 fallback redirect）
+- **資料庫**：Firebase Firestore + `useFirestore(uid, col, localKey, orderField)` hook（即時同步 + localStorage 備援）
+- **常數**：30 隊中文名 `TEAMS`、MLB team id 對照 `TEAM_MAP`、`MLB_API` base URL
+- **工具**：`load` / `save` / `genId` / `todayStr`（台北）/ `todayPT`（美西）/ `wipeCollection`
+- **部署**：GitHub Pages（main 分支根目錄）
 
 ### 資料結構（Firestore）
 
@@ -72,7 +33,9 @@ users/{uid}/bets/{betId}     — 投注紀錄
 users/{uid}/games/{gameId}   — 賽果紀錄
 ```
 
-### MLB API 端點
+### 資料來源
+
+[MLB Stats API](https://statsapi.mlb.com) — 免費、無需 API key。
 
 | 用途 | 端點 |
 |------|------|
@@ -83,43 +46,28 @@ users/{uid}/games/{gameId}   — 賽果紀錄
 
 ## 本地開發
 
-由於 Firebase Auth 不支援 `file://` 協定，需透過本地伺服器：
+Firebase Auth 不支援 `file://` 協定，需透過本地伺服器：
 
 ```bash
 python -m http.server 8080
 ```
 
-然後開啟 http://localhost:8080
+開啟 <http://localhost:8080>
+
+## 上 code 流程
+
+```bash
+git add -A
+git commit -m "訊息"
+git push
+```
+
+推上 `main` 後 GitHub Pages 自動部署，約 1 分鐘後線上生效（瀏覽器需強制重新載入以避開快取）。
 
 ## Firebase 設定
 
-### Firestore 安全規則
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-  }
-}
-```
-
-### Authentication
-
-- 啟用 Google 登入
-- 已授權網域：`localhost`、`trevor1018.github.io`
-
-## 支援的 30 支 MLB 球隊
-
-| 美聯東區 | 美聯中區 | 美聯西區 | 國聯東區 | 國聯中區 | 國聯西區 |
-|---------|---------|---------|---------|---------|---------|
-| 洋基 | 守護者 | 太空人 | 大都會 | 釀酒人 | 道奇 |
-| 紅襪 | 皇家 | 運動家 | 勇士 | 紅人 | 教士 |
-| 藍鳥 | 老虎 | 水手 | 費城人 | 海盜 | 巨人 |
-| 光芒 | 雙城 | 天使 | 馬林魚 | 紅雀 | 響尾蛇 |
-| 金鶯 | 白襪 | 遊騎兵 | 國民 | 小熊 | 洛磯 |
+- Firestore 規則見 `firestore.rules`：僅允許使用者讀寫自己的 `users/{uid}` 子集合
+- Authentication：啟用 Google 登入，已授權網域 `localhost`、`trevor1018.github.io`
 
 ## 授權
 
