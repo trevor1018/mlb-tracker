@@ -75,9 +75,17 @@ def team_totals(team_box):
     }
 
 
+def home_plate_ump(box):
+    for o in (box.get("officials") or []):
+        if o.get("officialType") == "Home Plate":
+            return {"id": (o.get("official") or {}).get("id"),
+                    "name": (o.get("official") or {}).get("fullName")}
+    return None
+
+
 def one(pk):
     box = cached_json(f"box/{pk}", f"{API}/game/{pk}/boxscore")
-    out = {"pk": pk}
+    out = {"pk": pk, "hp_ump": home_plate_ump(box)}
     for side in ("away", "home"):
         tb = box["teams"][side]
         sp, bp = sp_and_bullpen(tb)

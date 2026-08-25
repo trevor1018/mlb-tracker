@@ -300,6 +300,8 @@ def main():
     teams = {t: Roll() for t in TEAM_ZH}
     pitchers = defaultdict(PitcherRoll)
     venue_runs = defaultdict(list)          # venueId → 該場地歷史總分
+    ump_runs = defaultdict(list)            # 主審 id → 他執法過的總分
+    ump_k = defaultdict(list)               # 主審 id → 該場雙方三振數
     faced = defaultdict(int)                # (team, pitcher) → 本季已對過幾次
 
     tg_rows, g_rows = [], []
@@ -342,6 +344,12 @@ def main():
         common["park_games"] = len(vr)
         common["home_faced_opp_sp"] = faced[(home, sp["away"])] if sp["away"] else 0
         common["away_faced_opp_sp"] = faced[(away, sp["home"])] if sp["home"] else 0
+        ump = (box.get("hp_ump") or {}).get("id")
+        ur, uk = ump_runs[ump], ump_k[ump]
+        common["ump_id"] = ump
+        common["ump_games"] = len(ur)
+        common["ump_runs_avg"] = (sum(ur) + 8.94 * 12) / (len(ur) + 12)
+        common["ump_k_avg"] = (sum(uk) + 17.5 * 12) / (len(uk) + 12)
 
         g_row = dict(common)
         g_row.update(feat)
@@ -374,6 +382,9 @@ def main():
                 "f5_lead": my_f5 > opp_f5,
                 "f5_no_trail": my_f5 >= opp_f5,
                 "faced_opp_sp": common[f"{side}_faced_opp_sp"],
+                "ump_runs_avg": common["ump_runs_avg"],
+                "ump_k_avg": common["ump_k_avg"],
+                "ump_games": common["ump_games"],
             })
             for line in (2.5, 3.5, 4.5, 5.5, 6.5):
                 r[f"tt_over_{line}"] = me > line
@@ -523,6 +534,11 @@ def main():
                 R.away_streak += 1
 
         venue_runs[g.get("venueId")].append(hs + as_)
+        if ump is not None:
+            ump_runs[ump].append(hs + as_)
+            k_total = ((box["home"]["tot"]["pit"].get("strikeOuts") or 0)
+                       + (box["away"]["tot"]["pit"].get("strikeOuts") or 0))
+            ump_k[ump].append(k_total)
         if sp["home"]:
             faced[(away, sp["home"])] += 1
         if sp["away"]:
@@ -556,6 +572,10 @@ def main():
         r["park_games"] = len(vr)
         r["home_faced_opp_sp"] = faced[(g["home"], sp["away"])] if sp["away"] else 0
         r["away_faced_opp_sp"] = faced[(g["away"], sp["home"])] if sp["home"] else 0
+        r["ump_id"] = None          # 未開打通常還沒公布主審
+        r["ump_games"] = 0
+        r["ump_runs_avg"] = 8.94
+        r["ump_k_avg"] = 17.5
         r.update(feat)
         r["home_team"], r["away_team"] = g["home"], g["away"]
         r["home_team_zh"], r["away_team_zh"] = TEAM_ZH[g["home"]], TEAM_ZH[g["away"]]

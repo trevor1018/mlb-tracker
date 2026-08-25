@@ -89,6 +89,8 @@ NUM_FEATURES_TG = [
     ("temp", "氣溫"),
     ("park_factor", "球場得分環境"),
     ("wind_speed", "風速"),
+    ("ump_runs_avg", "主審場均總分傾向"),
+    ("ump_k_avg", "主審場均三振傾向"),
     ("faced_opp_sp", "本季對過該先發次數"),
     ("my_rest", "我隊休息天數"),
     ("my_sp_rest", "我隊先發休息天數"),
@@ -143,6 +145,8 @@ NUM_FEATURES_G = [
     ("temp", "氣溫"),
     ("park_factor", "球場得分環境"),
     ("wind_speed", "風速"),
+    ("ump_runs_avg", "主審場均總分傾向"),
+    ("ump_k_avg", "主審場均三振傾向"),
 ]
 
 # 類別型：(欄位, 值, 標籤)
