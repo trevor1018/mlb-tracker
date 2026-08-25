@@ -23,6 +23,29 @@ EXTRA_MARKETS = [
 ]
 
 
+def masks_at_depth(M, names, min_n, sub, depth):
+    """只產生指定深度的條件遮罩（1 或 2）。"""
+    idx = np.nonzero(sub)[0]
+    Ms = M[:, idx]
+    combos, masks = [], []
+    ok1 = [i for i in range(len(names)) if Ms[i].sum() >= min_n]
+    if depth == 1:
+        for i in ok1:
+            combos.append((i,))
+            masks.append(Ms[i])
+    else:
+        for a in range(len(ok1)):
+            for b in range(a + 1, len(ok1)):
+                i, j = ok1[a], ok1[b]
+                if names[i].split(":")[0] == names[j].split(":")[0]:
+                    continue
+                m = Ms[i] & Ms[j]
+                if m.sum() >= min_n:
+                    combos.append((i, j))
+                    masks.append(m)
+    return combos, (np.vstack(masks) if masks else np.zeros((0, len(idx)), bool)), idx
+
+
 def pair_masks(M, names, min_n, sub):
     """在子集合 sub（bool 陣列）內，產生深度 1 與深度 2 的條件遮罩。"""
     idx = np.nonzero(sub)[0]
@@ -96,6 +119,42 @@ def main():
         perm_mean = float(np.mean(perm_max))
         perm_p95 = float(np.percentile(perm_max, 95))
 
+        # ── 單一條件、大樣本版（搜尋空間小得多，結論才站得住）──
+        c1, m1, _ = masks_at_depth(M, names, max(30, args.min_n * 2), sub, 1)
+        singles = []
+        if m1.size:
+            M1f = m1.astype(np.float32)
+            h1 = M1f @ Ysub
+            n1 = M1f.sum(axis=1)
+            r1 = h1 / n1[:, None]
+            w1 = wilson_lb_vec(h1, np.repeat(n1[:, None], len(mkeys), axis=1))
+            p1 = stats.binom.sf(np.maximum(h1 - 1, 0), n1[:, None], base_all[None, :])
+            perm1 = []
+            for _ in range(args.perm_iters):
+                Yp = Ysub[rng.permutation(len(idx))]
+                perm1.append(float(np.nanmax((M1f @ Yp) / n1[:, None])))
+            chance1 = float(np.percentile(perm1, 95))
+            rows1 = []
+            for ci in range(len(c1)):
+                for mi, mk in enumerate(mkeys):
+                    rows1.append({
+                        "market": mk, "market_zh": mlabels[mk],
+                        "label": labels[c1[ci][0]],
+                        "n": int(n1[ci]), "hits": int(round(h1[ci][mi])),
+                        "rate": float(r1[ci][mi]),
+                        "base_team": float(base_team[mi]),
+                        "base_league": float(base_all[mi]),
+                        "wilson": float(w1[ci][mi]), "p": float(p1[ci][mi]),
+                        "depth": 1, "beats_chance": bool(r1[ci][mi] > chance1),
+                    })
+            f1 = pd.DataFrame(rows1)
+            f1["q"] = bh_qvalues(f1["p"].to_numpy())
+            f1["lift"] = f1["rate"] - f1["base_league"]
+            f1["be_odds"] = 1 / f1["rate"].clip(lower=1e-6)
+            singles = f1.sort_values("wilson", ascending=False).head(args.top)
+        else:
+            chance1 = None
+
         flat = []
         for ci in range(len(combos)):
             for mi, mk in enumerate(mkeys):
@@ -125,8 +184,15 @@ def main():
 
         cols = ["market", "market_zh", "label", "n", "hits", "rate", "base_team",
                 "base_league", "lift", "wilson", "p", "q", "be_odds", "depth", "beats_chance"]
+        cols1 = ["market", "market_zh", "label", "n", "hits", "rate", "base_team",
+                 "base_league", "lift", "wilson", "p", "q", "be_odds", "depth", "beats_chance"]
         teams_out[str(tid)] = {
             "zh": TEAM_ZH[tid], "games": n_games,
+            "chance_max_rate_p95_single": None if chance1 is None else round(chance1, 3),
+            "top_single": ([] if len(singles) == 0
+                           else singles[cols1].round(4).to_dict("records")),
+            "best_single": (None if len(singles) == 0
+                            else singles[cols1].round(4).to_dict("records")[0]),
             "search_space": int(len(combos) * len(mkeys)),
             "chance_max_rate_mean": round(perm_mean, 3),
             "chance_max_rate_p95": round(perm_p95, 3),
@@ -135,9 +201,15 @@ def main():
             "top_by_rate": by_rate[cols].round(4).to_dict("records"),
         }
         b = teams_out[str(tid)]["best"]
-        log(f"  {TEAM_ZH[tid]:<4} {n_games:>3}場 空間{len(combos)*len(mkeys):>7,} "
-            f"運氣線{perm_p95:.0%} | 最佳(Wilson) {b['market_zh']} "
-            f"{b['rate']:.0%} ({b['hits']}/{b['n']}) LB{b['wilson']:.0%} ← {b['label'][:40]}")
+        bs = teams_out[str(tid)]["best_single"]
+        log(f"  {TEAM_ZH[tid]:<4} {n_games:>3}場 深度2運氣線{perm_p95:.0%} "
+            f"深度1運氣線{(chance1 or 0):.0%}")
+        log(f"       深度2最佳 {b['market_zh']} {b['rate']:.0%} ({b['hits']}/{b['n']}) "
+            f"{'勝過運氣' if b['beats_chance'] else '未勝運氣'} ← {b['label'][:44]}")
+        if bs:
+            log(f"       單條件最佳 {bs['market_zh']} {bs['rate']:.0%} ({bs['hits']}/{bs['n']}) "
+                f"LB{bs['wilson']:.0%} {'✅勝過運氣' if bs['beats_chance'] else '✗未勝運氣'} "
+                f"← {bs['label'][:40]}")
 
     out = {"season": 2026, "params": vars(args), "teams": teams_out}
     p = jdump(out, f"{OUTPUT}/team_conditions.json")

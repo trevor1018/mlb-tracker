@@ -1,35 +1,45 @@
 """對「還沒開打的場次」產生預測 → output/slate.json
 
-用兩套獨立方法交叉看：
-  A. 模型：用全季資料重新訓練，輸出各玩法機率（模型的樣本外表現見 models.json）
-  B. 條件：檢查 Tier A / Tier B 條件今天有沒有觸發，附上該條件的歷史命中率
+主引擎＝得分期望值模型（model_runs 的同一套）：
+  預測雙方得分 μ → 負二項分布 → 卷積 → 所有玩法機率（互相一致）
 
-兩者同時指向同一個玩法時，才是真正值得下注的訊號。
+排序依據不是原始機率，而是**相對基準率的優勢** edge = p / 基準率。
+因為回測顯示：押基準率本來就高的盤（例如受讓 2.5）命中率再高也賺不到，
+台彩會把賠率壓到 1.2 附近；真正能賺的是 edge 明顯大於 1/返還率（≈1.11）的盤。
+
+另外附上條件比對（Tier A/B 今天有沒有觸發）與該玩法在回測中的實際表現。
 """
 import argparse
 import sys
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.ensemble import HistGradientBoostingRegressor
 
+from backtest import ALLOWED, DEFAULT_PAYOUT, zh
 from common import DATA, OUTPUT, jdump, jload, log
 from mine_conditions import G_MARKETS, TG_MARKETS, prep_markets
 from model_markets import design
+from model_runs import fit_alpha, market_probs, nb_pmf
 from predicates import add_derived, apply_specs, build_predicates_full
+
+TW_TOTAL_LINES = (7.5, 8.5, 9.5, 10.5)
+TW_TEAM_LINES = (3.5, 4.5, 5.5)
 
 
 def pending_to_tg(pend):
-    """未開打的 game 列 → 兩個隊伍視角列（欄位對齊 teamgames）。"""
     rows = []
     for _, g in pend.iterrows():
         for side, other in (("home", "away"), ("away", "home")):
             r = {"pk": g["pk"], "date": g["date"], "month": g["month"], "dow": g["dow"],
                  "day_game": g["day_game"], "venue": g["venue"], "temp": g["temp"],
                  "series_game": g["series_game"], "series_len": g["series_len"],
+                 "park_factor": g.get("park_factor"), "wind_speed": g.get("wind_speed"),
+                 "wind_dir": g.get("wind_dir"), "roof": g.get("roof"),
                  "team": g[f"{side}_team"], "opp": g[f"{other}_team"],
                  "team_zh": g[f"{side}_team_zh"], "opp_zh": g[f"{other}_team_zh"],
-                 "is_home": side == "home", "sp_known": g.get("sp_known", False)}
+                 "is_home": side == "home", "sp_known": g.get("sp_known", False),
+                 "faced_opp_sp": g.get(f"{side}_faced_opp_sp", 0)}
             for k, v in g.items():
                 if isinstance(k, str) and k.startswith(side + "_"):
                     r["my_" + k[len(side) + 1:]] = v
@@ -39,20 +49,20 @@ def pending_to_tg(pend):
     return pd.DataFrame(rows)
 
 
-def fit_predict(hist, fut, kind, market):
-    Xh = design(hist, kind)
-    Xf = design(fut, kind).reindex(columns=Xh.columns)
-    y = hist[market].astype(int).to_numpy()
-    clf = HistGradientBoostingClassifier(max_depth=3, max_iter=250, learning_rate=0.05,
-                                         min_samples_leaf=40, l2_regularization=1.0,
-                                         early_stopping=True, validation_fraction=0.15,
-                                         random_state=7)
-    clf.fit(Xh, y)
-    return clf.predict_proba(Xf)[:, 1]
+def fit_run_model(hist, fut, target):
+    X = design(hist, "tg")
+    Xf = design(fut, "tg").reindex(columns=X.columns)
+    y = hist[target].astype(float).to_numpy()
+    m = HistGradientBoostingRegressor(loss="poisson", max_depth=3, max_iter=300,
+                                      learning_rate=0.05, min_samples_leaf=40,
+                                      l2_regularization=1.0, early_stopping=True,
+                                      validation_fraction=0.15, random_state=7)
+    m.fit(X, y)
+    alpha = fit_alpha(y, m.predict(X))
+    return m.predict(Xf), alpha
 
 
-def fired_conditions(fut, kind, hist, conds, limit_per_row=6):
-    """回傳 list[list[dict]]：每一列觸發了哪些條件。"""
+def fired_conditions(fut, kind, hist, conds, limit=8):
     names, labels, M, specs = build_predicates_full(hist, kind)
     spec_by_name = {s["name"]: s for s in specs}
     masks = apply_specs(fut, specs)
@@ -65,19 +75,17 @@ def fired_conditions(fut, kind, hist, conds, limit_per_row=6):
         for p in pn:
             m &= masks[p]
         for i in np.nonzero(m)[0]:
-            if len(out[i]) < limit_per_row:
-                out[i].append({
-                    "market": c["market"], "market_zh": c["market_zh"],
-                    "label": c["label"], "rate": c["rate"], "n": c["n"],
-                    "base": c["base"], "tier": c.get("tier", "?"),
-                    "be_odds": round(c["be_odds"], 3),
-                })
+            if len(out[i]) < limit:
+                out[i].append({"market": c["market"], "market_zh": c["market_zh"],
+                               "label": c["label"], "rate": c["rate"], "n": c["n"],
+                               "base": c["base"], "tier": c.get("tier", "?")})
     return out
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--min-model-prob", type=float, default=0.62)
+    ap.add_argument("--payout", type=float, default=DEFAULT_PAYOUT)
+    ap.add_argument("--min-edge", type=float, default=1.03)
     args = ap.parse_args()
 
     tg = pd.read_parquet(f"{DATA}/teamgames.parquet")
@@ -85,112 +93,129 @@ def main():
     pend = pd.read_parquet(f"{DATA}/pending.parquet")
     tg = add_derived(tg[(tg["my_gp"] >= 20) & (tg["op_gp"] >= 20)].copy(), "tg")
     gd = add_derived(prep_markets(gd[(gd["home_gp"] >= 20) & (gd["away_gp"] >= 20)].copy(), "g"), "g")
-
     pend_g = add_derived(pend.copy(), "g")
     pend_tg = add_derived(pending_to_tg(pend), "tg")
     log(f"未開打 {len(pend)} 場（{pend['date'].min()} ~ {pend['date'].max()}）")
 
-    # ── 模型機率 ──
-    tg_probs, g_probs = {}, {}
-    for mk, zh in TG_MARKETS:
-        if mk in tg.columns:
-            tg_probs[mk] = fit_predict(tg, pend_tg, "tg", mk)
-    for mk, zh in G_MARKETS:
-        if mk in gd.columns:
-            g_probs[mk] = fit_predict(gd, pend_g, "g", mk)
-    log(f"模型完成：隊伍視角 {len(tg_probs)} 種、全場 {len(g_probs)} 種")
+    # ── 得分模型 ──
+    mu9, alpha9 = fit_run_model(tg, pend_tg, "runs")
+    mu5, alpha5 = fit_run_model(tg, pend_tg, "runs_f5")
+    pend_tg = pend_tg.copy()
+    pend_tg["mu9"] = mu9
+    pend_tg["mu5"] = mu5
+    log(f"得分模型：α(全場)={alpha9:.3f}, α(前5局)={alpha5:.3f}, "
+        f"μ 範圍 {mu9.min():.2f}~{mu9.max():.2f}")
+
+    home = pend_tg[pend_tg["is_home"]].set_index("pk")
+    away = pend_tg[~pend_tg["is_home"]].set_index("pk")
+    pks = [pk for pk in pend_g["pk"] if pk in home.index and pk in away.index]
+    mu_h = home.loc[pks, "mu9"].to_numpy()
+    mu_a = away.loc[pks, "mu9"].to_numpy()
+    P = market_probs(nb_pmf(mu_a, alpha9), nb_pmf(mu_h, alpha9),
+                     total_lines=TW_TOTAL_LINES, team_lines=TW_TEAM_LINES)
+    P5 = market_probs(nb_pmf(away.loc[pks, "mu5"].to_numpy(), alpha5),
+                      nb_pmf(home.loc[pks, "mu5"].to_numpy(), alpha5),
+                      total_lines=(4.5,), team_lines=(1.5,))
+    ren = {"a": "away", "b": "home"}
+    probs = {}
+    for k, v in P.items():
+        probs[ren[k[0]] + k[1:] if k[:2] in ("a_", "b_") else k] = v
+    probs["f5_over_4.5"] = P5["over_4.5"]
+    probs["f5_under_4.5"] = P5["under_4.5"]
+
+    # ── 歷史基準率與回測表現 ──
+    try:
+        BT = jload(f"{OUTPUT}/backtest.json")
+        bases = BT["bases"]
+        bt_rows = {(r["market"], r["thr"]): r for r in BT["singles"]}
+    except Exception:
+        bases, bt_rows = {}, {}
+
+    def bt_for(market, p):
+        best = None
+        for thr in (0.8, 0.75, 0.7, 0.65, 0.6):
+            if p >= thr and (market, thr) in bt_rows:
+                best = bt_rows[(market, thr)]
+                break
+        return best
 
     # ── 條件觸發 ──
     try:
         C = jload(f"{OUTPUT}/conditions.json")
         tg_conds = C["teamgame"]["tierA"] + C["teamgame"]["tierB"]
         g_conds = C["game"]["tierA"] + C["game"]["tierB"]
-    except Exception as e:
-        log(f"讀不到 conditions.json（{e}），跳過條件比對")
+    except Exception:
         tg_conds, g_conds = [], []
     tg_fired = fired_conditions(pend_tg, "tg", tg, tg_conds) if tg_conds else [[]] * len(pend_tg)
     g_fired = fired_conditions(pend_g, "g", gd, g_conds) if g_conds else [[]] * len(pend_g)
+    tg_pos = {(r["pk"], r["team"]): i for i, (_, r) in enumerate(pend_tg.iterrows())}
+    g_pos = {r["pk"]: i for i, (_, r) in enumerate(pend_g.iterrows())}
 
-    # ── 模型樣本外可信度（來自 models.json）──
-    try:
-        MD = jload(f"{OUTPUT}/models.json")["models"]
-    except Exception:
-        MD = {}
-
-    def reliability(mk):
-        m = MD.get(mk)
-        if not m:
-            return None
-        return {"auc": m["auc"], "brier_skill": m["brier_skill"],
-                "oos_n": m["oos_n"],
-                "thr70": next((t for t in m["thresholds"] if t["thr"] == 0.7), None)}
-
-    games_out = []
-    tg_idx = {(r["pk"], r["team"]): i for i, r in pend_tg.iterrows()}
-    for gi, (_, g) in enumerate(pend_g.iterrows()):
+    games, picks = [], []
+    gmeta = pend_g.set_index("pk")
+    for gi, pk in enumerate(pks):
+        g = gmeta.loc[pk]
+        h_zh, a_zh = g["home_team_zh"], g["away_team_zh"]
         entry = {
-            "pk": int(g["pk"]), "date": g["date"],
-            "away": g["away_team_zh"], "home": g["home_team_zh"],
+            "pk": int(pk), "date": g["date"],
+            "away": a_zh, "home": h_zh,
             "day_game": bool(g["day_game"]),
             "sp_known": bool(g.get("sp_known", False)),
             "home_sp_hand": g.get("home_sp_hand"), "away_sp_hand": g.get("away_sp_hand"),
             "home_sp_r9": None if pd.isna(g.get("home_sp_r9")) else round(float(g["home_sp_r9"]), 2),
             "away_sp_r9": None if pd.isna(g.get("away_sp_r9")) else round(float(g["away_sp_r9"]), 2),
-            "total_expect": None if pd.isna(g.get("total_expect")) else round(float(g["total_expect"]), 2),
-            "game_markets": [], "team_markets": [], "conditions": g_fired[gi],
+            "park_factor": None if pd.isna(g.get("park_factor")) else round(float(g["park_factor"]), 2),
+            "mu_home": round(float(mu_h[gi]), 2), "mu_away": round(float(mu_a[gi]), 2),
+            "mu_total": round(float(mu_h[gi] + mu_a[gi]), 2),
+            "markets": [],
+            "conditions": g_fired[g_pos.get(pk, 0)] if g_pos else [],
         }
-        for mk, zh in G_MARKETS:
-            if mk not in g_probs:
+        for market, arr in probs.items():
+            if market not in ALLOWED and not market.startswith("f5_"):
                 continue
-            entry["game_markets"].append({
-                "market": mk, "market_zh": zh, "p": round(float(g_probs[mk][gi]), 3),
-                "be_odds": round(1 / max(float(g_probs[mk][gi]), 1e-6), 2),
-            })
-        for side in ("away", "home"):
-            tid = g[f"{side}_team"]
-            i = tg_idx.get((g["pk"], tid))
-            if i is None:
-                continue
-            tm = {"team": g[f"{side}_team_zh"], "is_home": side == "home", "markets": [],
-                  "conditions": tg_fired[i]}
-            for mk, zh in TG_MARKETS:
-                if mk not in tg_probs:
-                    continue
-                p = float(tg_probs[mk][i])
-                tm["markets"].append({"market": mk, "market_zh": zh, "p": round(p, 3),
-                                      "be_odds": round(1 / max(p, 1e-6), 2)})
-            entry["team_markets"].append(tm)
-        games_out.append(entry)
+            p = float(arr[gi])
+            base = bases.get(market)
+            edge = (p / base) if base else None
+            bt = bt_for(market, p)
+            side_team = None
+            if market.startswith("home_"):
+                side_team = h_zh
+            elif market.startswith("away_"):
+                side_team = a_zh
+            row = {"market": market, "market_zh": zh(market) if not market.startswith("f5_")
+                   else ("前5局大分 4.5" if "over" in market else "前5局小分 4.5"),
+                   "team": side_team, "p": round(p, 3),
+                   "base": None if base is None else round(base, 3),
+                   "edge": None if edge is None else round(edge, 3),
+                   "be_odds": round(1 / max(p, 1e-6), 2),
+                   "assumed_odds": None if not base else round((1 / base) * args.payout, 2),
+                   "bt_hit": None if not bt else bt["hit"],
+                   "bt_n": None if not bt else bt["n"],
+                   "bt_roi": None if not bt else bt["roi"][str(args.payout)]}
+            entry["markets"].append(row)
+            if edge and edge >= args.min_edge and p >= 0.5:
+                tgc = []
+                key = (pk, g[f"{'home' if market.startswith('home_') else 'away'}_team"]) \
+                    if market.startswith(("home_", "away_")) else None
+                if key and key in tg_pos:
+                    tgc = [c for c in tg_fired[tg_pos[key]] if c["market"] in market]
+                picks.append({"date": g["date"], "matchup": f"{a_zh} @ {h_zh}",
+                              **row, "conditions": tgc,
+                              "cond_support": len(tgc)})
+        entry["markets"].sort(key=lambda r: -(r["edge"] or 0))
+        games.append(entry)
 
-    # ── 推薦清單：模型機率高 + 有條件加持 ──
-    picks = []
-    for e in games_out:
-        for m in e["game_markets"]:
-            if m["p"] >= args.min_model_prob:
-                cond = [c for c in e["conditions"] if c["market"] == m["market"]]
-                picks.append({"date": e["date"], "matchup": f"{e['away']} @ {e['home']}",
-                              "scope": "全場", "team": None, **m,
-                              "conditions": cond, "cond_support": len(cond),
-                              "reliability": reliability(m["market"])})
-        for tm in e["team_markets"]:
-            for m in tm["markets"]:
-                if m["p"] >= args.min_model_prob:
-                    cond = [c for c in tm["conditions"] if c["market"] == m["market"]]
-                    picks.append({"date": e["date"], "matchup": f"{e['away']} @ {e['home']}",
-                                  "scope": "單隊", "team": tm["team"], **m,
-                                  "conditions": cond, "cond_support": len(cond),
-                                  "reliability": reliability(m["market"])})
-    picks.sort(key=lambda x: (-x["cond_support"], -x["p"]))
-
-    out = {"generated_for": sorted(set(pend_g["date"])), "games": games_out,
-           "picks": picks[:120], "n_picks": len(picks)}
+    picks.sort(key=lambda x: (-(x["edge"] or 0), -x["p"]))
+    out = {"generated_for": sorted(set(pend_g["date"])), "payout_assumed": args.payout,
+           "engine": "得分期望值模型（負二項卷積）", "alpha": {"full": alpha9, "f5": alpha5},
+           "games": games, "picks": picks[:150], "n_picks": len(picks)}
     p = jdump(out, f"{OUTPUT}/slate.json")
-    log(f"寫出 {p}：{len(games_out)} 場、{len(picks)} 個候選（機率≥{args.min_model_prob:.0%}）")
-    for x in picks[:12]:
-        rel = x["reliability"]
-        log(f"  {x['date']} {x['matchup']:<18} {x['scope']}{x['team'] or '':<4} "
-            f"{x['market_zh']:<18} 模型 {x['p']:.1%} 需賠率>{x['be_odds']:.2f} "
-            f"條件 {x['cond_support']} 個 " + (f"AUC {rel['auc']:.3f}" if rel else ""))
+    log(f"寫出 {p}：{len(games)} 場、{len(picks)} 個 edge≥{args.min_edge} 的候選")
+    for x in picks[:14]:
+        log(f"  {x['date'][5:]} {x['matchup']:<16} {x['market_zh']:<14}"
+            f"{(x['team'] or ''):<4} 機率 {x['p']:.1%} 基準 {(x['base'] or 0):.1%} "
+            f"edge {x['edge']:.2f} 假設賠率 {x['assumed_odds']} "
+            + (f"回測 {x['bt_n']}注 {x['bt_hit']:.0%} ROI {x['bt_roi']:+.0%}" if x['bt_hit'] else ""))
     return 0
 
 

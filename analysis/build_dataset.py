@@ -47,10 +47,19 @@ class Roll:
         self.elo = 1500.0
         self.last_date = None
         self.bp_log = deque()      # (date, ip, runs, pitches)
+        self.bp_bat = deque()      # (date, pa, woba_sum) 牛棚被打
+        self.game_log = defaultdict(list)   # key → [(pa, woba_sum), ...] 逐場
         self.away_streak = 0
 
     def woba_for(self, key):
         return shrunk(self.woba[key], self.pa[key], LEAGUE_WOBA, PRIOR_PA)
+
+    def woba_last(self, key, n=15):
+        """近 n 場的 wOBA（樣本不足往聯盟平均收縮）"""
+        rows = self.game_log[key][-n:]
+        pa = sum(r[0] for r in rows)
+        wb = sum(r[1] for r in rows)
+        return shrunk(wb, pa, LEAGUE_WOBA, PRIOR_PA)
 
 
 class PitcherRoll:
@@ -91,6 +100,26 @@ def dat(d):
     return pd.Timestamp(d)
 
 
+def parse_wind(w):
+    """'8 mph, Out To CF' → (8, 'out')；室內或無風 → (0, 'none')"""
+    if not w:
+        return 0.0, "none"
+    try:
+        sp = float(str(w).split(" ")[0])
+    except Exception:
+        sp = 0.0
+    t = str(w).lower()
+    if "out to" in t:
+        d = "out"
+    elif "in from" in t:
+        d = "in"
+    elif " to " in t:
+        d = "cross"
+    else:
+        d = "none"
+    return sp, d
+
+
 def pct(a, b):
     return (a / b) if b else np.nan
 
@@ -129,6 +158,10 @@ def snap_side(side, tid, spid, opp_spid, teams, pitchers, people, d, day_game):
         f"{side}_woba_home": R.woba_for("H"),
         f"{side}_woba_away": R.woba_for("A"),
         f"{side}_woba_daypart": R.woba_for("D" if day_game else "N"),
+        f"{side}_woba_l15": R.woba_last("all"),
+        f"{side}_woba_vsL_l15": R.woba_last("L"),
+        f"{side}_woba_vsR_l15": R.woba_last("R"),
+        f"{side}_xwoba": shrunk(R.woba["x:all"], R.pa["x:all"], LEAGUE_WOBA, PRIOR_PA),
         f"{side}_woba_venueside": R.woba_for("H" if side == "home" else "A"),
         f"{side}_sp_id": spid,
         f"{side}_sp_hand": sp_hand,
@@ -139,6 +172,9 @@ def snap_side(side, tid, spid, opp_spid, teams, pitchers, people, d, day_game):
     bp_r = sum(x[2] for x in R.bp_log)
     f[f"{side}_bp_ip14"] = bp_ip
     f[f"{side}_bp_r9_14"] = shrunk(bp_r * 9, bp_ip, LEAGUE_R9, PRIOR_IP) if bp_ip else np.nan
+    bp_pa = sum(x[1] for x in R.bp_bat)
+    bp_wb = sum(x[2] for x in R.bp_bat)
+    f[f"{side}_bp_woba_30d"] = shrunk(bp_wb, bp_pa, LEAGUE_WOBA, 80)
 
     if P and P.starts > 0:
         f.update({
@@ -220,7 +256,12 @@ def snap_game(g, sp, teams, pitchers, people):
 
 def base_row(g):
     d = dat(g["date"])
+    wsp, wdir = parse_wind(g.get("wind"))
+    cond = (g.get("cond") or "")
     return {
+        "wind_speed": wsp, "wind_dir": wdir,
+        "wind_out": wdir == "out", "wind_in": wdir == "in",
+        "roof": cond in ("Dome", "Roof Closed"),
         "pk": g["pk"], "date": g["date"], "month": d.month, "dow": d.dayofweek,
         "day_game": bool(g.get("dayGame")), "venue": g.get("venueId"),
         "temp": pd.to_numeric(g.get("temp"), errors="coerce"),
@@ -248,6 +289,8 @@ def main():
 
     teams = {t: Roll() for t in TEAM_ZH}
     pitchers = defaultdict(PitcherRoll)
+    venue_runs = defaultdict(list)          # venueId → 該場地歷史總分
+    faced = defaultdict(int)                # (team, pitcher) → 本季已對過幾次
 
     tg_rows, g_rows = [], []
     seen = set()
@@ -284,6 +327,12 @@ def main():
             "f1_total": (h_in[0] if h_in else 0) + (a_in[0] if a_in else 0),
         })
 
+        vr = venue_runs[g.get("venueId")]
+        common["park_factor"] = ((sum(vr) + 8.94 * 15) / (len(vr) + 15)) if True else 8.94
+        common["park_games"] = len(vr)
+        common["home_faced_opp_sp"] = faced[(home, sp["away"])] if sp["away"] else 0
+        common["away_faced_opp_sp"] = faced[(away, sp["home"])] if sp["home"] else 0
+
         g_row = dict(common)
         g_row.update(feat)
         g_row["home_team"], g_row["away_team"] = home, away
@@ -306,6 +355,7 @@ def main():
                 "team": tid, "opp": opp, "is_home": side == "home",
                 "team_zh": TEAM_ZH[tid], "opp_zh": TEAM_ZH[opp],
                 "runs": me, "runs_allowed": them, "margin": me - them,
+                "runs_f5": my_f5, "runs_allowed_f5": opp_f5,
                 "win": me > them,
                 "cover_m15": (me - them) >= 2,
                 "cover_p15": (them - me) <= 1,
@@ -313,6 +363,7 @@ def main():
                 "cover_p25": (them - me) <= 2,
                 "f5_lead": my_f5 > opp_f5,
                 "f5_no_trail": my_f5 >= opp_f5,
+                "faced_opp_sp": common[f"{side}_faced_opp_sp"],
             })
             for line in (2.5, 3.5, 4.5, 5.5, 6.5):
                 r[f"tt_over_{line}"] = me > line
@@ -339,6 +390,11 @@ def main():
                 for key in (hand, "all", dn, ha):
                     R.pa[key] += x["pa"]
                     R.woba[key] += x["woba_sum"]
+                for key in (hand, "all"):
+                    R.game_log[key].append((float(x["pa"]), float(x["woba_sum"])))
+                if x["xwoba_n"]:
+                    R.pa["x:all"] += x["xwoba_n"]
+                    R.woba["x:all"] += x["xwoba_sum"]
                     R.k[key] += x["k"]
                     R.bb[key] += x["bb"]
                     R.hard[key] += x["hard"]
@@ -409,6 +465,19 @@ def main():
                 v = velos.get(s["id"])
                 if v is not None and not pd.isna(v):
                     P.velos.append(float(v))
+            sp_id = sside["sp"]["id"] if sside["sp"] else None
+            bp_pa = bp_wb = 0.0
+            if pb is not None:
+                for _, x in pb.iterrows():
+                    if int(x["pitcher"]) == sp_id:
+                        continue
+                    if int(x["pit_team"]) != tid:
+                        continue
+                    bp_pa += float(x["pa"])
+                    bp_wb += float(x["woba_sum"])
+            R.bp_bat.append((date, bp_pa, bp_wb))
+            while R.bp_bat and (d - dat(R.bp_bat[0][0])).days > 30:
+                R.bp_bat.popleft()
             bp_ip = sum(ip_to_float(p.get("ip")) for p in sside["bp"])
             bp_r = sum((p.get("r") or 0) for p in sside["bp"])
             bp_p = sum((p.get("pitches") or 0) for p in sside["bp"])
@@ -436,6 +505,12 @@ def main():
                 R.away_runs.append(me)
                 R.away_streak += 1
 
+        venue_runs[g.get("venueId")].append(hs + as_)
+        if sp["home"]:
+            faced[(away, sp["home"])] += 1
+        if sp["away"]:
+            faced[(home, sp["away"])] += 1
+
         eh, ea = teams[home].elo, teams[away].elo
         exp_h = 1 / (1 + 10 ** (-((eh + 25) - ea) / 400))
         act_h = 1.0 if hs > as_ else 0.0
@@ -459,6 +534,11 @@ def main():
         sp = {"home": g.get("homeSpProb"), "away": g.get("awaySpProb")}
         feat = snap_game(g, sp, teams, pitchers, people)
         r = base_row(g)
+        vr = venue_runs[g.get("venueId")]
+        r["park_factor"] = (sum(vr) + 8.94 * 15) / (len(vr) + 15)
+        r["park_games"] = len(vr)
+        r["home_faced_opp_sp"] = faced[(g["home"], sp["away"])] if sp["away"] else 0
+        r["away_faced_opp_sp"] = faced[(g["away"], sp["home"])] if sp["home"] else 0
         r.update(feat)
         r["home_team"], r["away_team"] = g["home"], g["away"]
         r["home_team_zh"], r["away_team_zh"] = TEAM_ZH[g["home"]], TEAM_ZH[g["away"]]

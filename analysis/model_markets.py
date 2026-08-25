@@ -26,9 +26,9 @@ from mine_conditions import TG_MARKETS, G_MARKETS, prep_markets
 from predicates import NUM_FEATURES_G, NUM_FEATURES_TG, add_derived
 
 CAT_TG_COLS = ["is_home", "day_game", "my_sp_hand", "op_sp_hand",
-               "my_oppSP_profile", "my_sp_profile"]
+               "my_oppSP_profile", "my_sp_profile", "roof", "wind_dir"]
 CAT_G_COLS = ["day_game", "home_sp_hand", "away_sp_hand", "hand_matchup",
-              "home_sp_profile", "away_sp_profile"]
+              "home_sp_profile", "away_sp_profile", "roof", "wind_dir"]
 REFIT_DATES = ["2026-06-01", "2026-06-15", "2026-07-01", "2026-07-15",
                "2026-08-01", "2026-08-12"]
 

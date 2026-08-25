@@ -159,15 +159,22 @@ function useAnalysis(){
 }
 
 // ═══════════════════════════════════════
-// 推薦（未開打場次）
+// 推薦（未開打場次）— 以 edge = 機率/基準率 排序
 // ═══════════════════════════════════════
+function EdgeTag({edge}){
+  if(edge==null)return null;
+  const good=edge>=1.11;
+  return<Tag color={good?C.g:edge>=1.05?C.acc:C.d} bg={good?C.gD:edge>=1.05?C.accD:"rgba(139,153,173,0.12)"}>
+    edge {edge.toFixed(2)}</Tag>;
+}
+
 function SlateView({A}){
   const slate=A.slate;
   const[date,setDate]=useState(slate?.dates?.[0]||"");
-  const[minP,setMinP]=useState(0.65);
-  if(!slate)return<Card><Muted>還沒有未開打場次的預測。跑 <code>analysis/predict_slate.py</code> 後會出現。</Muted></Card>;
+  const[minEdge,setMinEdge]=useState(1.05);
+  if(!slate)return<Card><Muted>還沒有未開打場次的預測。跑 analysis/predict_slate.py 後會出現。</Muted></Card>;
   const games=slate.games.filter(g=>!date||g.date===date);
-  const picks=slate.picks.filter(p=>(!date||p.date===date)&&p.p>=minP);
+  const picks=slate.picks.filter(p=>(!date||p.date===date)&&(p.edge||0)>=minEdge);
   return<div>
     <Card style={{marginBottom:12}}>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
@@ -175,36 +182,42 @@ function SlateView({A}){
         <Pill small sel={!date} onClick={()=>setDate("")}>全部</Pill>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-        <Muted>機率門檻</Muted>
-        {[0.6,0.65,0.7,0.75].map(v=><Pill key={v} small sel={minP===v} onClick={()=>setMinP(v)}>{pctS(v,0)}</Pill>)}
+        <Muted>edge 門檻</Muted>
+        {[1.0,1.05,1.11,1.2].map(v=><Pill key={v} small sel={minEdge===v} onClick={()=>setMinEdge(v)}>{v.toFixed(2)}</Pill>)}
       </div>
       <Muted style={{marginTop:10}}>
-        「需要賠率」= 1 / 模型機率。台彩賠率高過這個數字才有正期望值。
-        條件數 = 有幾組歷史高命中條件同時觸發（模型與條件同向才算強訊號）。
+        引擎：{slate.engine}。<b style={{color:C.t}}>edge = 模型機率 ÷ 該玩法聯盟基準率</b>。
+        台彩返還率約 {pctS(slate.payout,0)}，所以 edge 要大於 {(1/(slate.payout||0.9)).toFixed(2)} 才有正期望值 ——
+        這是回測驗證過的排序方式，比單純看「機率高」可靠得多。
+        「假設賠率」是用基準率推估台彩可能開的價位，實際請自行核對。
       </Muted>
     </Card>
 
-    <div style={{fontSize:13,fontWeight:700,margin:"14px 0 8px"}}>訊號排行（{picks.length}）</div>
+    <div style={{fontSize:13,fontWeight:700,margin:"14px 0 8px"}}>edge 排行（{picks.length}）</div>
+    {picks.length===0&&<Card><Muted>這個門檻下沒有候選。</Muted></Card>}
     {picks.slice(0,40).map((p,i)=><Card key={i} style={{marginBottom:8,padding:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13,fontWeight:600}}>{p.matchup}</div>
           <div style={{fontSize:12,color:C.d,marginTop:2}}>
-            {p.date.slice(5)}・{p.scope}{p.team?`（${p.team}）`:""}・{p.market_zh}
+            {p.date.slice(5)}・{p.market_zh}{p.team?"（"+p.team+"）":""}
           </div>
         </div>
         <div style={{textAlign:"right"}}>
           <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:18,fontWeight:700,
-            color:p.p>=0.75?C.g:p.p>=0.68?C.acc:C.t}}>{pctS(p.p)}</div>
-          <div style={{fontSize:11,color:C.d}}>需賠率 {p.be_odds?.toFixed(2)}</div>
+            color:(p.edge||0)>=1.11?C.g:C.t}}>{pctS(p.p)}</div>
+          <div style={{fontSize:11,color:C.d}}>基準 {pctS(p.base,0)}</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
-        {p.cond_support>0&&<Tag color={C.g} bg={C.gD}>條件 {p.cond_support}</Tag>}
-        {p.auc&&<Tag>模型 AUC {p.auc.toFixed(3)}</Tag>}
+        <EdgeTag edge={p.edge}/>
+        {p.assumed_odds&&<Tag color={C.d} bg="rgba(139,153,173,0.12)">假設賠率 {p.assumed_odds}</Tag>}
+        {p.bt_hit!=null&&<Tag color={p.bt_roi>0?C.g:C.r} bg={p.bt_roi>0?C.gD:C.rD}>
+          回測 {p.bt_n}注 命中 {pctS(p.bt_hit,0)} ROI {p.bt_roi>0?"+":""}{pctS(p.bt_roi,0)}</Tag>}
+        {p.cond_support>0&&<Tag color={C.b} bg={C.bD}>條件 {p.cond_support}</Tag>}
       </div>
-      {p.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${C.bd}`}}>
-        {p.conditions.map((c,j)=><Muted key={j} style={{marginBottom:3}}>
+      {p.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
+        {p.conditions.map((c,k)=><Muted key={k} style={{marginBottom:3}}>
           <span style={{color:rateColor(c.rate),fontWeight:600}}>{pctS(c.rate,0)}</span>
           {" "}({c.n} 場・Tier {c.tier})　{c.label}
         </Muted>)}
@@ -218,43 +231,45 @@ function SlateView({A}){
 
 function GameSignalCard({g}){
   const[open,setOpen]=useState(false);
-  const top=[...g.game_markets].sort((a,b)=>b.p-a.p)[0];
+  const top=g.markets?.[0];
   return<Card style={{marginBottom:8,padding:12}}>
     <div onClick={()=>setOpen(!open)} style={{cursor:"pointer",display:"flex",justifyContent:"space-between",gap:8}}>
       <div>
         <div style={{fontSize:14,fontWeight:600}}>{g.away} @ {g.home}</div>
         <div style={{fontSize:11,color:C.d,marginTop:3}}>
           {g.date.slice(5)}・{g.day_game?"日場":"夜場"}
-          {g.sp_known?`・先發 ${g.away_sp_hand||"?"} vs ${g.home_sp_hand||"?"}`:"・先發未公布"}
-          {g.total_expect!=null&&`・推估總分 ${g.total_expect}`}
+          {g.sp_known?"・先發 "+(g.away_sp_hand||"?")+" vs "+(g.home_sp_hand||"?"):"・先發未公布"}
+          {g.mu_total!=null?"・預估總分 "+g.mu_total:""}
+          {g.park_factor!=null?"・球場 "+g.park_factor:""}
         </div>
       </div>
       <div style={{textAlign:"right"}}>
-        {top&&<><div style={{fontSize:11,color:C.d}}>{top.market_zh}</div>
-        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:15,fontWeight:700,color:rateColor(top.p)}}>{pctS(top.p)}</div></>}
+        {top&&<><div style={{fontSize:11,color:C.d}}>{top.market_zh}{top.team?"("+top.team+")":""}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:15,fontWeight:700,
+          color:(top.edge||0)>=1.11?C.g:C.t}}>{pctS(top.p)}</div></>}
         <div style={{fontSize:10,color:C.m}}>{open?"收起":"展開"}</div>
       </div>
     </div>
-    {open&&<div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.bd}`}}>
-      <Muted style={{fontWeight:700,color:C.t,marginBottom:6}}>全場玩法</Muted>
-      <MarketRows rows={g.game_markets}/>
-      {g.team_markets.map(tm=><div key={tm.team} style={{marginTop:10}}>
-        <Muted style={{fontWeight:700,color:C.t,marginBottom:6}}>{tm.team}{tm.is_home?"（主）":"（客）"}</Muted>
-        <MarketRows rows={tm.markets}/>
-      </div>)}
+    {open&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid "+C.bd}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:"4px 8px",fontSize:11}}>
+        <div style={{color:C.m}}>玩法</div><div style={{color:C.m}}>機率</div>
+        <div style={{color:C.m}}>基準</div><div style={{color:C.m}}>edge</div>
+        {g.markets.map((m,i)=><React.Fragment key={i}>
+          <div style={{color:C.d}}>{m.market_zh}{m.team?"（"+m.team+"）":""}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>{pctS(m.p)}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{pctS(m.base,0)}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",
+            color:(m.edge||0)>=1.11?C.g:(m.edge||0)>=1.05?C.acc:C.m}}>{m.edge?m.edge.toFixed(2):"—"}</div>
+        </React.Fragment>)}
+      </div>
+      {g.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
+        <Muted style={{fontWeight:700,color:C.t,marginBottom:4}}>觸發的全場條件</Muted>
+        {g.conditions.map((c,i)=><Muted key={i}>
+          <span style={{color:rateColor(c.rate),fontWeight:600}}>{pctS(c.rate,0)}</span>
+          {" "}{c.market_zh}・{c.label}</Muted>)}
+      </div>}
     </div>}
   </Card>;
-}
-
-function MarketRows({rows}){
-  const sorted=[...rows].sort((a,b)=>b.p-a.p);
-  return<div style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:"4px 10px",fontSize:12}}>
-    {sorted.map((m,i)=><React.Fragment key={i}>
-      <div style={{color:C.d}}>{m.market_zh}</div>
-      <div style={{fontFamily:"'JetBrains Mono',monospace",color:rateColor(m.p),fontWeight:600}}>{pctS(m.p)}</div>
-      <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{m.be_odds?.toFixed(2)}</div>
-    </React.Fragment>)}
-  </div>;
 }
 
 // ═══════════════════════════════════════
@@ -421,10 +436,35 @@ function TeamsView({A}){
       </div>
     </Card>
 
-    {t.best?.market_zh&&<Card style={{marginBottom:10}}>
-      <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>{t.zh} 的最佳條件</div>
+    {t.best_single?.market_zh&&<Card style={{marginBottom:10}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>{t.zh}：單一條件（樣本 ≥30 場）</div>
       <Muted style={{marginBottom:8}}>
-        只有 {t.games} 場樣本，運氣線 {pctS(t.chance_line,0)} —— 命中率沒超過運氣線就當雜訊。
+        搜尋空間小得多，結論比較站得住。這一組的運氣線是 {pctS(t.chance_line_single,0)}。
+      </Muted>
+      {t.top_single.map((r,i)=><div key={i} style={{padding:"8px 0",borderTop:i?"1px solid "+C.bd:"none"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:600}}>{r.market_zh}</div>
+            <Muted style={{marginTop:2}}>{r.label}</Muted>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:15,fontWeight:700,color:rateColor(r.rate)}}>{pctS(r.rate,0)}</div>
+            <div style={{fontSize:10,color:C.d}}>{r.hits}/{r.n}・LB {pctS(r.wilson,0)}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
+          <Tag color={C.d} bg="rgba(139,153,173,0.12)">聯盟基準 {pctS(r.base_league,0)}</Tag>
+          <Tag color={r.beats_chance?C.g:C.r} bg={r.beats_chance?C.gD:C.rD}>
+            {r.beats_chance?"勝過運氣線":"未勝運氣線"}</Tag>
+        </div>
+      </div>)}
+    </Card>}
+
+    {t.best?.market_zh&&<Card style={{marginBottom:10}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>{t.zh}：兩條件組合（僅供參考）</div>
+      <Muted style={{marginBottom:8}}>
+        只有 {t.games} 場樣本、搜尋空間上萬組，運氣線已經到 {pctS(t.chance_line,0)}
+        —— 這一區基本上都是雜訊，列出來是為了讓你看到「100% 命中」有多容易造出來。
       </Muted>
       {t.top.map((r,i)=><div key={i} style={{padding:"8px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
@@ -449,11 +489,218 @@ function TeamsView({A}){
 }
 
 // ═══════════════════════════════════════
+// 回測（期望值）
+// ═══════════════════════════════════════
+function BacktestView({A}){
+  const B=A.backtest;
+  if(!B)return<Card><Muted>還沒有回測結果，跑 analysis/backtest.py。</Muted></Card>;
+  const ts=B.two_stage;
+  const need=1/(B.payout||0.9);
+  return<div>
+    <Card style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>怎麼算 ROI 才不自欺</div>
+      <Muted>
+        沒有真實賠率，所以假設賠率 =（1 ÷ 該玩法基準命中率）× 返還率 {pctS(B.payout,0)}。
+        例如「受讓 2.5」基準命中 73%，公正賠率 1.36，台彩大概開 1.22 ——
+        所以命中率 80% 也只是打平。真正的門檻是
+        <b style={{color:C.t}}> lift（命中率 ÷ 基準率）&gt; {need.toFixed(2)}</b>。
+        <br/>樣本外期間：{B.oos_range[0]} ~ {B.oos_range[1]}
+      </Muted>
+    </Card>
+
+    {ts&&ts.roi!=null&&<Card style={{marginBottom:12,borderColor:ts.roi>0?C.g:C.r}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>兩階段驗證（最誠實的一個數字）</div>
+      <Muted style={{marginBottom:8}}>
+        {ts.cut} 之前挑出 {ts.selected} 個「盤口 × 門檻」組合（lift ≥ {ts.min_lift}、樣本 ≥ {ts.min_n}），
+        之後才真的下注。這樣連「挑策略」都沒偷看未來。
+      </Muted>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+        <Stat label="測試期 ROI" value={(ts.roi>0?"+":"")+pctS(ts.roi,1)}
+          color={ts.roi>0?C.g:C.r}/>
+        <Stat label="下注數" value={ts.detail.reduce((a,b)=>a+b.test_n,0)} unit="注"/>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",fontSize:11}}>
+          <thead><tr style={{color:C.d,textAlign:"left"}}>
+            <th style={{padding:"4px 6px"}}>盤口</th><th>門檻</th><th>訓練lift</th>
+            <th>測試注數</th><th>測試命中</th><th>ROI</th>
+          </tr></thead>
+          <tbody>{ts.detail.map((r,i)=><tr key={i} style={{borderTop:"1px solid "+C.bd}}>
+            <td style={{padding:"4px 6px"}}>{r.market_zh}</td>
+            <td>{pctS(r.thr,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{r.train_lift.toFixed(2)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{r.test_n}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{pctS(r.test_hit,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:r.test_roi>0?C.g:C.r}}>
+              {r.test_roi>0?"+":""}{pctS(r.test_roi,0)}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>}
+
+    <Card style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>單注：依 lift 排序</div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",fontSize:11}}>
+          <thead><tr style={{color:C.d,textAlign:"left"}}>
+            <th style={{padding:"4px 6px"}}>盤口</th><th>門檻</th><th>注數</th>
+            <th>命中</th><th>基準</th><th>lift</th><th>假設賠率</th><th>ROI</th>
+          </tr></thead>
+          <tbody>{B.singles.slice(0,25).map((r,i)=><tr key={i} style={{borderTop:"1px solid "+C.bd}}>
+            <td style={{padding:"4px 6px"}}>{r.market_zh}</td>
+            <td>{pctS(r.thr,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{r.n}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{pctS(r.hit,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{pctS(r.base,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",
+              color:r.lift>=need?C.g:C.d}}>{r.lift.toFixed(2)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{r.assumed_odds}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",
+              color:r.roi[String(B.payout)]>0?C.g:C.r}}>
+              {r.roi[String(B.payout)]>0?"+":""}{pctS(r.roi[String(B.payout)],0)}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>
+
+    <Card>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>串關模擬（台彩玩法）</div>
+      <Muted style={{marginBottom:8}}>
+        每天挑 edge 最高的幾腳（同場只取一腳，符合台彩規則），組成 C(n,k) 張票。
+      </Muted>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",fontSize:11}}>
+          <thead><tr style={{color:C.d,textAlign:"left"}}>
+            <th style={{padding:"4px 6px"}}>策略</th><th>天數</th><th>單腳命中</th><th>票命中</th><th>ROI</th>
+          </tr></thead>
+          <tbody>{Object.entries(B.parlays).map(([k,v])=><tr key={k} style={{borderTop:"1px solid "+C.bd}}>
+            <td style={{padding:"4px 6px"}}>{k}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{v.days}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{pctS(v.leg_hit_rate,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{pctS(v.ticket_hit_rate,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:v.roi>0?C.g:C.r}}>
+              {v.roi>0?"+":""}{pctS(v.roi,0)}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>
+  </div>;
+}
+
+// ═══════════════════════════════════════
+// 球員分項（延遲載入 player_splits.json）
+// ═══════════════════════════════════════
+function usePlayerSplits(){
+  const[d,setD]=useState(null);
+  const[e,setE]=useState(null);
+  useEffect(()=>{
+    fetch("output/player_splits.json").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
+      .then(setD).catch(x=>setE(x.message));
+  },[]);
+  return{d,e};
+}
+
+function PlayerRow({name,meta,splits,keys}){
+  const[open,setOpen]=useState(false);
+  const all=splits.all||{};
+  return<div style={{padding:"7px 0",borderTop:"1px solid "+C.bd}}>
+    <div onClick={()=>setOpen(!open)} style={{cursor:"pointer",display:"flex",justifyContent:"space-between",gap:8}}>
+      <div style={{minWidth:0}}>
+        <div style={{fontSize:12,fontWeight:600}}>{name}</div>
+        <Muted>{meta}</Muted>
+      </div>
+      <div style={{textAlign:"right",fontFamily:"'JetBrains Mono',monospace"}}>
+        <div style={{fontSize:13,fontWeight:700}}>{numS(all.woba)}</div>
+        <Muted>{all.pa} PA</Muted>
+      </div>
+    </div>
+    {open&&<div style={{marginTop:6,display:"grid",gridTemplateColumns:"auto repeat(5,auto)",gap:"3px 8px",fontSize:11}}>
+      <div style={{color:C.m}}></div><div style={{color:C.m}}>wOBA</div><div style={{color:C.m}}>xwOBA</div>
+      <div style={{color:C.m}}>K%</div><div style={{color:C.m}}>揮空%</div><div style={{color:C.m}}>PA</div>
+      {keys.filter(k=>splits[k]).map(k=><React.Fragment key={k}>
+        <div style={{color:C.d}}>{k}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>{numS(splits[k].woba)}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{numS(splits[k].xwoba)}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{splits[k].k==null?"—":splits[k].k+"%"}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{splits[k].whiff==null?"—":splits[k].whiff+"%"}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{splits[k].pa}</div>
+      </React.Fragment>)}
+    </div>}
+  </div>;
+}
+
+function PlayersView({A}){
+  const{d,e}=usePlayerSplits();
+  const ids=A?Object.keys(A.teams).sort((a,b)=>A.teams[a].zh.localeCompare(A.teams[b].zh,"zh-Hant")):[];
+  const[tid,setTid]=useState(ids[0]);
+  const[side,setSide]=useState("bat");
+  if(e)return<Card><Muted>載入 player_splits.json 失敗：{e}</Muted></Card>;
+  if(!d)return<Card><Muted>載入球員資料中…（約 700KB）</Muted></Card>;
+  const t=d.teams[tid];
+  if(!t)return<Card><Muted>沒有這一隊的資料</Muted></Card>;
+  return<div>
+    <Card style={{marginBottom:12}}>
+      <Field label="選擇球隊" style={{marginBottom:10}}>
+        <Sel value={tid} onChange={setTid} options={ids.map(i=>({value:i,label:A.teams[i].zh}))}/>
+      </Field>
+      <div style={{display:"flex",gap:6}}>
+        <Pill small sel={side==="bat"} onClick={()=>setSide("bat")}>打者</Pill>
+        <Pill small sel={side==="pit"} onClick={()=>setSide("pit")}>投手</Pill>
+      </div>
+      <Muted style={{marginTop:8}}>
+        點球員展開分項。打者門檻 {d.thresholds.bat_pa} PA、投手 {d.thresholds.pit_pa} PA，
+        分項至少 {d.thresholds.split_min} PA 才顯示。
+      </Muted>
+    </Card>
+    <Card>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>
+        {t.zh}　{side==="bat"?"打者":"投手"}
+      </div>
+      {side==="bat"?t.batters.map(b=><PlayerRow key={b.id} name={b.name}
+        meta={(b.bats||"?")+"打・"+(b.pos||"")} splits={b.splits}
+        keys={["vsL","vsR","速球","變化球","慢速球","day","night"]}/>)
+        :t.pitchers.map(p=><div key={p.id}>
+          <PlayerRow name={p.name}
+            meta={(p.throws||"?")+"投・"+p.role+(p.starts?"・先發 "+p.starts+" 場":"")+(p.splits.fb_velo?"・速球 "+p.splits.fb_velo+" mph":"")}
+            splits={p.splits} keys={["vsL","vsR","day","night","home","away"]}/>
+          {p.splits.usage&&<div style={{display:"flex",gap:5,flexWrap:"wrap",padding:"0 0 4px 0"}}>
+            {Object.entries(p.splits.usage).map(([k,v])=><Tag key={k}>{k} {v}%</Tag>)}
+          </div>}
+        </div>)}
+    </Card>
+  </div>;
+}
+
+// ═══════════════════════════════════════
 // 模型
 // ═══════════════════════════════════════
 function ModelsView({A}){
   const[open,setOpen]=useState(null);
+  const R=A.run_model;
   return<div>
+    {R&&<Card style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>得分期望值模型（主引擎）</div>
+      <Muted style={{marginBottom:8}}>
+        先預測雙方得分 μ，再用負二項分布（過度分散 α={R.alpha_full.toFixed(3)}）展開、卷積，
+        一次算出所有盤口且互相一致。樣本外單邊得分 MAE {R.mae.full}（只押平均是 {R.mae.full_baseline}）。
+      </Muted>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",fontSize:11}}>
+          <thead><tr style={{color:C.d,textAlign:"left"}}>
+            <th style={{padding:"4px 6px"}}>盤口</th><th>AUC</th><th>Brier技巧</th><th>基準</th><th>最高機率</th>
+          </tr></thead>
+          <tbody>{R.markets.slice(0,14).map((m,i)=><tr key={i} style={{borderTop:"1px solid "+C.bd}}>
+            <td style={{padding:"4px 6px"}}>{m.market}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:m.auc>=0.55?C.g:C.d}}>{m.auc.toFixed(3)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:m.brier_skill>0?C.g:C.r}}>
+              {m.brier_skill>0?"+":""}{m.brier_skill.toFixed(3)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{pctS(m.base,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{pctS(m.p_max,0)}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>}
+    <Muted style={{margin:"0 0 10px"}}>以下是「每個盤口各自訓練一個分類器」的舊做法，留著對照。</Muted>
     <Card style={{marginBottom:12}}>
       <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>模型層在做什麼</div>
       <Muted>
@@ -522,7 +769,7 @@ function AnalysisView({A,err,loading,reload}){
     <Muted>{loading?"載入中…":err?`讀取 output/app_data.json 失敗：${err}`:"請先跑 analysis/run_all.py"}</Muted>
     <button onClick={reload} style={{marginTop:10,padding:"8px 14px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.d,fontSize:12,cursor:"pointer"}}>重新載入</button>
   </Card>;
-  const subs=[["slate","推薦"],["cond","條件"],["teams","球隊"],["models","模型"]];
+  const subs=[["slate","推薦"],["bt","回測"],["cond","條件"],["teams","球隊"],["players","球員"],["models","模型"]];
   return<div>
     <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto"}}>
       {subs.map(([k,l])=><Pill key={k} small sel={sub===k} onClick={()=>setSub(k)}>{l}</Pill>)}
@@ -532,6 +779,8 @@ function AnalysisView({A,err,loading,reload}){
       ・產生於 {A.generated}
     </Muted>
     {sub==="slate"&&<SlateView A={A}/>}
+    {sub==="bt"&&<BacktestView A={A}/>}
+    {sub==="players"&&<PlayersView A={A}/>}
     {sub==="cond"&&<ConditionsView A={A}/>}
     {sub==="teams"&&<TeamsView A={A}/>}
     {sub==="models"&&<ModelsView A={A}/>}
@@ -544,7 +793,8 @@ function AnalysisView({A,err,loading,reload}){
 function HomeView({A,goto}){
   const nA=A?.conditions?.tierA?.length;
   const picks=A?.slate?.picks||[];
-  const strong=picks.filter(p=>p.p>=0.7);
+  const strong=picks.filter(p=>(p.edge||0)>=1.11);
+  const bt=A?.backtest?.two_stage;
   return<div>
     <Card style={{textAlign:"center",padding:"28px 16px"}}>
       <div style={{fontSize:36,marginBottom:8}}>⚾</div>
@@ -558,19 +808,21 @@ function HomeView({A,goto}){
         <Stat label="Tier A 條件" value={nA} unit="組" color={nA>0?C.g:C.d}/>
         <Stat label="檢定假設數" value={(A.conditions.hypotheses/1e6).toFixed(1)+"M"}/>
         <Stat label="模型可用玩法" value={A.models.filter(m=>m.auc>=0.55&&m.brier_skill>0).length} unit={`/${A.models.length}`}/>
-        <Stat label="待開打訊號" value={strong.length} unit="個" color={strong.length?C.acc:C.d}/>
+        <Stat label="待開打強訊號" value={strong.length} unit="個" color={strong.length?C.acc:C.d}/>
+        {bt&&bt.roi!=null&&<Stat label="兩階段驗證 ROI"
+          value={(bt.roi>0?"+":"")+pctS(bt.roi,1)} color={bt.roi>0?C.g:C.r}/>}
       </div>
       <Card style={{marginTop:12}}>
         <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>今晚看什麼</div>
-        {strong.length===0&&<Muted>目前沒有模型機率 ≥70% 的訊號。</Muted>}
+        {strong.length===0&&<Muted>目前沒有 edge ≥ 1.11（達到正期望值門檻）的訊號。</Muted>}
         {strong.slice(0,6).map((p,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"6px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
           <div style={{fontSize:12,minWidth:0}}>
             <div style={{fontWeight:600}}>{p.matchup}</div>
-            <Muted>{p.date.slice(5)}・{p.scope}{p.team?`（${p.team}）`:""}・{p.market_zh}</Muted>
+            <Muted>{p.date.slice(5)}・{p.market_zh}{p.team?"（"+p.team+"）":""}</Muted>
           </div>
           <div style={{textAlign:"right"}}>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:rateColor(p.p)}}>{pctS(p.p)}</div>
-            <Muted>需賠率 {p.be_odds?.toFixed(2)}</Muted>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:C.g}}>{pctS(p.p)}</div>
+            <Muted>edge {p.edge?.toFixed(2)}</Muted>
           </div>
         </div>)}
         <button onClick={()=>goto("analysis")} style={{marginTop:10,width:"100%",padding:"9px 0",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.acc,fontSize:12,fontWeight:600,cursor:"pointer"}}>看完整分析</button>

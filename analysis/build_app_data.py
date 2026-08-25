@@ -50,6 +50,14 @@ def main():
         SL = jload(f"{OUTPUT}/slate.json")
     except Exception:
         SL = None
+    try:
+        MR = jload(f"{OUTPUT}/models_runs.json")
+    except Exception:
+        MR = None
+    try:
+        BT = jload(f"{OUTPUT}/backtest.json")
+    except Exception:
+        BT = None
 
     conds = {"tierA": [], "tierB": [], "oos": []}
     for scope, key in (("隊伍", "teamgame"), ("全場", "game")):
@@ -94,8 +102,11 @@ def main():
             "ranks": t.get("ranks", {}),
             "games": tc.get("games"),
             "chance_line": tc.get("chance_max_rate_p95"),
+            "chance_line_single": tc.get("chance_max_rate_p95_single"),
             "best": pick(tc.get("best") or {}, TEAM_COND_KEYS),
             "top": [pick(r, TEAM_COND_KEYS) for r in (tc.get("top_by_wilson") or [])[:6]],
+            "best_single": pick(tc.get("best_single") or {}, TEAM_COND_KEYS),
+            "top_single": [pick(r, TEAM_COND_KEYS) for r in (tc.get("top_single") or [])[:6]],
         }
 
     models = []
@@ -111,20 +122,19 @@ def main():
     slate = None
     if SL:
         slate = {
-            "dates": SL["generated_for"],
-            "n_picks": SL["n_picks"],
-            "picks": [{k: v for k, v in p.items() if k != "reliability"}
-                      | {"auc": (p.get("reliability") or {}).get("auc")}
-                      for p in SL["picks"][:60]],
+            "dates": SL["generated_for"], "n_picks": SL["n_picks"],
+            "engine": SL.get("engine"), "payout": SL.get("payout_assumed"),
+            "picks": SL["picks"][:80],
             "games": [{
                 "pk": g["pk"], "date": g["date"], "away": g["away"], "home": g["home"],
                 "day_game": g["day_game"], "sp_known": g["sp_known"],
                 "home_sp_hand": g["home_sp_hand"], "away_sp_hand": g["away_sp_hand"],
                 "home_sp_r9": g["home_sp_r9"], "away_sp_r9": g["away_sp_r9"],
-                "total_expect": g["total_expect"],
-                "game_markets": g["game_markets"],
-                "team_markets": [{"team": t["team"], "is_home": t["is_home"],
-                                  "markets": t["markets"]} for t in g["team_markets"]],
+                "park_factor": g.get("park_factor"),
+                "mu_home": g.get("mu_home"), "mu_away": g.get("mu_away"),
+                "mu_total": g.get("mu_total"),
+                "markets": g["markets"][:14],
+                "conditions": g.get("conditions", [])[:4],
             } for g in SL["games"]],
         }
 
@@ -142,6 +152,22 @@ def main():
         "conditions": conds,
         "teams": teams,
         "models": models,
+        "run_model": None if not MR else {
+            "alpha_full": MR["alpha_full"], "alpha_f5": MR["alpha_f5"],
+            "mae": MR["mae"],
+            "markets": [{k: v for k, v in r.items() if k != "brier"}
+                        for r in MR["markets_full"][:24]],
+            "markets_f5": MR["markets_f5"],
+        },
+        "backtest": None if not BT else {
+            "oos_range": BT["oos_range"], "payout": BT["payout_assumed"],
+            "note": BT["note"],
+            "two_stage": BT.get("two_stage"),
+            "singles": BT["singles"][:60],
+            "parlays": {k: {kk: vv for kk, vv in v.items() if kk != "log"}
+                        for k, v in BT["parlays"].items()},
+            "parlay_log": {k: v.get("log", [])[-6:] for k, v in BT["parlays"].items()},
+        },
         "importance": M.get("importance", {}),
         "slate": slate,
     }
