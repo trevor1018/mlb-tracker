@@ -59,6 +59,10 @@ def main():
     except Exception:
         BT = None
     try:
+        MP = jload(f"{OUTPUT}/market_proxy.json")
+    except Exception:
+        MP = None
+    try:
         OR = jload(f"{OUTPUT}/over_rule.json")
     except Exception:
         OR = None
@@ -181,6 +185,17 @@ def main():
             "parlays": {k: {kk: vv for kk, vv in v.items() if kk != "log"}
                         for k, v in BT["parlays"].items()},
             "parlay_log": {k: v.get("log", [])[-6:] for k, v in BT["parlays"].items()},
+        },
+        "market_proxy": None if not MP else {
+            "payout": MP["payout"], "edge_threshold": MP["edge_threshold"],
+            "proxy_cols": MP["proxy_cols"], "n_full_cols": MP["n_full_cols"],
+            "mae": MP["mae"], "overall_roi": MP["overall_roi"],
+            "overall_bets": MP["overall_bets"],
+            "logloss_gain_mean": MP["logloss_gain_mean"],
+            "markets_improved": MP["markets_improved"],
+            "markets_total": MP["markets_total"],
+            "markets": [m for m in MP["markets"] if m.get("roi") is not None][:20],
+            "note": MP["note"],
         },
         "over_rule": None if not OR else {
             "oos_range": OR["oos_range"], "payout": OR["payout"],

@@ -58,7 +58,7 @@ def main():
     S = jload(f"{OUTPUT}/team_splits.json")
     loaded = {}
     for name in ("models", "models_runs", "backtest", "slate", "ablation",
-                 "multiseason", "over_rule"):
+                 "multiseason", "over_rule", "market_proxy"):
         try:
             loaded[name] = jload(f"{OUTPUT}/{name}.json")
         except Exception:
@@ -66,6 +66,7 @@ def main():
     M, MR, BT, SL = (loaded["models"], loaded["models_runs"],
                      loaded["backtest"], loaded["slate"])
     AB, MS, OR = loaded["ablation"], loaded["multiseason"], loaded["over_rule"]
+    MP = loaded["market_proxy"]
 
     nA_tg = len(C["teamgame"]["tierA"])
     nA_g = len(C["game"]["tierA"])
@@ -74,20 +75,27 @@ def main():
     L = ["# MLB 2026 資料分析報告", "",
          f"產生時間：{datetime.now():%Y-%m-%d %H:%M}｜資料範圍：2026 球季開幕 ~ 8/24"
          f"（{S['meta']['games']} 場、{S['meta']['pitches']:,} 球 Statcast 逐球資料）", "",
-         "## 0. 三句話結論", "",
-         f"1. **高命中條件確實存在，但少得可憐**：482 萬個「條件 × 玩法」假設，過四道關卡後"
+         "## 0. 四句話結論", "",
+         (f"1. **最重要的發現：細分項沒有多知道任何事。** 我另外訓練一個「莊家代理」模型，"
+          f"只用 16 個莊家一定會定價的欄位（球場、氣溫、屋頂、雙方先發 R/9、雙方場均得失分、"
+          f"主客場、勝率）。結果代理模型的樣本外得分 MAE 是 "
+          f"{MP['mae']['proxy']}，完整 109 欄模型是 {MP['mae']['full']} —— "
+          f"**代理反而更好**。30 個盤口裡完整模型只有 {MP['markets_improved']} 個 logloss 有進步。"
+          f"拿代理當市場定價下注，{MP['overall_bets']} 注 ROI {f_pct(MP['overall_roi'])}。"
+          if MP else "1. （市場代理測試尚未執行）"),
+         f"2. **高命中條件確實存在，但少得可憐**：482 萬個「條件 × 玩法」假設，過四道關卡後"
          f"只剩 **{nA_tg + nA_g} 組**（隊伍視角 {nA_tg}、全場 {nA_g}）。"
          f"其餘上萬組「命中率 80%+」的條件，全都低於 permutation 算出的運氣線。",
-         f"2. **每一隊都能找到 100% 命中的條件 —— 而且那毫無意義**：單隊約 100 場樣本、"
+         f"3. **每一隊都能找到 100% 命中的條件 —— 而且那毫無意義**：單隊約 100 場樣本、"
          f"搜尋空間上萬組，運氣線本身就已經到 100%。只有 3 隊在「單一條件、樣本 ≥30 場」"
          f"的嚴格版本下勝過自己的運氣線。",
-         f"3. **看起來能賺的「全場大分」，一做球場校正就不見了**。"
-         f"兩階段驗證整體 ROI {f_pct(ts.get('roi'))}（台彩返還率 90%）；"
-         f"拆家族後全場大分 lift 1.30 看似很香，但那是拿「聯盟平均大分率」當基準算的。"
-         f"改用「該球場自己的歷史大分率」當基準（莊家一定會針對球場調盤口），"
+         f"4. **看起來能賺的「全場大分」，一做球場校正就不見了**："
          f"大分 8.5 的 lift 從 1.31 掉到 1.10、ROI 從 +18.3% 變 −0.7%。"
-         f"**結論：在台彩的返還率下，這套模型目前沒有可靠的正期望值玩法。**"
-         f"要突破只有一條路 —— 接真實賠率，比較模型機率與市場隱含機率。", ""]
+         f"模型抓到的主要是「這個球場容易得分」，而那是莊家最不可能漏掉的資訊。", "",
+         "**總結：在台彩 88-92% 的返還率下，這套系統目前找不到可靠的正期望值玩法。**"
+         "分項資料的價值在於「理解比賽」（球隊/球員瀏覽、對位速查），"
+         "不在於「打敗盤口」。要打敗盤口只有一條路：接真實賠率，"
+         "找莊家定價偏差，而不是重算莊家已經知道的東西。", ""]
 
     L += ["## 1. 方法論（為什麼可以相信這些數字）", "",
           "1. **不使用賽後資訊**：每一場的特徵都是「該場開打前」的累積值（as-of 快照）："
@@ -299,6 +307,31 @@ def main():
                         [[r["line"], r["bucket"], r["n"], f_pct(r["rate"], 1),
                           f"{r['lift']:.2f}", r["assumed_odds"], f_pct(r["roi"])]
                          for r in rec]), ""]
+
+    if MP:
+        L += ["## 5.8 市場代理測試：我們知道市場不知道的事嗎", "",
+              "沒有真實賠率時，最接近真相的做法是自己造一個「莊家代理」：",
+              f"只用 {len(MP['proxy_cols'])} 個莊家一定會定價的欄位 —— "
+              f"`{'`、`'.join(MP['proxy_cols'])}`。", "",
+              f"| 指標 | 完整模型（{MP['n_full_cols']} 欄） | 代理模型（{len(MP['proxy_cols'])} 欄） |",
+              "|---|---|---|",
+              f"| 樣本外單邊得分 MAE | {MP['mae']['full']} | **{MP['mae']['proxy']}** |",
+              f"| logloss 有進步的盤口 | {MP['markets_improved']} / {MP['markets_total']} | — |",
+              f"| 平均 logloss 進步 | {MP['logloss_gain_mean']:+.5f} | — |", "",
+              f"**代理模型反而略勝**。也就是說：Statcast 分項、對左右投/球種對位、"
+              f"牛棚被打 wOBA、近期滾動、球速變化這些東西加起來，"
+              f"沒有提供「球場 + 先發 R/9 + 球隊得失分」以外的預測資訊。", "",
+              f"用代理機率當公正賠率（× 返還率 {MP['payout']:.0%}）、只在完整模型認為有 "
+              f"{MP['edge_threshold']} 倍 edge 時下注：{MP['overall_bets']} 注、"
+              f"ROI **{f_pct(MP['overall_roi'])}**。", ""]
+        good = [m for m in MP["markets"] if m.get("roi", -1) > 0]
+        if good:
+            L += ["少數為正的盤口（樣本小，且整體為負，很可能是雜訊）：", "",
+                  table(["盤口", "注數", "命中率", "平均賠率", "ROI", "logloss 進步", "AUC 進步"],
+                        [[m["market"], m["bets"], f_pct(m["hit"], 1), m["avg_odds"],
+                          f_pct(m["roi"]), f"{m['logloss_gain']:+.5f}",
+                          f"{m['auc_gain']:+.4f}"] for m in good[:8]]), ""]
+        L += [f"> {MP['note']}", ""]
 
     L += ["## 6. 單隊分項亮點（Statcast）", ""]
     tm = S["teams"]

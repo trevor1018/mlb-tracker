@@ -1072,6 +1072,50 @@ function ModelsView({A}){
         </div>}
       </Card>;
     })}
+    {A.market_proxy&&<Card style={{marginTop:12,borderColor:C.r}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>市場代理測試（最尖銳的一問）</div>
+      <Muted style={{marginBottom:8}}>
+        代理模型只用 {A.market_proxy.proxy_cols.length} 個莊家一定會定價的欄位：
+        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10}}>
+          {A.market_proxy.proxy_cols.join(", ")}</span>
+      </Muted>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+        <Stat label={`完整模型（${A.market_proxy.n_full_cols} 欄）MAE`} value={A.market_proxy.mae.full}/>
+        <Stat label={`代理模型（${A.market_proxy.proxy_cols.length} 欄）MAE`}
+          value={A.market_proxy.mae.proxy} color={C.g}/>
+      </div>
+      <Muted style={{marginBottom:8}}>
+        代理反而更好（差 {A.market_proxy.mae.gain}）。30 個盤口裡完整模型只有
+        {" "}{A.market_proxy.markets_improved}/{A.market_proxy.markets_total} 個 logloss 有進步，
+        平均進步 {A.market_proxy.logloss_gain_mean}。
+        用代理當市場定價、只押 edge≥{A.market_proxy.edge_threshold}：
+        {A.market_proxy.overall_bets} 注 ROI <b style={{color:C.r}}>
+        {pctS(A.market_proxy.overall_roi,1)}</b>。
+      </Muted>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",fontSize:11}}>
+          <thead><tr style={{color:C.d,textAlign:"left"}}>
+            <th style={{padding:"4px 6px"}}>盤口</th><th>注數</th><th>命中</th>
+            <th>平均賠率</th><th>ROI</th><th>logloss進步</th><th>AUC進步</th>
+          </tr></thead>
+          <tbody>{A.market_proxy.markets.slice(0,12).map((m,i)=>
+            <tr key={i} style={{borderTop:"1px solid "+C.bd}}>
+              <td style={{padding:"4px 6px"}}>{m.market}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{m.bets}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{pctS(m.hit,1)}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{m.avg_odds}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",color:m.roi>0?C.g:C.r}}>
+                {m.roi>0?"+":""}{pctS(m.roi,1)}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",
+                color:m.logloss_gain>0?C.g:C.m}}>{m.logloss_gain>0?"+":""}{m.logloss_gain.toFixed(5)}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",
+                color:m.auc_gain>0?C.g:C.m}}>{m.auc_gain>0?"+":""}{m.auc_gain.toFixed(4)}</td>
+            </tr>)}</tbody>
+        </table>
+      </div>
+      <Muted style={{marginTop:8}}>{A.market_proxy.note}</Muted>
+    </Card>}
+
     {A.ablation&&<Card style={{marginTop:12}}>
       <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>特徵族群消融實驗</div>
       <Muted style={{marginBottom:8}}>
@@ -1177,40 +1221,43 @@ function HomeView({A,goto}){
         {bt&&bt.roi!=null&&<Stat label="兩階段驗證 ROI"
           value={(bt.roi>0?"+":"")+pctS(bt.roi,1)} color={bt.roi>0?C.g:C.r}/>}
       </div>
-      {(()=>{const pc=A.over_rule?.park_control;
-        const fams=A.backtest?.two_stage?.families||[];
-        const bad=fams.filter(f=>f.roi_ci90&&f.roi_ci90[1]<0);
-        if(!fams.length)return null;
+      {(()=>{const mp=A.market_proxy,pc=A.over_rule?.park_control;
+        if(!mp&&!pc)return null;
         return<Card style={{marginTop:12,borderColor:C.acc}}>
-          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>今晚的結論（讀完再下注）</div>
-          <Muted style={{marginBottom:6}}>
-            表面上「全場大分」很香：兩階段驗證 lift 1.30、ROI +16.8%。
-            但那是拿<b style={{color:C.t}}>聯盟平均大分率</b>當基準算的。
-          </Muted>
-          {pc&&<div style={{margin:"8px 0",padding:8,borderRadius:6,
-            background:"rgba(239,68,68,0.08)",border:"1px solid "+C.r}}>
-            <Muted style={{color:C.t,fontWeight:700,marginBottom:4}}>
-              ⚠ 做了球場校正之後，優勢幾乎消失
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>結論（讀完再下注）</div>
+          {mp&&<div style={{marginBottom:8}}>
+            <Muted style={{color:C.t,fontWeight:700,marginBottom:3}}>
+              1. 細分項沒有多知道任何事
             </Muted>
-            {Object.entries(pc).map(([line,v])=><Muted key={line} style={{marginBottom:2}}>
+            <Muted>
+              另外訓練一個「莊家代理」模型，只用 {mp.proxy_cols.length} 個莊家一定會定價的欄位
+              （球場、氣溫、屋頂、雙方先發 R/9、雙方場均得失分、主客場、勝率）。
+              樣本外得分 MAE：代理 <b style={{color:C.g}}>{mp.mae.proxy}</b> vs
+              完整 {mp.n_full_cols} 欄模型 {mp.mae.full} —— <b style={{color:C.t}}>代理反而更好</b>。
+              30 個盤口裡完整模型只有 {mp.markets_improved} 個 logloss 有進步。
+              拿代理當市場定價下注：{mp.overall_bets} 注 ROI
+              <b style={{color:C.r}}> {pctS(mp.overall_roi,1)}</b>。
+            </Muted>
+          </div>}
+          {pc&&<div style={{marginBottom:8}}>
+            <Muted style={{color:C.t,fontWeight:700,marginBottom:3}}>
+              2. 看起來能賺的「全場大分」，做球場校正就不見了
+            </Muted>
+            {Object.entries(pc).map(([line,v])=><Muted key={line}>
               大分 {line}：對聯盟基準 ROI <span style={{color:C.g}}>
               {v.roi_league_pricing>0?"+":""}{pctS(v.roi_league_pricing,1)}</span>
               {" → "}對球場基準 <span style={{color:v.roi_park_pricing>0?C.g:C.r}}>
               {v.roi_park_pricing>0?"+":""}{pctS(v.roi_park_pricing,1)}</span>
             </Muted>)}
-            <Muted style={{marginTop:4}}>
-              莊家一定會針對球場調盤口，所以「該球場自己的歷史大分率」才是公平的比較基準。
-              結論：<b style={{color:C.t}}>在台彩返還率下，目前沒有可靠的正期望值玩法</b>。
-            </Muted>
           </div>}
-          {bad.map(f=><Muted key={f.family} style={{marginBottom:3}}>
-            ⛔ <b style={{color:C.r}}>{f.family}</b>：lift {f.lift.toFixed(2)}，
-            區間整段為負 —— 這類盤口確定不要碰
-          </Muted>)}
-          <Muted style={{marginTop:6}}>
-            要突破只有一條路：接真實賠率，比較模型機率與市場隱含機率。
-            在那之前，下面的 edge 排行只是「相對聯盟平均」的參考。
-          </Muted>
+          <div style={{padding:8,borderRadius:6,background:C.accD,border:"1px solid "+C.acc}}>
+            <Muted style={{color:C.t}}>
+              <b>在台彩 88-92% 返還率下，這套系統目前找不到可靠的正期望值玩法。</b>
+              分項資料的價值在「理解比賽」（球隊/球員瀏覽、對位速查），不在「打敗盤口」。
+              要打敗盤口只有一條路：接真實賠率，找莊家的定價偏差，
+              而不是重算莊家已經知道的東西。
+            </Muted>
+          </div>
         </Card>;
       })()}
       <Card style={{marginTop:12}}>
