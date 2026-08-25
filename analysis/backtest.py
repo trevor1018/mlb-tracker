@@ -179,7 +179,66 @@ def two_stage(df, bases, cut="2026-07-20", payout=DEFAULT_PAYOUT,
                      "base": round(base, 4), "assumed_odds": round(odds, 3),
                      "test_roi": round(hit * odds - 1, 4)})
     rows.sort(key=lambda r: -r["test_roi"])
+    # 依玩法家族彙總，並算出不同返還率下的 ROI（ROI = lift × 返還率 − 1）
+    def family(mk):
+        if mk.startswith("over_"):
+            return "全場大分"
+        if mk.startswith("under_"):
+            return "全場小分"
+        if "tt_over" in mk:
+            return "單隊大分"
+        if "tt_under" in mk:
+            return "單隊小分"
+        if mk.endswith("_win"):
+            return "不讓分"
+        return "讓分/受讓"
+    fams = {}
+    for r in rows:
+        f = family(r["market"])
+        d = fams.setdefault(f, {"combos": 0, "bets": 0, "hits": 0.0, "fair_ret": 0.0})
+        d["combos"] += 1
+        d["bets"] += r["test_n"]
+        d["hits"] += r["test_hit"] * r["test_n"]
+        # 公正賠率下的回收（= 命中數 / 基準率），再乘返還率就是實際回收
+        d["fair_ret"] += r["test_hit"] * r["test_n"] / r["base"]
+    # 參數化 bootstrap：把每個組合的命中數當 Binomial(n, 觀察命中率) 重抽，
+    # 看 ROI 的抽樣不確定性（小樣本時區間會很寬，這才誠實）
+    rng = np.random.default_rng(23)
+    by_fam_rows = {}
+    for r in rows:
+        by_fam_rows.setdefault(family(r["market"]), []).append(r)
+
+    def boot_roi(rs, payout_, draws=4000):
+        n = np.array([x["test_n"] for x in rs], float)
+        p_ = np.array([x["test_hit"] for x in rs], float)
+        odds = np.array([(1 / x["base"]) * payout_ for x in rs], float)
+        if n.sum() == 0:
+            return None
+        hits = rng.binomial(n.astype(int), np.clip(p_, 0, 1), size=(draws, len(n)))
+        ret = (hits * odds).sum(axis=1)
+        roi = ret / n.sum() - 1
+        return [round(float(np.percentile(roi, 5)), 4),
+                round(float(np.percentile(roi, 95)), 4)]
+
+    fam_rows = []
+    for f, d in sorted(fams.items(), key=lambda kv: -kv[1]["bets"]):
+        lift = d["fair_ret"] / d["bets"] if d["bets"] else 0
+        fam_rows.append({
+            "family": f, "combos": d["combos"], "bets": d["bets"],
+            "hit": round(d["hits"] / d["bets"], 4) if d["bets"] else None,
+            "lift": round(lift, 4),
+            "roi_by_payout": {str(p): round(lift * p - 1, 4) for p in PAYOUTS},
+            "breakeven_payout": round(1 / lift, 4) if lift else None,
+            "roi_ci90": boot_roi(by_fam_rows[f], payout),
+        })
+    all_lift = (sum(d["fair_ret"] for d in fams.values())
+                / max(sum(d["bets"] for d in fams.values()), 1))
     return {"cut": cut, "payout": payout, "min_lift": min_lift, "min_n": min_n,
+            "families": fam_rows,
+            "overall_roi_ci90": boot_roi(rows, payout),
+            "overall_lift": round(all_lift, 4),
+            "overall_roi_by_payout": {str(p): round(all_lift * p - 1, 4) for p in PAYOUTS},
+            "overall_breakeven_payout": round(1 / all_lift, 4) if all_lift else None,
             "selected": len(picked), "evaluated": len(rows),
             "total_stake": round(tot_stake, 1), "total_return": round(tot_ret, 1),
             "roi": round(tot_ret / tot_stake - 1, 4) if tot_stake else None,
@@ -233,6 +292,18 @@ def main():
     if ts and ts.get("roi") is not None:
         log(f"  7/20 之前挑出 {ts['selected']} 個組合 → 7/20 之後實際下 "
             f"{sum(r['test_n'] for r in ts['detail'])} 注，ROI {ts['roi']:+.1%}")
+        log(f"  整體 lift {ts['overall_lift']:.3f} → 保本需要的返還率 "
+            f"{ts['overall_breakeven_payout']:.1%}")
+        for p_, v in ts["overall_roi_by_payout"].items():
+            log(f"    返還率 {float(p_):.0%} → ROI {v:+.1%}")
+        log("  依玩法家族：")
+        for f in ts["families"]:
+            roi = f["roi_by_payout"]
+            ci = f.get("roi_ci90")
+            log(f"    {f['family']:<10} {f['bets']:>4}注 命中 {f['hit']:.1%} "
+                f"lift {f['lift']:.3f} 保本返還率 {f['breakeven_payout']:.0%} | "
+                f"ROI 90% {roi['0.9']:+.1%} / 95% {roi['0.95']:+.1%}"
+                + (f" | 90% 區間 {ci[0]:+.1%}~{ci[1]:+.1%}" if ci else ""))
         for r in ts["detail"][:8]:
             log(f"    {r['market_zh']:<14} 機率≥{r['thr']:.0%} 訓練lift {r['train_lift']:.2f} "
                 f"→ 測試 {r['test_n']}注 命中 {r['test_hit']:.1%} ROI {r['test_roi']:+.1%}")

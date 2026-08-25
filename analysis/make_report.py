@@ -80,11 +80,12 @@ def main():
          f"2. **每一隊都能找到 100% 命中的條件 —— 而且那毫無意義**：單隊約 100 場樣本、"
          f"搜尋空間上萬組，運氣線本身就已經到 100%。只有 3 隊在「單一條件、樣本 ≥30 場」"
          f"的嚴格版本下勝過自己的運氣線。",
-         f"3. **真正能拿來下注的是得分期望值模型，但優勢很薄**：兩階段驗證（連挑策略都不准"
-         f"偷看未來）在 {ts.get('cut', '?')} 之後下 "
-         f"{sum(r['test_n'] for r in ts.get('detail', [])) if ts.get('detail') else 0} 注，"
-         f"ROI **{f_pct(ts.get('roi'))}**（假設台彩返還率 90%）。"
-         f"其中只有大小分（7.5/8.5）站得住腳，讓分與單隊小分都被吃掉。", ""]
+         f"3. **可下注的結論只有一條：全場大分**。兩階段驗證（連挑策略都不准偷看未來）"
+         f"整體 ROI {f_pct(ts.get('roi'))}（台彩返還率 90%），但拆開看："
+         f"全場大分 131 注命中 69.5%、lift 1.30、保本返還率只要 77% → ROI +16.8%"
+         f"（bootstrap 90% 區間 +5.3%~+27.8%，整段都在正）；"
+         f"讓分/受讓 lift 1.00 完全沒優勢，區間整段為負。"
+         f"單隊大小分 lift 1.07，保本返還率 93%，台彩吃不到。", ""]
 
     L += ["## 1. 方法論（為什麼可以相信這些數字）", "",
           "1. **不使用賽後資訊**：每一場的特徵都是「該場開打前」的累積值（as-of 快照）："
@@ -149,8 +150,37 @@ def main():
               f"假設台彩返還率 {BT['payout_assumed']:.0%}（所以 lift 要 > "
               f"{1/BT['payout_assumed']:.2f} 才有正期望值）。", ""]
         if ts and ts.get("roi") is not None:
-            L += [f"### 兩階段驗證（最誠實的數字）：ROI **{f_pct(ts['roi'])}**", "",
-                  f"{ts['cut']} 之前挑出 {ts['selected']} 個（盤口 × 門檻）組合，之後才下注。", "",
+            ci = ts.get("overall_roi_ci90")
+            L += [f"### 兩階段驗證（最誠實的數字）", "",
+                  f"{ts['cut']} 之前挑出 {ts['selected']} 個（盤口 × 門檻）組合，之後才下注："
+                  f"共 {sum(r['test_n'] for r in ts['detail'])} 注。", "",
+                  f"- 整體 lift **{ts['overall_lift']:.3f}** → 保本需要的返還率 "
+                  f"**{ts['overall_breakeven_payout']:.1%}**",
+                  f"- 返還率 88% → ROI {f_pct(ts['overall_roi_by_payout']['0.88'])}｜"
+                  f"90% → {f_pct(ts['overall_roi_by_payout']['0.9'])}｜"
+                  f"92% → {f_pct(ts['overall_roi_by_payout']['0.92'])}｜"
+                  f"95% → {f_pct(ts['overall_roi_by_payout']['0.95'])}"
+                  + (f"（90% 返還率下的 bootstrap 區間 {f_pct(ci[0])}~{f_pct(ci[1])}）" if ci else ""),
+                  "",
+                  "**台彩返還率約 88-92%，所以整體而言這套模型在台彩是打不過抽水的。**"
+                  "但拆開看玩法家族，差異非常大：", "",
+                  table(["玩法家族", "組合數", "注數", "命中率", "lift", "保本返還率",
+                         "ROI@90%", "ROI@95%", "90% 區間（90%返還率）"],
+                        [[f["family"], f["combos"], f["bets"], f_pct(f["hit"], 1),
+                          f"{f['lift']:.3f}", f_pct(f["breakeven_payout"], 0),
+                          f_pct(f["roi_by_payout"]["0.9"]),
+                          f_pct(f["roi_by_payout"]["0.95"]),
+                          (f"{f_pct(f['roi_ci90'][0])} ~ {f_pct(f['roi_ci90'][1])}"
+                           if f.get("roi_ci90") else "—")]
+                         for f in ts["families"]]), "",
+                  "**這張表是今晚最可下注的結論：**", "",
+                  "- **全場大分（大分 7.5/8.5/9.5）是唯一整個 bootstrap 區間都在正的家族**。"
+                  "lift 1.30 意味著保本返還率只要 77%，台彩的 88-92% 有很大的空間。",
+                  "- **讓分/受讓的區間整個是負的**（lift 1.00 = 完全沒有優勢）。"
+                  "這類盤口不要用這套模型下注。",
+                  "- 單隊大小分 lift 約 1.07，保本返還率 93% —— 台彩吃不到，國際盤剛好打平。",
+                  "- 注意：全場大分只有 131 注，bootstrap 只反映「給定觀察命中率」的抽樣噪音，"
+                  "不包含模型/策略挑選本身的不穩定。要更有信心得看下一個月的實戰。", "",
                   table(["盤口", "門檻", "訓練lift", "測試注數", "測試命中", "測試ROI"],
                         [[r["market_zh"], f_pct(r["thr"], 0), f"{r['train_lift']:.2f}",
                           r["test_n"], f_pct(r["test_hit"], 0), f_pct(r["test_roi"], 0)]

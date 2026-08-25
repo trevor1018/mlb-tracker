@@ -172,6 +172,7 @@ def main():
             "oos_range": BT["oos_range"], "payout": BT["payout_assumed"],
             "note": BT["note"],
             "two_stage": BT.get("two_stage"),
+            "payouts": BT.get("payouts"),
             "singles": BT["singles"][:60],
             "parlays": {k: {kk: vv for kk, vv in v.items() if kk != "log"}
                         for k, v in BT["parlays"].items()},
