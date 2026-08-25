@@ -17,7 +17,7 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 
 from backtest import ALLOWED, DEFAULT_PAYOUT, zh
-from common import DATA, OUTPUT, jdump, jload, log
+from common import DATA, OUTPUT, TEAM_ZH, jdump, jload, log
 from mine_conditions import G_MARKETS, TG_MARKETS, prep_markets
 from model_markets import design
 from model_runs import fit_alpha, market_probs, nb_pmf
@@ -93,6 +93,7 @@ def main():
     pend = pd.read_parquet(f"{DATA}/pending.parquet")
     tg = add_derived(tg[(tg["my_gp"] >= 20) & (tg["op_gp"] >= 20)].copy(), "tg")
     gd = add_derived(prep_markets(gd[(gd["home_gp"] >= 20) & (gd["away_gp"] >= 20)].copy(), "g"), "g")
+    people = jload(f"{DATA}/people.json")
     pend_g = add_derived(pend.copy(), "g")
     pend_tg = add_derived(pending_to_tg(pend), "tg")
     log(f"未開打 {len(pend)} 場（{pend['date'].min()} ~ {pend['date'].max()}）")
@@ -165,6 +166,30 @@ def main():
             "home_sp_r9": None if pd.isna(g.get("home_sp_r9")) else round(float(g["home_sp_r9"]), 2),
             "away_sp_r9": None if pd.isna(g.get("away_sp_r9")) else round(float(g["away_sp_r9"]), 2),
             "park_factor": None if pd.isna(g.get("park_factor")) else round(float(g["park_factor"]), 2),
+            "matchup_detail": {
+                side: {
+                    "sp_name": ((people.get(str(int(g[f"{side}_sp_id"]))) or {}).get("name")
+                                if pd.notna(g.get(f"{side}_sp_id")) else None),
+                    "sp_hand": g.get(f"{side}_sp_hand"),
+                    "sp_profile": g.get(f"{side}_sp_profile"),
+                    "sp_r9": (None if pd.isna(g.get(f"{side}_sp_r9"))
+                              else round(float(g[f"{side}_sp_r9"]), 2)),
+                    "sp_xwoba": (None if pd.isna(g.get(f"{side}_sp_xwoba"))
+                                 else round(float(g[f"{side}_sp_xwoba"]), 3)),
+                    "sp_woba_vsL": (None if pd.isna(g.get(f"{side}_sp_woba_vsL"))
+                                    else round(float(g[f"{side}_sp_woba_vsL"]), 3)),
+                    "sp_woba_vsR": (None if pd.isna(g.get(f"{side}_sp_woba_vsR"))
+                                    else round(float(g[f"{side}_sp_woba_vsR"]), 3)),
+                    "bat_vs_opp_hand": (None if pd.isna(g.get(f"{side}_bat_vs_oppSP_hand_woba"))
+                                        else round(float(g[f"{side}_bat_vs_oppSP_hand_woba"]), 3)),
+                    "bat_vs_opp_2nd": (None if pd.isna(g.get(f"{side}_bat_vs_oppSP_2nd_woba"))
+                                       else round(float(g[f"{side}_bat_vs_oppSP_2nd_woba"]), 3)),
+                    "woba_daypart": (None if pd.isna(g.get(f"{side}_woba_daypart"))
+                                     else round(float(g[f"{side}_woba_daypart"]), 3)),
+                    "bp_r9_14": (None if pd.isna(g.get(f"{side}_bp_r9_14"))
+                                 else round(float(g[f"{side}_bp_r9_14"]), 2)),
+                    "team": g[f"{side}_team_zh"],
+                } for side in ("away", "home")},
             "mu_home": round(float(mu_h[gi]), 2), "mu_away": round(float(mu_a[gi]), 2),
             "mu_total": round(float(mu_h[gi] + mu_a[gi]), 2),
             "markets": [],

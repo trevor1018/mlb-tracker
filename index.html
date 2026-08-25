@@ -364,11 +364,58 @@ function SlateView({A}){
     </Card>)}
 
     <div style={{fontSize:13,fontWeight:700,margin:"18px 0 8px"}}>逐場總覽（{games.length}）</div>
-    {games.map(g=><GameSignalCard key={g.pk} g={g}/>)}
+    {games.map(g=><GameSignalCard key={g.pk} g={g} teams={A.teams}/>)}
   </div>;
 }
 
-function GameSignalCard({g}){
+const PROFILE_ZH={FB:"速球型",BRK:"變化球型",OFF:"慢速球型",BAL:"均衡型"};
+
+function MatchupPanel({g,teams}){
+  const md=g.matchup_detail;
+  if(!md)return null;
+  const row=(side,label)=>{
+    const d=md[side];
+    if(!d)return null;
+    const oppSide=side==="away"?"home":"away";
+    const oppSp=md[oppSide]||{};
+    // 對手先發慣用手對應到我隊的聯盟排名
+    const tid=Object.keys(teams||{}).find(k=>teams[k].zh===d.team);
+    const t=tid?teams[tid]:null;
+    const rank=t&&oppSp.sp_hand?(oppSp.sp_hand==="L"?t.ranks?.bat_vsL_woba:t.ranks?.bat_vsR_woba):null;
+    return<div style={{padding:"7px 0",borderTop:"1px solid "+C.bd}}>
+      <div style={{fontSize:12,fontWeight:700,marginBottom:3}}>{d.team}（{label}）</div>
+      <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"2px 8px",fontSize:11}}>
+        <div style={{color:C.m}}>先發</div>
+        <div>{d.sp_name||"未公布"}
+          {d.sp_hand?`・${d.sp_hand}投`:""}
+          {d.sp_profile?`・${PROFILE_ZH[d.sp_profile]||d.sp_profile}`:""}
+          {d.sp_r9!=null?`・R/9 ${d.sp_r9}`:""}
+          {d.sp_xwoba!=null?`・被打 xwOBA ${d.sp_xwoba}`:""}</div>
+        <div style={{color:C.m}}>先發對左/右打</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace"}}>
+          {d.sp_woba_vsL!=null?d.sp_woba_vsL:"—"} / {d.sp_woba_vsR!=null?d.sp_woba_vsR:"—"}</div>
+        <div style={{color:C.m}}>打線對「對手先發手別」</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",
+          color:(d.bat_vs_opp_hand||0)>=0.34?C.g:(d.bat_vs_opp_hand||1)<=0.305?C.r:C.t}}>
+          {d.bat_vs_opp_hand!=null?d.bat_vs_opp_hand:"—"}
+          {rank?`（聯盟#${rank}）`:""}</div>
+        <div style={{color:C.m}}>打線對「對手次要球種」</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace"}}>
+          {d.bat_vs_opp_2nd!=null?d.bat_vs_opp_2nd:"—"}</div>
+        <div style={{color:C.m}}>該時段打擊 / 牛棚14天R9</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace"}}>
+          {d.woba_daypart!=null?d.woba_daypart:"—"} / {d.bp_r9_14!=null?d.bp_r9_14:"—"}</div>
+      </div>
+    </div>;
+  };
+  return<div style={{marginTop:8}}>
+    <Muted style={{fontWeight:700,color:C.t,marginBottom:2}}>對位速查</Muted>
+    {row("away","客")}
+    {row("home","主")}
+  </div>;
+}
+
+function GameSignalCard({g,teams}){
   const[open,setOpen]=useState(false);
   const top=g.markets?.[0];
   return<Card style={{marginBottom:8,padding:12}}>
@@ -401,6 +448,7 @@ function GameSignalCard({g}){
             color:(m.edge||0)>=1.11?C.g:(m.edge||0)>=1.05?C.acc:C.m}}>{m.edge?m.edge.toFixed(2):"—"}</div>
         </React.Fragment>)}
       </div>
+      <MatchupPanel g={g} teams={teams}/>
       {g.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
         <Muted style={{fontWeight:700,color:C.t,marginBottom:4}}>觸發的全場條件</Muted>
         {g.conditions.map((c,i)=><Muted key={i}>

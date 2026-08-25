@@ -142,6 +142,7 @@ def main():
                 "mu_home": g.get("mu_home"), "mu_away": g.get("mu_away"),
                 "mu_total": g.get("mu_total"),
                 "markets": g["markets"][:14],
+                "matchup_detail": g.get("matchup_detail"),
                 "conditions": g.get("conditions", [])[:4],
             } for g in SL["games"]],
         }
