@@ -423,8 +423,10 @@ function SlateView({A,logBet}){
       </div>
       {p.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
         {p.conditions.map((c,k)=><Muted key={k} style={{marginBottom:3}}>
-          <span style={{color:rateColor(c.rate),fontWeight:600}}>{pctS(c.rate,0)}</span>
-          {" "}({c.n} 場・Tier {c.tier})　{c.label}
+          <span style={{color:c.tier==="跨季"?C.g:rateColor(c.rate),fontWeight:600}}>
+            {pctS(c.rate,0)}</span>
+          {c.lift?<span style={{color:c.lift>=1.11?C.g:C.d}}> lift {c.lift.toFixed(2)}</span>:null}
+          {" "}({c.n} 場・{c.tier==="跨季"?<b style={{color:C.g}}>跨季驗證</b>:`Tier ${c.tier}`})　{c.label}
         </Muted>)}
       </div>}
       <OddsBox pick={p} odds={oddsMap[keyOf(p)]} setOdds={v=>setOdds(keyOf(p),v)}
@@ -522,7 +524,10 @@ function GameSignalCard({g,teams}){
       {g.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
         <Muted style={{fontWeight:700,color:C.t,marginBottom:4}}>觸發的全場條件</Muted>
         {g.conditions.map((c,i)=><Muted key={i}>
-          <span style={{color:rateColor(c.rate),fontWeight:600}}>{pctS(c.rate,0)}</span>
+          <span style={{color:c.tier==="跨季"?C.g:rateColor(c.rate),fontWeight:600}}>
+            {pctS(c.rate,0)}</span>
+          {c.lift?<span style={{color:c.lift>=1.11?C.g:C.d}}> lift {c.lift.toFixed(2)}</span>:null}
+          {" "}{c.tier==="跨季"?<b style={{color:C.g}}>[跨季驗證]</b>:null}
           {" "}{c.market_zh}・{c.label}</Muted>)}
       </div>}
     </div>}

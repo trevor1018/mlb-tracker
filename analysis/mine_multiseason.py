@@ -158,9 +158,11 @@ def run(kind, markets, seasons_train, season_test, args, tag):
     season_masks = {s: (pooled["season"] == s).to_numpy()
                     for s in sorted(set(seasons_train) | {season_test})}
     per_season = {}
+    season_base = {}
     for s, sm in season_masks.items():
         h_s, n_s = counts(masks, Y, sm)
         per_season[s] = (h_s / np.maximum(n_s[:, None], 1), n_s)
+        season_base[s] = Y[sm].mean(axis=0)
 
     rows = []
     pv = stats.binom.sf(np.maximum(h_tr[ci, mi] - 1, 0), n_tr[ci], base_tr[mi])
@@ -184,18 +186,27 @@ def run(kind, markets, seasons_train, season_test, args, tag):
             "chance_p95": round(float(chance[m]), 4),
             "beats_chance": bool(r_tr[c, m] > chance[m]),
             "by_season": {str(s): {"rate": round(float(per_season[s][0][c, m]), 3),
-                                   "n": int(per_season[s][1][c])}
+                                   "n": int(per_season[s][1][c]),
+                                   "base": round(float(season_base[s][m]), 3),
+                                   "lift": round(float(per_season[s][0][c, m]
+                                                       / max(season_base[s][m], 1e-9)), 3)}
                           for s in season_masks},
+            "train_lift": round(float(r_tr[c, m] / max(base_tr[m], 1e-9)), 4),
+            "test_lift": round(float(r_te[c, m] / max(base_te[m], 1e-9)), 4),
             "be_odds": round(1 / max(float(r_te[c, m]), 1e-6), 3),
         })
-    # 通關標準：訓練期顯著 + 勝過運氣線 + 測試期仍 ≥ target-0.05 + 每季都不崩
+    # 通關標準（改用 lift，因為絕對命中率會被高基準盤口騙）：
+    #   訓練期顯著 + 勝過運氣線 + 測試季 lift ≥ 1.11（打得過台彩抽水）
+    #   + 每一季 lift 都 ≥ 1.05（沒有哪一年崩掉）
     for r in rows:
-        seas = [v["rate"] for v in r["by_season"].values() if v["n"] >= 12]
-        r["min_season_rate"] = round(min(seas), 3) if seas else None
+        seas = [v["lift"] for v in r["by_season"].values() if v["n"] >= 12]
+        r["min_season_lift"] = round(min(seas), 3) if seas else None
+        r["min_season_rate"] = round(min(v["rate"] for v in r["by_season"].values()
+                                         if v["n"] >= 12), 3) if seas else None
         r["holds"] = bool(r["q"] < 0.05 and r["beats_chance"]
-                          and r["test_rate"] >= args.target - 0.05
-                          and (r["min_season_rate"] or 0) >= args.target - 0.12)
-    rows.sort(key=lambda r: (-r["holds"], -min(r["train_rate"], r["test_rate"])))
+                          and r["test_lift"] >= args.min_test_lift
+                          and (r["min_season_lift"] or 0) >= args.min_season_lift)
+    rows.sort(key=lambda r: (-r["holds"], -min(r["train_lift"], r["test_lift"])))
     holds = [r for r in rows if r["holds"]]
     # 衰減統計：訓練期高命中的條件，到了測試季平均剩多少
     if rows:
@@ -231,10 +242,13 @@ def run(kind, markets, seasons_train, season_test, args, tag):
         decay = None
     log(f"[{tag}] 訓練+測試都撐住的條件：{len(holds)} 組（候選 {len(rows)}）")
     for r in holds[:12]:
-        by = " ".join(f"{k}:{v['rate']:.0%}" for k, v in r["by_season"].items())
-        log(f"  {r['market_zh']:<18} 訓練 {r['train_rate']:.0%}({r['train_n']}) "
-            f"→ {r['test_n']} 場測試 {r['test_rate']:.0%} | 各季 {by} "
-            f"← {r['label'][:56]}")
+        by = " ".join(f"{k}:{v['rate']:.0%}(lift {v['lift']:.2f})"
+                      for k, v in r["by_season"].items())
+        log(f"  {r['market_zh']:<18} 訓練 {r['train_rate']:.0%}/lift {r['train_lift']:.2f} "
+            f"({r['train_n']}) → 測試 {r['test_rate']:.0%}/lift {r['test_lift']:.2f} "
+            f"({r['test_n']} 場)")
+        log(f"      各季 {by}")
+        log(f"      條件：{r['label'][:78]}")
     return {"tag": tag, "train_seasons": seasons_train, "test_season": season_test,
             "candidates": len(rows), "holds": len(holds), "decay": decay,
             "rows": holds[:120] + [r for r in rows if not r["holds"]][:60],
@@ -251,6 +265,8 @@ def main():
     ap.add_argument("--target", type=float, default=0.72)
     ap.add_argument("--depth", type=int, default=3)
     ap.add_argument("--perm-iters", type=int, default=20)
+    ap.add_argument("--min-test-lift", type=float, default=1.11)
+    ap.add_argument("--min-season-lift", type=float, default=1.05)
     args = ap.parse_args()
     train = [int(x) for x in args.train.split(",") if x.strip()]
 

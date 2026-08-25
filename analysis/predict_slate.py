@@ -78,7 +78,9 @@ def fired_conditions(fut, kind, hist, conds, limit=8):
             if len(out[i]) < limit:
                 out[i].append({"market": c["market"], "market_zh": c["market_zh"],
                                "label": c["label"], "rate": c["rate"], "n": c["n"],
-                               "base": c["base"], "tier": c.get("tier", "?")})
+                               "base": c["base"], "tier": c.get("tier", "?"),
+                               "lift": c.get("lift") or (round(c["rate"] / c["base"], 3)
+                                                         if c.get("base") else None)})
     return out
 
 
@@ -147,6 +149,22 @@ def main():
         g_conds = C["game"]["tierA"] + C["game"]["tierB"]
     except Exception:
         tg_conds, g_conds = [], []
+    # 跨季驗證存活的條件標成 tier "跨季"（最值得看的一批）
+    try:
+        MS = jload(f"{OUTPUT}/multiseason.json")
+        for key, bucket in (("teamgame", tg_conds), ("game", g_conds)):
+            for r in (MS.get(key) or {}).get("rows", []):
+                if not r.get("holds"):
+                    continue
+                bucket.insert(0, {"market": r["market"], "market_zh": r["market_zh"],
+                                  "label": r["label"], "rate": r["test_rate"],
+                                  "n": r["test_n"], "base": r["test_base"],
+                                  "tier": "跨季", "pred_names": r.get("pred_names", []),
+                                  "be_odds": r["be_odds"], "lift": r["test_lift"]})
+        log(f"納入跨季存活條件：隊伍 {sum(1 for c in tg_conds if c.get('tier')=='跨季')}、"
+            f"全場 {sum(1 for c in g_conds if c.get('tier')=='跨季')}")
+    except Exception as e:
+        log(f"讀不到 multiseason.json（{e}）")
     tg_fired = fired_conditions(pend_tg, "tg", tg, tg_conds) if tg_conds else [[]] * len(pend_tg)
     g_fired = fired_conditions(pend_g, "g", gd, g_conds) if g_conds else [[]] * len(pend_g)
     tg_pos = {(r["pk"], r["team"]): i for i, (_, r) in enumerate(pend_tg.iterrows())}

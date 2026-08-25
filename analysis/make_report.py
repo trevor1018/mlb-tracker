@@ -290,74 +290,28 @@ def main():
                       + ("，等於資訊完全消失。" if dec.get("mean_test_lift", 0) < 1.02
                          else "。"), ""]
             if holds:
-                L += [table(["玩法", "條件", "訓練期", f"{MS['test_season']} 測試",
-                             "各季命中率", "保本賠率"],
-                            [[r["market_zh"], r["label"][:52],
-                              f"{r['train_rate']:.0%}（{r['train_n']}）",
-                              f"{r['test_rate']:.0%}（{r['test_n']}）",
-                              " / ".join(f"{k}:{v['rate']:.0%}" for k, v in r["by_season"].items()),
+                L += [table(["玩法", "條件", "訓練期 lift", f"{MS['test_season']} 測試 lift",
+                             "測試場數", "各季 lift", "保本賠率"],
+                            [[r["market_zh"], r["label"][:50],
+                              f"{r['train_lift']:.2f}（{r['train_rate']:.0%}）",
+                              f"**{r['test_lift']:.2f}**（{r['test_rate']:.0%}）",
+                              r["test_n"],
+                              " / ".join(f"{k}:{v['lift']:.2f}" for k, v in r["by_season"].items()),
                               f"{r['be_odds']:.2f}"] for r in holds[:15]]), ""]
-
-    if OR:
-        pc = OR.get("park_control") or {}
-        L += ["## 5.7 球場校正：那個「大分優勢」是真的嗎", "",
-              "上一節的假設賠率用「該盤口線的聯盟平均命中率」定價。"
-              "但莊家不是笨蛋 —— Coors Field 場均 11.3 分、T-Mobile 7.7 分，"
-              "盤口線與賠率一定會反映球場。所以這裡改用**該球場自己的歷史大分率**"
-              "當基準重算一次：", ""]
-        if pc:
-            L += [table(["盤口", "規則", "場數", "命中率", "對聯盟基準 lift", "ROI",
-                         "對球場基準 lift", "ROI（球場定價）"],
-                        [[line, v["rule"], v["n"], f_pct(v["hit"], 1),
-                          f"{v['lift_vs_league']:.3f}", f_pct(v["roi_league_pricing"]),
-                          f"{v['lift_vs_park']:.3f}", f_pct(v["roi_park_pricing"])]
-                         for line, v in pc.items()]), "",
-                  "**優勢大半來自球場**：大分 8.5 的 lift 從 1.31 掉到 1.10、"
-                  "ROI 從 +18.3% 變成 −0.7%；大分 9.5 從 +12.7% 變 −1.1%。"
-                  "換句話說，模型抓到的主要是「這個球場容易得分」——"
-                  "而那是莊家最不可能漏掉的資訊。", "",
-                  "唯一在球場校正後還留下一點東西的是大分 10.5（lift 1.16、ROI +4.4%，"
-                  "但只有 47 場，區間一定跨零）。", ""]
-        if OR.get("by_park"):
-            L += ["**依球場得分環境（對聯盟基準）**", "",
-                  table(["球場類型"] + [f"大分 {k}" for k in OR["lines"]],
-                        [[name] + [f"{sub.get(k, {}).get('rate', 0) * 100:.0f}%"
-                                   f"（lift {sub.get(k, {}).get('lift', 0):.2f}）"
-                                   for k in OR["lines"]]
-                         for name, sub in OR["by_park"].items()]), ""]
-        rec = OR.get("recommended") or []
-        if rec:
-            L += ["**可手動套用的查表（未做球場校正，看的時候請自行打折）**", "",
-                  "用法：看到台彩盤口線，算出「模型預估總分 − 盤口線」，查下表。", "",
-                  table(["盤口", "μ−線區間", "場數", "命中率", "lift", "假設賠率", "ROI"],
-                        [[r["line"], r["bucket"], r["n"], f_pct(r["rate"], 1),
-                          f"{r['lift']:.2f}", r["assumed_odds"], f_pct(r["roi"])]
-                         for r in rec]), ""]
-
-    if MP:
-        L += ["## 5.8 市場代理測試：我們知道市場不知道的事嗎", "",
-              "沒有真實賠率時，最接近真相的做法是自己造一個「莊家代理」：",
-              f"只用 {len(MP['proxy_cols'])} 個莊家一定會定價的欄位 —— "
-              f"`{'`、`'.join(MP['proxy_cols'])}`。", "",
-              f"| 指標 | 完整模型（{MP['n_full_cols']} 欄） | 代理模型（{len(MP['proxy_cols'])} 欄） |",
-              "|---|---|---|",
-              f"| 樣本外單邊得分 MAE | {MP['mae']['full']} | **{MP['mae']['proxy']}** |",
-              f"| logloss 有進步的盤口 | {MP['markets_improved']} / {MP['markets_total']} | — |",
-              f"| 平均 logloss 進步 | {MP['logloss_gain_mean']:+.5f} | — |", "",
-              f"**代理模型反而略勝**。也就是說：Statcast 分項、對左右投/球種對位、"
-              f"牛棚被打 wOBA、近期滾動、球速變化這些東西加起來，"
-              f"沒有提供「球場 + 先發 R/9 + 球隊得失分」以外的預測資訊。", "",
-              f"用代理機率當公正賠率（× 返還率 {MP['payout']:.0%}）、只在完整模型認為有 "
-              f"{MP['edge_threshold']} 倍 edge 時下注：{MP['overall_bets']} 注、"
-              f"ROI **{f_pct(MP['overall_roi'])}**。", ""]
-        good = [m for m in MP["markets"] if m.get("roi", -1) > 0]
-        if good:
-            L += ["少數為正的盤口（樣本小，且整體為負，很可能是雜訊）：", "",
-                  table(["盤口", "注數", "命中率", "平均賠率", "ROI", "logloss 進步", "AUC 進步"],
-                        [[m["market"], m["bets"], f_pct(m["hit"], 1), m["avg_odds"],
-                          f_pct(m["roi"]), f"{m['logloss_gain']:+.5f}",
-                          f"{m['auc_gain']:+.4f}"] for m in good[:8]]), ""]
-        L += [f"> {MP['note']}", ""]
+        L += ["**怎麼讀這些倖存者**", "",
+              "通關標準是 lift（命中率 ÷ 該季基準率）而不是絕對命中率 —— "
+              "因為「受讓 2.5」這種基準率本來就 73% 的盤，絕對命中率 71% 看起來漂亮，"
+              "實際上是負優勢。要求：訓練期顯著、勝過運氣線、"
+              "測試季 lift ≥ 1.11（打得過台彩抽水）、每一季 lift ≥ 1.05。", "",
+              "**但仍然要打折看**：",
+              "1. 測試樣本只有 24-67 場，信賴區間很寬。",
+              "2. 有些條件靠「球場得分環境」——那是莊家一定會定價的東西，"
+              "lift 是相對聯盟平均算的，所以會高估。",
+              "3. 機制比較乾淨的是這幾條：客隊打線正熱 × 主隊先發該時段被打高（大分）、"
+              "主隊先發揮空率低 × 打者球場（前5局大分）、"
+              "主隊先發強 × 主隊打線對右投弱（小分 10.5）。", "",
+              "**建議用法**：當觀察名單，用「紀錄」tab 記下真實賠率小額實戰，"
+              "一個月後再用真實 ROI 決定要不要加碼。不要用 24-67 場的樣本放大注碼。", ""]
 
     L += ["## 6. 單隊分項亮點（Statcast）", ""]
     tm = S["teams"]
