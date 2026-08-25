@@ -342,6 +342,55 @@ function ParlayPanel({legs,oddsMap,clear,remove}){
   </Card>;
 }
 
+
+// ─── 對位分析 ───
+function MatchupTag({delta,aligned,who}){
+  if(delta==null)return null;
+  const strong=Math.abs(delta)>=0.015, mid=Math.abs(delta)>=0.006;
+  const col=aligned?(strong?C.g:mid?C.acc:C.d):(mid?C.r:C.d);
+  const bg=aligned?(strong?C.gD:mid?C.accD:"rgba(139,153,173,0.12)")
+                  :(mid?C.rD:"rgba(139,153,173,0.12)");
+  return<Tag color={col} bg={bg}>
+    對位 {delta>0?"+":""}{delta.toFixed(3)}{aligned?"（同向）":"（反向）"}
+  </Tag>;
+}
+
+function MatchupNarrative({m}){
+  if(!m)return null;
+  const sides=["away","home"].filter(k=>m[k]);
+  if(!sides.length)return null;
+  return<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
+    <Muted style={{fontWeight:700,color:C.t,marginBottom:4}}>對位分析</Muted>
+    {sides.map(k=>{
+      const d=m[k];
+      const col=d.lineup_delta>=0.015?C.g:d.lineup_delta<=-0.015?C.r:
+        d.lineup_delta>=0.006?C.acc:d.lineup_delta<=-0.006?C.r:C.d;
+      return<div key={k} style={{marginBottom:8}}>
+        <div style={{fontSize:12,fontWeight:600,marginBottom:2}}>
+          {d.bat_team} 打線 vs {d.sp_name}
+          <span style={{color:col,marginLeft:6,fontFamily:"'JetBrains Mono',monospace"}}>
+            {d.verdict}（{d.lineup_delta>0?"+":""}{d.lineup_delta.toFixed(3)}）</span>
+        </div>
+        <Muted style={{lineHeight:1.75}}>{d.narrative}</Muted>
+        {d.best?.length>0&&<div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",
+          gap:"2px 8px",fontSize:10,marginTop:4}}>
+          <div style={{color:C.m}}>打者</div><div style={{color:C.m}}>對{d.sp_hand}投</div>
+          <div style={{color:C.m}}>對{d.sp_key_group}</div><div style={{color:C.m}}>對位</div>
+          {[...d.best.slice(0,3),...(d.worst||[]).slice(0,2)].map((b,i)=><React.Fragment key={i}>
+            <div style={{color:b.delta>=0?C.t:C.d}}>{b.name}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace"}}>{numS(b.vs_hand)}
+              <span style={{color:C.m}}> ({b.vs_hand_pa})</span></div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace"}}>{numS(b.vs_group)}
+              <span style={{color:C.m}}> ({b.vs_group_pa})</span></div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",
+              color:b.delta>0?C.g:C.r}}>{b.delta>0?"+":""}{b.delta.toFixed(3)}</div>
+          </React.Fragment>)}
+        </div>}
+      </div>;
+    })}
+  </div>;
+}
+
 // ═══════════════════════════════════════
 // 推薦（未開打場次）— 以 edge = 機率/基準率 排序
 // ═══════════════════════════════════════
@@ -356,13 +405,27 @@ function SlateView({A,logBet}){
   const slate=A.slate;
   const[date,setDate]=useState(slate?.dates?.[0]||"");
   const[minEdge,setMinEdge]=useState(1.05);
+  const[sortBy,setSortBy]=useState("edge");
   const[oddsMap,setOddsMap]=useState(()=>load("odds-input",{}));
   const[legKeys,setLegKeys]=useState([]);
   const setOdds=(k,v)=>{const m={...oddsMap,[k]:v};setOddsMap(m);save("odds-input",m)};
   const keyOf=p=>`${p.pk||p.matchup}|${p.market}|${p.team||""}`;
   if(!slate)return<Card><Muted>還沒有未開打場次的預測。跑 analysis/predict_slate.py 後會出現。</Muted></Card>;
   const games=slate.games.filter(g=>!date||g.date===date);
-  const picks=slate.picks.filter(p=>(!date||p.date===date)&&(p.edge||0)>=minEdge);
+  const picksRaw=slate.picks.filter(p=>(!date||p.date===date)&&(p.edge||0)>=minEdge);
+  const alignBonus=p=>(p.matchup_aligned&&Math.abs(p.matchup_delta||0)>=0.006)?1:0;
+  const picks=[...picksRaw].sort((a,b)=>{
+    if(sortBy==="matchup"){
+      const av=(a.matchup_aligned?1:-1)*Math.abs(a.matchup_delta||0);
+      const bv=(b.matchup_aligned?1:-1)*Math.abs(b.matchup_delta||0);
+      return bv-av;
+    }
+    if(sortBy==="combo"){
+      const av=(a.edge||0)+0.08*alignBonus(a), bv=(b.edge||0)+0.08*alignBonus(b);
+      return bv-av;
+    }
+    return (b.edge||0)-(a.edge||0);
+  });
   return<div>
     <Card style={{marginBottom:12}}>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
@@ -372,6 +435,12 @@ function SlateView({A,logBet}){
       <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
         <Muted>edge 門檻</Muted>
         {[1.0,1.05,1.11,1.2].map(v=><Pill key={v} small sel={minEdge===v} onClick={()=>setMinEdge(v)}>{v.toFixed(2)}</Pill>)}
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginTop:8}}>
+        <Muted>排序</Muted>
+        <Pill small sel={sortBy==="edge"} onClick={()=>setSortBy("edge")}>依 edge</Pill>
+        <Pill small sel={sortBy==="matchup"} onClick={()=>setSortBy("matchup")}>依對位</Pill>
+        <Pill small sel={sortBy==="combo"} onClick={()=>setSortBy("combo")}>綜合</Pill>
       </div>
       {(()=>{const t=todayPT();
         const stale=slate.dates.filter(d=>d<t);
@@ -420,6 +489,7 @@ function SlateView({A,logBet}){
         {p.bt_hit!=null&&<Tag color={p.bt_roi>0?C.g:C.r} bg={p.bt_roi>0?C.gD:C.rD}>
           回測 {p.bt_n}注 命中 {pctS(p.bt_hit,0)} ROI {p.bt_roi>0?"+":""}{pctS(p.bt_roi,0)}</Tag>}
         {p.cond_support>0&&<Tag color={C.b} bg={C.bD}>條件 {p.cond_support}</Tag>}
+        <MatchupTag delta={p.matchup_delta} aligned={p.matchup_aligned} who={p.matchup_who}/>
       </div>
       {p.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
         {p.conditions.map((c,k)=><Muted key={k} style={{marginBottom:3}}>
@@ -520,6 +590,7 @@ function GameSignalCard({g,teams}){
             color:(m.edge||0)>=1.11?C.g:(m.edge||0)>=1.05?C.acc:C.m}}>{m.edge?m.edge.toFixed(2):"—"}</div>
         </React.Fragment>)}
       </div>
+      <MatchupNarrative m={g.matchup}/>
       <MatchupPanel g={g} teams={teams}/>
       {g.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
         <Muted style={{fontWeight:700,color:C.t,marginBottom:4}}>觸發的全場條件</Muted>
@@ -1169,6 +1240,38 @@ function ModelsView({A}){
         </div>}
       </Card>;
     })}
+    {A.matchup_validation&&<Card style={{marginTop:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>對位分數有沒有預測力</div>
+      <Muted style={{marginBottom:8}}>
+        用 {A.matchup_validation.fit_season} 的打者分項去預測 {A.matchup_validation.test_season}
+        的實際得分（不可能洩漏），{A.matchup_validation.n_team_games} 個 team-game。
+        原始相關 {A.matchup_validation.pearson_runs}；
+        <b style={{color:C.t}}>控制球隊強度與對手先發品質後的偏相關 {A.matchup_validation.partial_r_controlled}</b>。
+      </Muted>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",fontSize:11}}>
+          <thead><tr style={{color:C.d,textAlign:"left"}}>
+            <th style={{padding:"4px 6px"}}>雙方對位合計</th><th>場數</th>
+            <th>平均總分</th><th>大分 8.5 命中</th>
+          </tr></thead>
+          <tbody>{A.matchup_validation.buckets_total.map((b,i)=>
+            <tr key={i} style={{borderTop:"1px solid "+C.bd}}>
+              <td style={{padding:"4px 6px"}}>{b.bucket}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{b.n}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{b["平均總分"]}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",
+                color:b["大分85"]>=0.5?C.g:C.d}}>{pctS(b["大分85"],1)}</td>
+            </tr>)}</tbody>
+        </table>
+      </div>
+      <Muted style={{marginTop:8}}>
+        方向是對的（對位越好、總分越高、大分命中率越高），但幅度很小。
+        <b style={{color:C.t}}>把它當特徵加進模型：MAE +0.002（0.2σ）、大小分 AUC +0.001 —— 完全沒改善</b>，
+        因為模型既有的「球隊對左右投 / 對球種 wOBA」已經吃掉了這個訊號。
+        所以對位分析拿來判讀比賽，不要拿來取代 edge 排序。
+      </Muted>
+    </Card>}
+
     {A.market_proxy&&<Card style={{marginTop:12,borderColor:C.r}}>
       <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>市場代理測試（最尖銳的一問）</div>
       <Muted style={{marginBottom:8}}>
@@ -1351,6 +1454,11 @@ function HelpView({A}){
       <Term k="[跨季驗證] 綠字">這條件通過了 2024/2025/2026 三季驗證
         （每季 lift 都 ≥1.11）。23.8 萬組候選只有 10 組做到，是最值得看的訊號。</Term>
       <Term k="條件 N">有 N 組歷史高命中條件同時觸發。模型與條件同向才算強訊號。</Term>
+      <Term k="對位 ±0.0xx">這條打線對「這位先發的慣用手 + 主要球種」的加權表現，
+        相對聯盟平均的偏差。（同向）= 方向與這個玩法一致。
+        <b style={{color:C.t}}>實測它對預測得分的獨立貢獻很小</b>
+        （控制球隊強度後偏相關 +0.047，加進模型完全沒改善），
+        所以拿來判讀對位、不要拿來取代 edge。</Term>
     </Sec>
 
     <Sec title="決策規則（照這個做就好）">

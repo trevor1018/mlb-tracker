@@ -30,6 +30,7 @@ STEPS = [
     ("over_rule", []),
     ("market_proxy", []),
     ("predict_slate", []),
+    ("build_matchup_report", []),
     ("build_app_data", []),
     ("make_report", []),
 ]

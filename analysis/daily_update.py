@@ -79,7 +79,7 @@ def main():
     if not args.skip_mining:
         steps += ["mine_conditions", "mine_team_conditions", "ablation"]
     steps += ["model_markets", "model_runs", "backtest", "over_rule", "market_proxy",
-              "predict_slate", "build_app_data", "make_report"]
+              "predict_slate", "build_matchup_report", "build_app_data", "make_report"]
     for s in steps:
         run(s, ["--importance"] if s == "model_markets" else (), env=env)
 

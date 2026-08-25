@@ -63,6 +63,10 @@ def main():
     except Exception:
         BT = None
     try:
+        MV = jload(f"{OUTPUT}/matchup_validation.json")
+    except Exception:
+        MV = None
+    try:
         MP = jload(f"{OUTPUT}/market_proxy.json")
     except Exception:
         MP = None
@@ -159,6 +163,8 @@ def main():
                 "mu_total": g.get("mu_total"),
                 "markets": g["markets"][:14],
                 "matchup_detail": g.get("matchup_detail"),
+                "matchup": g.get("matchup"),
+                "matchup_score": g.get("matchup_score"),
                 "conditions": g.get("conditions", [])[:4],
             } for g in SL["games"]],
         }
@@ -193,6 +199,16 @@ def main():
             "parlays": {k: {kk: vv for kk, vv in v.items() if kk != "log"}
                         for k, v in BT["parlays"].items()},
             "parlay_log": {k: v.get("log", [])[-6:] for k, v in BT["parlays"].items()},
+        },
+        "matchup_validation": None if not MV else {
+            "fit_season": MV["fit_season"], "test_season": MV["test_season"],
+            "n_team_games": MV["n_team_games"],
+            "pearson_runs": MV["pearson_runs"],
+            "partial_r_controlled": MV["partial_r_controlled"],
+            "buckets_runs": MV["buckets_runs"],
+            "buckets_total": MV["buckets_total"],
+            "over85_base": MV["over85_base"],
+            "note": MV["note"],
         },
         "market_proxy": None if not MP else {
             "payout": MP["payout"], "edge_threshold": MP["edge_threshold"],
