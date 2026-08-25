@@ -698,6 +698,15 @@ function TeamsView({A}){
       </Field>
     </Card>
 
+    {t.profile&&<Card style={{marginBottom:10,borderColor:C.acc}}>
+      <div style={{fontSize:15,fontWeight:700,marginBottom:6}}>{t.zh} 一句話</div>
+      <div style={{fontSize:12,color:C.t,lineHeight:1.7}}>{t.profile}</div>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>
+        {(t.strong||[]).map((x,i)=><Tag key={"s"+i} color={C.g} bg={C.gD}>{x}</Tag>)}
+        {(t.weak||[]).map((x,i)=><Tag key={"w"+i} color={C.r} bg={C.rD}>{x}</Tag>)}
+      </div>
+    </Card>}
+
     <Card style={{marginBottom:10}}>
       <div style={{fontSize:15,fontWeight:700,marginBottom:8}}>{t.zh} 聯盟排名</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>

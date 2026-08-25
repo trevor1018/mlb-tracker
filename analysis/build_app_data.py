@@ -43,6 +43,10 @@ def main():
     T = jload(f"{OUTPUT}/team_conditions.json")
     S = jload(f"{OUTPUT}/team_splits.json")
     try:
+        PROF = jload(f"{OUTPUT}/team_profiles.json")["teams"]
+    except Exception:
+        PROF = {}
+    try:
         M = jload(f"{OUTPUT}/models.json")
     except Exception:
         M = {"models": {}, "importance": {}}
@@ -116,6 +120,10 @@ def main():
                 "usage": pit.get("usage"),
             },
             "ranks": t.get("ranks", {}),
+            "profile": (PROF.get(tid) or {}).get("summary"),
+            "strong": (PROF.get(tid) or {}).get("strong", []),
+            "weak": (PROF.get(tid) or {}).get("weak", []),
+            "notes": (PROF.get(tid) or {}).get("notes", []),
             "games": tc.get("games"),
             "chance_line": tc.get("chance_max_rate_p95"),
             "chance_line_single": tc.get("chance_max_rate_p95_single"),

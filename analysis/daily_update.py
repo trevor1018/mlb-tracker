@@ -74,11 +74,12 @@ def main():
     invalidate(through, args.season)
 
     steps = ["fetch_season", "fetch_boxscores", "fetch_people", "fetch_savant",
-             "build_gamelogs", "build_splits", "build_dataset", "build_player_splits"]
+             "build_gamelogs", "build_splits", "build_dataset", "build_player_splits",
+             "team_profiles"]
     if not args.skip_mining:
         steps += ["mine_conditions", "mine_team_conditions", "ablation"]
-    steps += ["model_markets", "model_runs", "backtest", "predict_slate",
-              "build_app_data", "make_report"]
+    steps += ["model_markets", "model_runs", "backtest", "over_rule", "market_proxy",
+              "predict_slate", "build_app_data", "make_report"]
     for s in steps:
         run(s, ["--importance"] if s == "model_markets" else (), env=env)
 
