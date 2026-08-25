@@ -12,7 +12,7 @@ import sys
 
 import pandas as pd
 
-from common import DATA, fetch_text, log
+from common import DATA, DATA_THROUGH, SEASON, SEASON_START, fetch_text, log
 
 SAVANT = ("https://baseballsavant.mlb.com/statcast_search/csv?all=true"
           "&hfSea={season}%7C&hfGT=R%7C&player_type=pitcher"
@@ -66,9 +66,9 @@ def get_window(season, start, end):
 
 
 def main():
-    season = int(sys.argv[1]) if len(sys.argv) > 1 else 2026
-    start = sys.argv[2] if len(sys.argv) > 2 else f"{season}-03-20"
-    end = sys.argv[3] if len(sys.argv) > 3 else "2026-08-24"
+    season = int(sys.argv[1]) if len(sys.argv) > 1 else SEASON
+    start = sys.argv[2] if len(sys.argv) > 2 else SEASON_START
+    end = sys.argv[3] if len(sys.argv) > 3 else DATA_THROUGH
     wins = windows(start, end)
     log(f"Savant 逐球資料：{len(wins)} 個窗口 {start}~{end}")
     frames = []

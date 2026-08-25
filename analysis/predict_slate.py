@@ -199,7 +199,8 @@ def main():
                     if market.startswith(("home_", "away_")) else None
                 if key and key in tg_pos:
                     tgc = [c for c in tg_fired[tg_pos[key]] if c["market"] in market]
-                picks.append({"date": g["date"], "matchup": f"{a_zh} @ {h_zh}",
+                picks.append({"pk": int(pk), "date": g["date"],
+                              "matchup": f"{a_zh} @ {h_zh}",
                               **row, "conditions": tgc,
                               "cond_support": len(tgc)})
         entry["markets"].sort(key=lambda r: -(r["edge"] or 0))

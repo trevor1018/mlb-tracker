@@ -8,7 +8,8 @@ import calendar
 import datetime as dt
 import sys
 
-from common import API, DATA_THROUGH, SEASON, cached_json, fetch_json, jdump, log, TEAM_ZH
+from common import (API, DATA_THROUGH, SEASON, SEASON_START, cached_json, fetch_json,
+                    jdump, log, TEAM_ZH)
 
 HYDRATE = "linescore,probablePitcher,decisions,weather,venue,seriesStatus,flags,game(content(summary))"
 
@@ -64,14 +65,14 @@ def parse_game(g, date):
 
 
 def main():
-    start = f"{SEASON}-02-20"
+    start = SEASON_START
     end = DATA_THROUGH
     future_end = (dt.date.fromisoformat(DATA_THROUGH) + dt.timedelta(days=4)).isoformat()
     log(f"抓取賽程 {start} → {end}")
     # 一次抓一個月，避開單一回應過大
     months = []
     y = SEASON
-    for m in range(2, 13):
+    for m in range(3, 13):
         s = f"{y}-{m:02d}-01"
         e = f"{y}-{m:02d}-{calendar.monthrange(y, m)[1]:02d}"
         if s > end:

@@ -93,6 +93,39 @@ const pctS=(v,nd=1)=>v==null?"—":(v*100).toFixed(nd)+"%";
 const numS=(v,nd=3)=>v==null?"—":Number(v).toFixed(nd);
 const rateColor=v=>v==null?C.d:(v>=0.75?C.g:v>=0.65?C.acc:C.d);
 
+
+// ─── 串關數學 ───
+const nCk=(n,k)=>{if(k<0||k>n)return 0;let r=1;for(let i=0;i<k;i++)r=r*(n-i)/(i+1);return Math.round(r)};
+// 各腳機率獨立（不同場比賽）→ 恰好 j 腳命中的機率分布
+function hitDist(ps){
+  let dist=[1];
+  for(const p of ps){
+    const nd=new Array(dist.length+1).fill(0);
+    for(let i=0;i<dist.length;i++){nd[i]+=dist[i]*(1-p);nd[i+1]+=dist[i]*p}
+    dist=nd;
+  }
+  return dist; // dist[j] = 恰好 j 腳命中
+}
+// C(n,k) 買法：每張票 stake，總成本 = C(n,k)*stake
+// 恰好 j 腳命中時，中獎票數 = C(j,k)
+function comboExpectedReturn(ps,odds,k,stake){
+  const n=ps.length;
+  const dist=hitDist(ps);
+  const tickets=nCk(n,k);
+  const cost=tickets*stake;
+  // 假設各腳賠率相近，用幾何平均近似單張賠率；若賠率齊全就用實際平均
+  const valid=odds.filter(o=>o>1);
+  const geo=valid.length?Math.pow(valid.reduce((a,b)=>a*b,1),1/valid.length):null;
+  let expRet=0,pAny=0;
+  for(let j=k;j<=n;j++){
+    const winners=nCk(j,k);
+    if(geo)expRet+=dist[j]*winners*stake*Math.pow(geo,k);
+    pAny+=dist[j];
+  }
+  return {tickets,cost,expRet:geo?expRet:null,pAny,dist,geo,
+    beOdds:geo?null:null};
+}
+
 // ─── Firestore ───
 function userDoc(uid,col){return db.collection("users").doc(uid).collection(col)}
 
@@ -158,6 +191,100 @@ function useAnalysis(){
   return{data,err,loading,reload};
 }
 
+
+// ─── 賠率輸入 → 期望值 ───
+function OddsBox({pick,odds,setOdds,picked,toggle}){
+  const o=parseFloat(odds||"");
+  const ev=o>1?pick.p*o-1:null;
+  return<div style={{display:"flex",gap:6,alignItems:"center",marginTop:8,flexWrap:"wrap"}}>
+    <span style={{fontSize:11,color:C.d}}>台彩賠率</span>
+    <input value={odds||""} onChange={e=>setOdds(e.target.value)} placeholder={String(pick.be_odds)}
+      inputMode="decimal"
+      style={{width:70,padding:"5px 8px",borderRadius:6,border:`1px solid ${C.bd}`,
+        background:C.bg,color:C.t,fontSize:12,fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/>
+    <span style={{fontSize:11,color:C.m}}>保本 {pick.be_odds}</span>
+    {ev!=null&&<Tag color={ev>0?C.g:C.r} bg={ev>0?C.gD:C.rD}>
+      期望值 {ev>0?"+":""}{(ev*100).toFixed(1)}%</Tag>}
+    <button onClick={toggle} style={{marginLeft:"auto",padding:"4px 10px",borderRadius:14,fontSize:11,
+      cursor:"pointer",fontWeight:600,border:picked?`1px solid ${C.acc}`:`1px solid ${C.bd}`,
+      background:picked?C.accD:C.bg,color:picked?C.acc:C.d,outline:"none"}}>
+      {picked?"已加入組合":"加入組合"}</button>
+  </div>;
+}
+
+// ─── 串關試算 ───
+function ParlayPanel({legs,oddsMap,clear,remove}){
+  const[stake,setStake]=useState("100");
+  if(legs.length===0)return null;
+  const ps=legs.map(l=>l.p);
+  const st=parseFloat(stake)||100;
+  const dist=hitDist(ps);
+  const allHit=ps.reduce((a,b)=>a*b,1);
+  const beProd=1/allHit;
+  const oddsArr=legs.map(l=>parseFloat(oddsMap[l.key]||"")||0);
+  const haveAll=oddsArr.every(o=>o>1);
+  const prodOdds=haveAll?oddsArr.reduce((a,b)=>a*b,1):null;
+  const modes=[];
+  if(legs.length>=2)modes.push({k:legs.length,label:`全${legs.length}關`});
+  if(legs.length>=3)modes.push({k:legs.length-1,label:`${legs.length}選${legs.length-1}`});
+  if(legs.length>=4)modes.push({k:legs.length-2,label:`${legs.length}選${legs.length-2}`});
+  return<Card style={{marginBottom:12,borderColor:C.acc}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+      <div style={{fontSize:13,fontWeight:700,color:C.acc}}>串關試算（{legs.length} 腳）</div>
+      <button onClick={clear} style={{background:"none",border:"none",color:C.d,fontSize:11,cursor:"pointer"}}>清空</button>
+    </div>
+    {legs.map((l,i)=><div key={l.key} style={{display:"flex",justifyContent:"space-between",gap:8,
+      padding:"5px 0",borderTop:i?`1px solid ${C.bd}`:"none",fontSize:12}}>
+      <div style={{minWidth:0}}>
+        <div style={{fontWeight:600}}>{l.matchup}</div>
+        <Muted>{l.market_zh}{l.team?`（${l.team}）`:""}・機率 {pctS(l.p)}
+          {oddsMap[l.key]?`・賠率 ${oddsMap[l.key]}`:"・未填賠率"}</Muted>
+      </div>
+      <button onClick={()=>remove(l.key)} style={{background:"none",border:"none",color:C.r,fontSize:11,cursor:"pointer"}}>移除</button>
+    </div>)}
+    <div style={{display:"flex",gap:8,alignItems:"center",margin:"10px 0"}}>
+      <span style={{fontSize:11,color:C.d}}>每張注金</span>
+      <input value={stake} onChange={e=>setStake(e.target.value)} inputMode="numeric"
+        style={{width:70,padding:"5px 8px",borderRadius:6,border:`1px solid ${C.bd}`,
+          background:C.bg,color:C.t,fontSize:12,fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/>
+    </div>
+    <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",fontSize:11}}>
+        <thead><tr style={{color:C.d,textAlign:"left"}}>
+          <th style={{padding:"4px 6px"}}>玩法</th><th>票數</th><th>成本</th>
+          <th>至少中一張</th><th>期望回收</th><th>期望值</th>
+        </tr></thead>
+        <tbody>{modes.map(m=>{
+          const r=comboExpectedReturn(ps,oddsArr,m.k,st);
+          const ev=r.expRet!=null?r.expRet/r.cost-1:null;
+          return<tr key={m.k} style={{borderTop:`1px solid ${C.bd}`}}>
+            <td style={{padding:"4px 6px"}}>{m.label}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{r.tickets}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{r.cost}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{pctS(r.pAny,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>
+              {r.expRet==null?"填賠率":Math.round(r.expRet)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:ev==null?C.m:(ev>0?C.g:C.r)}}>
+              {ev==null?"—":(ev>0?"+":"")+(ev*100).toFixed(1)+"%"}</td>
+          </tr>;
+        })}</tbody>
+      </table>
+    </div>
+    {(()=>{const pks=legs.map(l=>l.pk).filter(Boolean);
+      const dup=pks.length!==new Set(pks).size;
+      return dup?<div style={{marginTop:8,padding:8,borderRadius:6,background:C.rD,
+        color:C.r,fontSize:11,fontWeight:600}}>
+        ⚠ 有兩腳來自同一場比賽 —— 台彩規定同場不同玩法不能放同一單，請移除一腳。
+      </div>:null})()}
+    <Muted style={{marginTop:8}}>
+      全{legs.length}關命中機率 {pctS(allHit,1)}，保本總賠率 {beProd.toFixed(2)}
+      {prodOdds?`；填入賠率的總賠率 ${prodOdds.toFixed(2)}`:""}。
+      機率相乘假設各腳互相獨立（不同場比賽），同一場的兩個玩法請不要放進同一單（台彩規則）。
+      「n選k」的期望回收用各腳賠率的幾何平均估算。
+    </Muted>
+  </Card>;
+}
+
 // ═══════════════════════════════════════
 // 推薦（未開打場次）— 以 edge = 機率/基準率 排序
 // ═══════════════════════════════════════
@@ -172,6 +299,10 @@ function SlateView({A}){
   const slate=A.slate;
   const[date,setDate]=useState(slate?.dates?.[0]||"");
   const[minEdge,setMinEdge]=useState(1.05);
+  const[oddsMap,setOddsMap]=useState(()=>load("odds-input",{}));
+  const[legKeys,setLegKeys]=useState([]);
+  const setOdds=(k,v)=>{const m={...oddsMap,[k]:v};setOddsMap(m);save("odds-input",m)};
+  const keyOf=p=>`${p.pk||p.matchup}|${p.market}|${p.team||""}`;
   if(!slate)return<Card><Muted>還沒有未開打場次的預測。跑 analysis/predict_slate.py 後會出現。</Muted></Card>;
   const games=slate.games.filter(g=>!date||g.date===date);
   const picks=slate.picks.filter(p=>(!date||p.date===date)&&(p.edge||0)>=minEdge);
@@ -193,6 +324,11 @@ function SlateView({A}){
       </Muted>
     </Card>
 
+    <ParlayPanel legs={legKeys.map(k=>{
+        const p=slate.picks.find(x=>`${x.pk||x.matchup}|${x.market}|${x.team||""}`===k);
+        return p?{...p,key:k}:null;}).filter(Boolean)}
+      oddsMap={oddsMap} clear={()=>setLegKeys([])}
+      remove={k=>setLegKeys(ks=>ks.filter(x=>x!==k))}/>
     <div style={{fontSize:13,fontWeight:700,margin:"14px 0 8px"}}>edge 排行（{picks.length}）</div>
     {picks.length===0&&<Card><Muted>這個門檻下沒有候選。</Muted></Card>}
     {picks.slice(0,40).map((p,i)=><Card key={i} style={{marginBottom:8,padding:12}}>
@@ -222,6 +358,9 @@ function SlateView({A}){
           {" "}({c.n} 場・Tier {c.tier})　{c.label}
         </Muted>)}
       </div>}
+      <OddsBox pick={p} odds={oddsMap[keyOf(p)]} setOdds={v=>setOdds(keyOf(p),v)}
+        picked={legKeys.includes(keyOf(p))}
+        toggle={()=>setLegKeys(ks=>ks.includes(keyOf(p))?ks.filter(x=>x!==keyOf(p)):[...ks,keyOf(p)].slice(0,6))}/>
     </Card>)}
 
     <div style={{fontSize:13,fontWeight:700,margin:"18px 0 8px"}}>逐場總覽（{games.length}）</div>

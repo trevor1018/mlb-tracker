@@ -11,9 +11,15 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA = os.path.join(ROOT, "data")
-CACHE = os.path.join(DATA, "cache")
-OUTPUT = os.path.join(ROOT, "output")
+
+# 用環境變數切球季：MLB_SEASON=2025 python build_dataset.py
+SEASON = int(os.environ.get("MLB_SEASON", "2026"))
+CURRENT_SEASON = 2026
+
+DATA = os.path.join(ROOT, "data", str(SEASON))     # 每季各自一個資料夾
+CACHE = os.path.join(ROOT, "data", "cache")        # HTTP 快取共用
+OUTPUT = (os.path.join(ROOT, "output") if SEASON == CURRENT_SEASON
+          else os.path.join(ROOT, "output", str(SEASON)))
 for d in (DATA, CACHE, OUTPUT):
     os.makedirs(d, exist_ok=True)
 
@@ -21,9 +27,10 @@ API = "https://statsapi.mlb.com/api/v1"
 API11 = "https://statsapi.mlb.com/api/v1.1"
 UA = "mlb-tracker/2.0 (personal research)"
 
-SEASON = 2026
-# 資料截止日：API 上最後一天有完賽資料的日期（跑 fetch_season 時會自動修正）
-DATA_THROUGH = "2026-08-24"
+# 資料截止日：2026 是進行中的球季；過去球季抓到球季末
+DATA_THROUGH = os.environ.get(
+    "MLB_THROUGH", "2026-08-24" if SEASON == CURRENT_SEASON else f"{SEASON}-10-05")
+SEASON_START = os.environ.get("MLB_START", f"{SEASON}-03-15")
 
 try:  # Windows console 預設 cp950，中文 log 會亂碼
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
