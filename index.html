@@ -373,6 +373,18 @@ function SlateView({A,logBet}){
         <Muted>edge 門檻</Muted>
         {[1.0,1.05,1.11,1.2].map(v=><Pill key={v} small sel={minEdge===v} onClick={()=>setMinEdge(v)}>{v.toFixed(2)}</Pill>)}
       </div>
+      {(()=>{const t=todayPT();
+        const stale=slate.dates.filter(d=>d<t);
+        if(!stale.length)return null;
+        return<div style={{marginTop:10,padding:8,borderRadius:6,background:C.rD,
+          border:"1px solid "+C.r}}>
+          <Muted style={{color:C.t}}>
+            ⚠ {stale.join("、")} 已經開打（美西今天是 {t}）。
+            這批預測是用當時的資料算的，請跑 <span style={{fontFamily:"'JetBrains Mono',monospace"}}>
+            python analysis/daily_update.py --push</span> 更新。
+          </Muted>
+        </div>;
+      })()}
       <Muted style={{marginTop:10}}>
         引擎：{slate.engine}。<b style={{color:C.t}}>edge = 模型機率 ÷ 該玩法聯盟基準率</b>。
         台彩返還率約 {pctS(slate.payout,0)}，所以 edge 要大於 {(1/(slate.payout||0.9)).toFixed(2)} 才有正期望值 ——
