@@ -59,6 +59,10 @@ def main():
     except Exception:
         BT = None
     try:
+        OR = jload(f"{OUTPUT}/over_rule.json")
+    except Exception:
+        OR = None
+    try:
         AB = jload(f"{OUTPUT}/ablation.json")
     except Exception:
         AB = None
@@ -177,6 +181,12 @@ def main():
             "parlays": {k: {kk: vv for kk, vv in v.items() if kk != "log"}
                         for k, v in BT["parlays"].items()},
             "parlay_log": {k: v.get("log", [])[-6:] for k, v in BT["parlays"].items()},
+        },
+        "over_rule": None if not OR else {
+            "oos_range": OR["oos_range"], "payout": OR["payout"],
+            "lines": OR["lines"], "by_park": OR.get("by_park"),
+            "park_control": OR.get("park_control"), "caveat": OR.get("caveat"),
+            "recommended": OR.get("recommended", []),
         },
         "ablation": None if not AB else {
             "noise_mae_sd": AB["noise_mae_sd"], "seeds": AB["seeds"],

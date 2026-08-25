@@ -828,6 +828,67 @@ function BacktestView({A}){
       </div>
     </Card>
 
+    {A.over_rule?.park_control&&<Card style={{marginBottom:12,borderColor:C.r}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>球場校正：那個大分優勢是真的嗎</div>
+      <Muted style={{marginBottom:8}}>
+        上面的假設賠率用「該盤口線的<b style={{color:C.t}}>聯盟平均</b>命中率」定價。
+        但 Coors Field 場均 11.3 分、T-Mobile 7.7 分 —— 莊家一定會針對球場調盤口。
+        所以這裡改用<b style={{color:C.t}}>該球場自己的歷史大分率</b>當基準重算：
+      </Muted>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",fontSize:11}}>
+          <thead><tr style={{color:C.d,textAlign:"left"}}>
+            <th style={{padding:"4px 6px"}}>盤口</th><th>規則</th><th>場數</th><th>命中</th>
+            <th>對聯盟 lift</th><th>ROI</th><th>對球場 lift</th><th>ROI（球場定價）</th>
+          </tr></thead>
+          <tbody>{Object.entries(A.over_rule.park_control).map(([line,v])=>
+            <tr key={line} style={{borderTop:"1px solid "+C.bd}}>
+              <td style={{padding:"4px 6px"}}>大分 {line}</td>
+              <td style={{fontSize:10,color:C.d}}>{v.rule}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{v.n}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{pctS(v.hit,1)}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.g}}>{v.lift_vs_league.toFixed(3)}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",
+                color:v.roi_league_pricing>0?C.g:C.r}}>
+                {v.roi_league_pricing>0?"+":""}{pctS(v.roi_league_pricing,1)}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{v.lift_vs_park.toFixed(3)}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",
+                color:v.roi_park_pricing>0?C.g:C.r,fontWeight:700}}>
+                {v.roi_park_pricing>0?"+":""}{pctS(v.roi_park_pricing,1)}</td>
+            </tr>)}</tbody>
+        </table>
+      </div>
+      <Muted style={{marginTop:8}}>{A.over_rule.caveat}</Muted>
+    </Card>}
+
+    {A.over_rule?.recommended?.length>0&&<Card style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>大分查表（可手動套用）</div>
+      <Muted style={{marginBottom:8}}>
+        看到台彩盤口線，算出「模型預估總分 − 盤口線」，查下表。
+        注意：這張表<b style={{color:C.t}}>沒有做球場校正</b>，
+        高得分球場的數字要自行打折。
+      </Muted>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",fontSize:11}}>
+          <thead><tr style={{color:C.d,textAlign:"left"}}>
+            <th style={{padding:"4px 6px"}}>盤口</th><th>μ−線</th><th>場數</th>
+            <th>命中</th><th>lift</th><th>假設賠率</th><th>ROI</th>
+          </tr></thead>
+          <tbody>{A.over_rule.recommended.map((r,i)=>
+            <tr key={i} style={{borderTop:"1px solid "+C.bd}}>
+              <td style={{padding:"4px 6px"}}>大分 {r.line}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{r.bucket}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{r.n}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{pctS(r.rate,1)}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.g}}>{r.lift.toFixed(2)}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{r.assumed_odds}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",color:r.roi>0?C.g:C.r}}>
+                {r.roi>0?"+":""}{pctS(r.roi,1)}</td>
+            </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>}
+
     <Card>
       <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>串關模擬（台彩玩法）</div>
       <Muted style={{marginBottom:8}}>
@@ -1116,23 +1177,39 @@ function HomeView({A,goto}){
         {bt&&bt.roi!=null&&<Stat label="兩階段驗證 ROI"
           value={(bt.roi>0?"+":"")+pctS(bt.roi,1)} color={bt.roi>0?C.g:C.r}/>}
       </div>
-      {(()=>{const fams=A.backtest?.two_stage?.families||[];
-        const good=fams.filter(f=>f.roi_ci90&&f.roi_ci90[0]>0);
+      {(()=>{const pc=A.over_rule?.park_control;
+        const fams=A.backtest?.two_stage?.families||[];
         const bad=fams.filter(f=>f.roi_ci90&&f.roi_ci90[1]<0);
         if(!fams.length)return null;
-        return<Card style={{marginTop:12,borderColor:good.length?C.g:C.bd}}>
-          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>可下注結論</div>
-          {good.map(f=><Muted key={f.family} style={{marginBottom:3}}>
-            ✅ <b style={{color:C.g}}>{f.family}</b>：{f.bets} 注命中 {pctS(f.hit,1)}、
-            lift {f.lift.toFixed(2)}、保本返還率只要 {pctS(f.breakeven_payout,0)}
-            → 台彩 90% 返還率下 ROI {pctS(f.roi_by_payout["0.9"],1)}
-          </Muted>)}
+        return<Card style={{marginTop:12,borderColor:C.acc}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>今晚的結論（讀完再下注）</div>
+          <Muted style={{marginBottom:6}}>
+            表面上「全場大分」很香：兩階段驗證 lift 1.30、ROI +16.8%。
+            但那是拿<b style={{color:C.t}}>聯盟平均大分率</b>當基準算的。
+          </Muted>
+          {pc&&<div style={{margin:"8px 0",padding:8,borderRadius:6,
+            background:"rgba(239,68,68,0.08)",border:"1px solid "+C.r}}>
+            <Muted style={{color:C.t,fontWeight:700,marginBottom:4}}>
+              ⚠ 做了球場校正之後，優勢幾乎消失
+            </Muted>
+            {Object.entries(pc).map(([line,v])=><Muted key={line} style={{marginBottom:2}}>
+              大分 {line}：對聯盟基準 ROI <span style={{color:C.g}}>
+              {v.roi_league_pricing>0?"+":""}{pctS(v.roi_league_pricing,1)}</span>
+              {" → "}對球場基準 <span style={{color:v.roi_park_pricing>0?C.g:C.r}}>
+              {v.roi_park_pricing>0?"+":""}{pctS(v.roi_park_pricing,1)}</span>
+            </Muted>)}
+            <Muted style={{marginTop:4}}>
+              莊家一定會針對球場調盤口，所以「該球場自己的歷史大分率」才是公平的比較基準。
+              結論：<b style={{color:C.t}}>在台彩返還率下，目前沒有可靠的正期望值玩法</b>。
+            </Muted>
+          </div>}
           {bad.map(f=><Muted key={f.family} style={{marginBottom:3}}>
             ⛔ <b style={{color:C.r}}>{f.family}</b>：lift {f.lift.toFixed(2)}，
-            區間整段為負，不要用這套模型下這類盤
+            區間整段為負 —— 這類盤口確定不要碰
           </Muted>)}
           <Muted style={{marginTop:6}}>
-            這是兩階段驗證的結果（挑策略也沒偷看未來）。樣本仍小，實戰請控制注碼。
+            要突破只有一條路：接真實賠率，比較模型機率與市場隱含機率。
+            在那之前，下面的 edge 排行只是「相對聯盟平均」的參考。
           </Muted>
         </Card>;
       })()}

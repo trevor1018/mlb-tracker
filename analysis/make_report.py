@@ -57,14 +57,15 @@ def main():
     T = jload(f"{OUTPUT}/team_conditions.json")
     S = jload(f"{OUTPUT}/team_splits.json")
     loaded = {}
-    for name in ("models", "models_runs", "backtest", "slate", "ablation", "multiseason"):
+    for name in ("models", "models_runs", "backtest", "slate", "ablation",
+                 "multiseason", "over_rule"):
         try:
             loaded[name] = jload(f"{OUTPUT}/{name}.json")
         except Exception:
             loaded[name] = None
     M, MR, BT, SL = (loaded["models"], loaded["models_runs"],
                      loaded["backtest"], loaded["slate"])
-    AB, MS = loaded["ablation"], loaded["multiseason"]
+    AB, MS, OR = loaded["ablation"], loaded["multiseason"], loaded["over_rule"]
 
     nA_tg = len(C["teamgame"]["tierA"])
     nA_g = len(C["game"]["tierA"])
@@ -80,12 +81,13 @@ def main():
          f"2. **每一隊都能找到 100% 命中的條件 —— 而且那毫無意義**：單隊約 100 場樣本、"
          f"搜尋空間上萬組，運氣線本身就已經到 100%。只有 3 隊在「單一條件、樣本 ≥30 場」"
          f"的嚴格版本下勝過自己的運氣線。",
-         f"3. **可下注的結論只有一條：全場大分**。兩階段驗證（連挑策略都不准偷看未來）"
-         f"整體 ROI {f_pct(ts.get('roi'))}（台彩返還率 90%），但拆開看："
-         f"全場大分 131 注命中 69.5%、lift 1.30、保本返還率只要 77% → ROI +16.8%"
-         f"（bootstrap 90% 區間 +5.3%~+27.8%，整段都在正）；"
-         f"讓分/受讓 lift 1.00 完全沒優勢，區間整段為負。"
-         f"單隊大小分 lift 1.07，保本返還率 93%，台彩吃不到。", ""]
+         f"3. **看起來能賺的「全場大分」，一做球場校正就不見了**。"
+         f"兩階段驗證整體 ROI {f_pct(ts.get('roi'))}（台彩返還率 90%）；"
+         f"拆家族後全場大分 lift 1.30 看似很香，但那是拿「聯盟平均大分率」當基準算的。"
+         f"改用「該球場自己的歷史大分率」當基準（莊家一定會針對球場調盤口），"
+         f"大分 8.5 的 lift 從 1.31 掉到 1.10、ROI 從 +18.3% 變 −0.7%。"
+         f"**結論：在台彩的返還率下，這套模型目前沒有可靠的正期望值玩法。**"
+         f"要突破只有一條路 —— 接真實賠率，比較模型機率與市場隱含機率。", ""]
 
     L += ["## 1. 方法論（為什麼可以相信這些數字）", "",
           "1. **不使用賽後資訊**：每一場的特徵都是「該場開打前」的累積值（as-of 快照）："
@@ -173,9 +175,12 @@ def main():
                           (f"{f_pct(f['roi_ci90'][0])} ~ {f_pct(f['roi_ci90'][1])}"
                            if f.get("roi_ci90") else "—")]
                          for f in ts["families"]]), "",
-                  "**這張表是今晚最可下注的結論：**", "",
-                  "- **全場大分（大分 7.5/8.5/9.5）是唯一整個 bootstrap 區間都在正的家族**。"
-                  "lift 1.30 意味著保本返還率只要 77%，台彩的 88-92% 有很大的空間。",
+                  "**但這張表有一個致命前提**：假設賠率 =（1/該盤口線的聯盟平均命中率）×返還率。"
+                  "真實莊家會針對球場、天氣、先發逐場調整盤口與賠率。下一節的球場校正"
+                  "就是在檢驗這個前提 —— 結果是優勢大半消失。", "",
+                  "家族層面的觀察（在上述前提下）：", "",
+                  "- 全場大分是唯一整個 bootstrap 區間都在正的家族（lift 1.30）——"
+                  "但見下一節，這主要是球場效應。",
                   "- **讓分/受讓的區間整個是負的**（lift 1.00 = 完全沒有優勢）。"
                   "這類盤口不要用這套模型下注。",
                   "- 單隊大小分 lift 約 1.07，保本返還率 93% —— 台彩吃不到，國際盤剛好打平。",
@@ -259,6 +264,42 @@ def main():
                               " / ".join(f"{k}:{v['rate']:.0%}" for k, v in r["by_season"].items()),
                               f"{r['be_odds']:.2f}"] for r in holds[:15]]), ""]
 
+    if OR:
+        pc = OR.get("park_control") or {}
+        L += ["## 5.7 球場校正：那個「大分優勢」是真的嗎", "",
+              "上一節的假設賠率用「該盤口線的聯盟平均命中率」定價。"
+              "但莊家不是笨蛋 —— Coors Field 場均 11.3 分、T-Mobile 7.7 分，"
+              "盤口線與賠率一定會反映球場。所以這裡改用**該球場自己的歷史大分率**"
+              "當基準重算一次：", ""]
+        if pc:
+            L += [table(["盤口", "規則", "場數", "命中率", "對聯盟基準 lift", "ROI",
+                         "對球場基準 lift", "ROI（球場定價）"],
+                        [[line, v["rule"], v["n"], f_pct(v["hit"], 1),
+                          f"{v['lift_vs_league']:.3f}", f_pct(v["roi_league_pricing"]),
+                          f"{v['lift_vs_park']:.3f}", f_pct(v["roi_park_pricing"])]
+                         for line, v in pc.items()]), "",
+                  "**優勢大半來自球場**：大分 8.5 的 lift 從 1.31 掉到 1.10、"
+                  "ROI 從 +18.3% 變成 −0.7%；大分 9.5 從 +12.7% 變 −1.1%。"
+                  "換句話說，模型抓到的主要是「這個球場容易得分」——"
+                  "而那是莊家最不可能漏掉的資訊。", "",
+                  "唯一在球場校正後還留下一點東西的是大分 10.5（lift 1.16、ROI +4.4%，"
+                  "但只有 47 場，區間一定跨零）。", ""]
+        if OR.get("by_park"):
+            L += ["**依球場得分環境（對聯盟基準）**", "",
+                  table(["球場類型"] + [f"大分 {k}" for k in OR["lines"]],
+                        [[name] + [f"{sub.get(k, {}).get('rate', 0) * 100:.0f}%"
+                                   f"（lift {sub.get(k, {}).get('lift', 0):.2f}）"
+                                   for k in OR["lines"]]
+                         for name, sub in OR["by_park"].items()]), ""]
+        rec = OR.get("recommended") or []
+        if rec:
+            L += ["**可手動套用的查表（未做球場校正，看的時候請自行打折）**", "",
+                  "用法：看到台彩盤口線，算出「模型預估總分 − 盤口線」，查下表。", "",
+                  table(["盤口", "μ−線區間", "場數", "命中率", "lift", "假設賠率", "ROI"],
+                        [[r["line"], r["bucket"], r["n"], f_pct(r["rate"], 1),
+                          f"{r['lift']:.2f}", r["assumed_odds"], f_pct(r["roi"])]
+                         for r in rec]), ""]
+
     L += ["## 6. 單隊分項亮點（Statcast）", ""]
     tm = S["teams"]
 
@@ -328,7 +369,10 @@ def main():
           "5. **每日自動更新**：把 run_all.py 掛成排程，早上跑完自動 push，"
           "網頁就永遠是最新的。", "",
           "**建議的使用方式**", "",
-          "1. 先看「推薦」頁的 edge 排行，只考慮 edge ≥ 1.11 的。",
+          "0. **先接真實賠率**。在那之前，下面的步驟都只是「相對聯盟平均」的參考，"
+          "不是真的正期望值。",
+          "1. 看「推薦」頁的 edge 排行時，記得 edge 是相對聯盟平均算的；"
+          "如果 edge 主要來自球場（例如 Coors、國民球場），台彩的盤口線早就調高了。",
           "2. 對照「回測」頁看該盤口在樣本外的實際表現（有沒有正 ROI）。",
           "3. 開盤後核對台彩實際賠率是否高於「保本賠率」。",
           "4. Tier A 條件當加分項，不要當主要依據。",
