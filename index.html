@@ -1307,32 +1307,42 @@ function ModelsView({A}){
     {A.matchup_validation&&<Card style={{marginTop:12}}>
       <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>對位分數有沒有預測力</div>
       <Muted style={{marginBottom:8}}>
-        用 {A.matchup_validation.fit_season} 的打者分項去預測 {A.matchup_validation.test_season}
-        的實際得分（不可能洩漏），{A.matchup_validation.n_team_games} 個 team-game。
-        原始相關 {A.matchup_validation.pearson_runs}；
-        <b style={{color:C.t}}>控制球隊強度與對手先發品質後的偏相關 {A.matchup_validation.partial_r_controlled}</b>。
+        用「該場之前累積的分項」預測當場實際得分，{A.matchup_validation.n_team_games} 個 team-game。
+        <b style={{color:C.acc}}>注意：一場比賽有主客兩列，必須兩列都算完才能把該場資料
+        吃進累積器 —— 否則第二列會看到同一場的對戰結果。這個洩漏會把相關係數灌到 +0.35，
+        修掉之後才是下面的數字。</b>
       </Muted>
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",fontSize:11}}>
           <thead><tr style={{color:C.d,textAlign:"left"}}>
-            <th style={{padding:"4px 6px"}}>雙方對位合計</th><th>場數</th>
-            <th>平均總分</th><th>大分 8.5 命中</th>
+            <th style={{padding:"4px 6px"}}>版本</th><th>原始相關</th>
+            <th>控制球隊強度後偏相關</th><th>大分 8.5（最低→最高五分位）</th>
           </tr></thead>
-          <tbody>{A.matchup_validation.buckets_total.map((b,i)=>
-            <tr key={i} style={{borderTop:"1px solid "+C.bd}}>
-              <td style={{padding:"4px 6px"}}>{b.bucket}</td>
-              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{b.n}</td>
-              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{b["平均總分"]}</td>
-              <td style={{fontFamily:"'JetBrains Mono',monospace",
-                color:b["大分85"]>=0.5?C.g:C.d}}>{pctS(b["大分85"],1)}</td>
-            </tr>)}</tbody>
+          <tbody>
+            <tr style={{borderTop:"1px solid "+C.bd}}>
+              <td style={{padding:"4px 6px"}}>不含對戰史</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{A.matchup_validation.pearson_runs}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{A.matchup_validation.partial_r_controlled}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>
+                {A.matchup_validation.buckets_total?.length>0&&
+                  `${pctS(A.matchup_validation.buckets_total[0]["大分85"],1)} → ${pctS(A.matchup_validation.buckets_total[A.matchup_validation.buckets_total.length-1]["大分85"],1)}`}</td>
+            </tr>
+            {A.matchup_validation.with_h2h&&<tr style={{borderTop:"1px solid "+C.bd}}>
+              <td style={{padding:"4px 6px",color:C.acc,fontWeight:700}}>
+                含直接對戰史（權重 {A.matchup_validation.with_h2h.w_h2h}）</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{A.matchup_validation.with_h2h.pearson_runs}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{A.matchup_validation.with_h2h.partial_r_controlled}</td>
+              <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>
+                {A.matchup_validation.with_h2h.buckets_total?.length>0&&
+                  `${pctS(A.matchup_validation.with_h2h.buckets_total[0]["大分85"],1)} → ${pctS(A.matchup_validation.with_h2h.buckets_total[A.matchup_validation.with_h2h.buckets_total.length-1]["大分85"],1)}`}</td>
+            </tr>}
+          </tbody>
         </table>
       </div>
       <Muted style={{marginTop:8}}>
-        方向是對的（對位越好、總分越高、大分命中率越高），但幅度很小。
-        <b style={{color:C.t}}>把它當特徵加進模型：MAE +0.002（0.2σ）、大小分 AUC +0.001 —— 完全沒改善</b>，
-        因為模型既有的「球隊對左右投 / 對球種 wOBA」已經吃掉了這個訊號。
-        所以對位分析拿來判讀比賽，不要拿來取代 edge 排序。
+        兩個版本都在雜訊範圍內（n≈2600，標準誤約 0.020）。加入對戰史讓偏相關從微負變微正，
+        方向是好的但幅度不顯著。<b style={{color:C.t}}>這代表對戰史是「判讀工具」而非「統計優勢」</b>
+        —— 但它是最貼近實戰直覺的資訊，所以權重與採信度都做成可調，由你決定。
       </Muted>
     </Card>}
 
@@ -1525,7 +1535,7 @@ function HelpView({A}){
       <Term k="直接對戰史">這條打線的球員過去實際對過這位投手的成績（打席、wOBA、安打/全壘打/三振、
         最近對戰日期）。樣本天生偏小（一支打線常只有 10-40 打席），
         數字旁邊都有標 PA 讓你自己判斷。
-        實測顯示它對「預測得分」的統計貢獻不明顯（加進模型沒改善），
+        實測顯示它對「預測得分」的統計貢獻在雜訊內（偏相關 +0.010，n≈2600），
         但它是最貼近實戰直覺的資訊，所以權重與採信度都交給你調。</Term>
     </Sec>
 

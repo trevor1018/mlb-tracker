@@ -42,6 +42,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fit-season", type=int, default=2025)
     ap.add_argument("--test-season", type=int, default=2026)
+    ap.add_argument("--w-h2h", type=float, default=0.0,
+                    help="直接對戰史在對位分數裡的權重（0=不用；0.5=使用者設定值）")
+    ap.add_argument("--h2h-prior", type=float, default=10.0)
     ap.add_argument("--asof", action="store_true",
                     help="改用『當季累積到該場之前』的分項（更即時，但樣本較小）")
     args = ap.parse_args()
@@ -93,16 +96,34 @@ def main():
         if u is not None:
             for x in u.itertuples():
                 au[(int(x.pitcher), x.pgroup)] = au.get((int(x.pitcher), x.pgroup), 0) + int(x.n)
+        hh = asof_state.get("hh", {}).get(pk)
+        if hh is not None:
+            for x in hh.itertuples():
+                k = (int(x.batter), int(x.pitcher))
+                cur = ahh.setdefault(k, [0.0, 0.0])
+                cur[0] += float(x.pa)
+                cur[1] += float(x.wsum)
 
-    def _asof_delta(bid, hand, key_group):
+    def _asof_delta(bid, hand, key_group, spid=None, w_h2h=0.0, prior=10.0):
         pa_h, w_h = ah.get((bid, hand), [0.0, 0.0])
         pa_g, w_g = ag.get((bid, key_group), [0.0, 0.0])
         wh = shrunk(w_h / pa_h if pa_h else lg_hand.get(hand, lg_all), pa_h,
                     lg_hand.get(hand, lg_all))
         wg = shrunk(w_g / pa_g if pa_g else lg_group.get(key_group, lg_all), pa_g,
                     lg_group.get(key_group, lg_all))
-        return (0.6 * (wh - lg_hand.get(hand, lg_all))
-                + 0.4 * (wg - lg_group.get(key_group, lg_all))), (pa_h, pa_g)
+        d_hand = wh - lg_hand.get(hand, lg_all)
+        d_group = wg - lg_group.get(key_group, lg_all)
+        if w_h2h > 0 and spid is not None:
+            pa_hh, w_hh = ahh.get((bid, int(spid)), [0.0, 0.0])
+            if pa_hh > 0:
+                raw = w_hh / pa_hh
+                sh = raw if prior <= 0 else (raw * pa_hh + lg_all * prior) / (pa_hh + prior)
+            else:
+                sh = lg_all
+            d_h2h = sh - lg_all
+            w_rest = 1.0 - w_h2h
+            return (w_h2h * d_h2h + w_rest * (0.6 * d_hand + 0.4 * d_group)), (pa_h, pa_g)
+        return (0.6 * d_hand + 0.4 * d_group), (pa_h, pa_g)
 
     def batter_delta(bid, hand, key_group):
         pa_h, w_h = bh.get((bid, hand), (0.0, lg_hand.get(hand, lg_all)))
@@ -128,9 +149,12 @@ def main():
         inc_g = (tp.groupby(["game_pk", "batter", "pgroup"])
                    .agg(pa=("woba_denom", "sum"), wsum=("woba_value", "sum")).reset_index())
         inc_u = tp.groupby(["game_pk", "pitcher", "pgroup"]).size().rename("n").reset_index()
+        inc_hh = (tp.groupby(["game_pk", "batter", "pitcher"])
+                    .agg(pa=("woba_denom", "sum"), wsum=("woba_value", "sum")).reset_index())
         asof_state = {"h": {k: v for k, v in inc_h.groupby("game_pk")},
                       "g": {k: v for k, v in inc_g.groupby("game_pk")},
-                      "u": {k: v for k, v in inc_u.groupby("game_pk")}}
+                      "u": {k: v for k, v in inc_u.groupby("game_pk")},
+                      "hh": {k: v for k, v in inc_hh.groupby("game_pk")}}
 
     # ── 測試季：每場每隊的實際打線 vs 對方先發 ──
     test_dir = os.path.join(ROOT, "data", str(args.test_season))
@@ -139,6 +163,7 @@ def main():
     tg = pd.read_parquet(os.path.join(test_dir, "teamgames.parquet"))
 
     # as-of 累積器
+    ahh = {}  # (batter, pitcher) -> [pa, wsum]  直接對戰史（as-of）
     ah = {}   # (batter, hand) -> [pa, wsum]
     ag = {}   # (batter, group) -> [pa, wsum]
     au = {}   # (pitcher, group) -> n
@@ -146,8 +171,14 @@ def main():
 
     rows = []
     tg = tg.sort_values(["date", "pk"])
+    # 一場兩列（主/客）必須「兩列都算完」才把這場吃進累積器，
+    # 否則第二列會看到同一場的對戰結果 —— 這是很容易漏掉的洩漏。
+    pending_pk = None
     for _, r in tg.iterrows():
         pk = int(r["pk"])
+        if args.asof and pending_pk is not None and pk != pending_pk:
+            _absorb(pending_pk)
+        pending_pk = pk
         b = boxes.get(pk)
         if not b:
             continue
@@ -164,8 +195,6 @@ def main():
         else:
             ars = arsenal.get(int(opp_sp), [])
         if not ars:
-            if args.asof:
-                _absorb(pk)
             continue
         key_group = next((k for k, v in ars if k not in ("fastball", "cutter")),
                          ars[0][0])
@@ -175,7 +204,9 @@ def main():
         ds, ws, cov = [], [], 0
         for p_ in lineup:
             if args.asof:
-                d, (pa_h, pa_g) = _asof_delta(int(p_["id"]), hand, key_group)
+                d, (pa_h, pa_g) = _asof_delta(int(p_["id"]), hand, key_group,
+                                              spid=opp_sp, w_h2h=args.w_h2h,
+                                              prior=args.h2h_prior)
             else:
                 d, (pa_h, pa_g) = batter_delta(int(p_["id"]), hand, key_group)
             ds.append(d)
@@ -185,8 +216,6 @@ def main():
         if not ds:
             continue
         delta = float(np.average(ds, weights=ws))
-        if args.asof:
-            _absorb(pk)
         rows.append({
             "pk": pk, "date": r["date"], "team": r["team"], "runs": float(r["runs"]),
             "delta": delta, "coverage": cov / len(lineup),
@@ -196,6 +225,8 @@ def main():
             "total": float(r["runs"]) + float(r["runs_allowed"]),
         })
 
+    if args.asof and pending_pk is not None:
+        _absorb(pending_pk)
     d = pd.DataFrame(rows).dropna(subset=["delta", "runs"])
     d = d[d["coverage"] >= 0.6]        # 至少 6 成打者在前一季有足夠樣本
     log(f"可用樣本 {len(d)} 個 team-game（{d['pk'].nunique()} 場）")
@@ -239,6 +270,7 @@ def main():
     lift = float((top["total"] > 8.5).mean()) / base_over if base_over else None
 
     out = {
+        "w_h2h": args.w_h2h, "h2h_prior": args.h2h_prior,
         "fit_season": args.fit_season, "test_season": args.test_season,
         "n_team_games": int(len(d)), "n_games": int(d["pk"].nunique()),
         "pearson_runs": round(r_pear, 4), "spearman_runs": round(r_spear, 4),
@@ -250,10 +282,12 @@ def main():
         "note": ("打者分項與投手球種輪廓全部來自前一季，預測目標是下一季的實際得分，"
                  "所以沒有資訊洩漏。偏相關是控制住『球隊近15場 wOBA』與"
                  "『對手先發 R/9』之後的殘差相關 —— 這才是對位分數的獨立貢獻。")}
-    p = jdump(out, f"{OUTPUT}/matchup_validation.json")
+    fn = ("matchup_validation.json" if not args.w_h2h
+          else f"matchup_validation_h2h{args.w_h2h:g}.json")
+    p = jdump(out, f"{OUTPUT}/{fn}")
     log(f"寫出 {p}")
     # 存下逐場對位分數，供模型測試使用
-    tag = "asof" if args.asof else "prior"
+    tag = ("asof" if args.asof else "prior") + (f"_h2h{args.w_h2h:g}" if args.w_h2h else "")
     d[["pk", "team", "date", "delta", "coverage"]].to_parquet(
         os.path.join(DATA, f"matchup_delta_{tag}.parquet"), index=False)
     log(f"寫出 data/matchup_delta_{tag}.parquet（{len(d)} 列）")

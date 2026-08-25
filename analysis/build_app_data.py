@@ -67,6 +67,10 @@ def main():
     except Exception:
         MV = None
     try:
+        MVH = jload(f"{OUTPUT}/matchup_validation_h2h0.5.json")
+    except Exception:
+        MVH = None
+    try:
         MP = jload(f"{OUTPUT}/market_proxy.json")
     except Exception:
         MP = None
@@ -209,6 +213,12 @@ def main():
             "buckets_total": MV["buckets_total"],
             "over85_base": MV["over85_base"],
             "note": MV["note"],
+            "with_h2h": None if not MVH else {
+                "w_h2h": MVH["w_h2h"], "h2h_prior": MVH["h2h_prior"],
+                "pearson_runs": MVH["pearson_runs"],
+                "partial_r_controlled": MVH["partial_r_controlled"],
+                "buckets_total": MVH["buckets_total"],
+            },
         },
         "market_proxy": None if not MP else {
             "payout": MP["payout"], "edge_threshold": MP["edge_threshold"],
