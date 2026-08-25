@@ -2,6 +2,12 @@
 # 手動測試：powershell -ExecutionPolicy Bypass -File D:\python\mlb-tracker\analysis\daily_run.ps1
 
 $ErrorActionPreference = "Continue"
+
+# numpy/scipy 底層的 Intel Fortran runtime 會攔截 console 關閉事件，
+# 在工作排程器裡跑時會出現 "forrtl: error (200): program aborting due to
+# window-CLOSE event" 而中止。這個環境變數就是官方的關閉方法。
+$env:FOR_DISABLE_CONSOLE_CTRL_HANDLER = "1"
+$env:PYTHONUNBUFFERED = "1"
 $Root = Split-Path -Parent $PSScriptRoot
 $LogDir = Join-Path $Root "data\logs"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
