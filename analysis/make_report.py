@@ -262,7 +262,26 @@ def main():
             if not d:
                 continue
             holds = [r for r in d["rows"] if r["holds"]]
-            L += [f"**{name}**：候選 {d['candidates']} 組，跨季都撐住 **{d['holds']}** 組", ""]
+            L += [f"**{name}**：候選 {d['candidates']:,} 組，跨季都撐住 **{d['holds']}** 組", ""]
+            dec = d.get("decay")
+            if dec:
+                L += [table(["指標", "數值"],
+                            [["訓練季平均命中率", f_pct(dec["mean_train_rate"])],
+                             ["測試季平均命中率", f_pct(dec["mean_test_rate"])],
+                             ["測試季仍 ≥72% 的比例", f_pct(dec["pct_test_ge_72"])],
+                             ["測試季仍 ≥65% 的比例", f_pct(dec["pct_test_ge_65"])],
+                             ["測試季變差的比例", f_pct(dec["pct_test_worse_than_train"])],
+                             ["訓練季平均 lift（相對基準率）", f"{dec.get('mean_train_lift', 0):.3f}"],
+                             ["測試季平均 lift", f"**{dec.get('mean_test_lift', 0):.3f}**"],
+                             ["測試季 lift>1 的比例", f_pct(dec.get("pct_test_lift_gt_1"))],
+                             ["測試季 lift>1.11（能打敗抽水）的比例",
+                              f_pct(dec.get("pct_test_lift_gt_111"))]]), "",
+                      "絕對命中率會被高基準盤口騙（例如「受讓 2.5」本身基準就有 73.5%），"
+                      "所以要看 **lift（命中率 ÷ 該季基準率）**。"
+                      f"訓練季 lift {dec.get('mean_train_lift', 0):.3f} → "
+                      f"測試季 {dec.get('mean_test_lift', 0):.3f}"
+                      + ("，等於資訊完全消失。" if dec.get("mean_test_lift", 0) < 1.02
+                         else "。"), ""]
             if holds:
                 L += [table(["玩法", "條件", "訓練期", f"{MS['test_season']} 測試",
                              "各季命中率", "保本賠率"],

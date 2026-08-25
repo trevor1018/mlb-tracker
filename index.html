@@ -526,9 +526,22 @@ function ConditionsView({A}){
         const holds=d.rows.filter(r=>r.holds);
         return<div key={k} style={{marginBottom:10}}>
           <Muted style={{color:C.t,fontWeight:700,marginBottom:4}}>
-            {k==="teamgame"?"隊伍視角":"全場總分"}：候選 {d.candidates} 組，
-            跨季都撐住 <b style={{color:holds.length?C.g:C.r}}>{d.holds}</b> 組
+            {k==="teamgame"?"隊伍視角":"全場總分"}：候選 {d.candidates.toLocaleString()} 組，
+            跨季都撐住 <b style={{color:d.holds?C.g:C.r}}>{d.holds}</b> 組
           </Muted>
+          {d.decay&&<div style={{marginBottom:6,padding:8,borderRadius:6,
+            background:"rgba(239,68,68,0.06)",border:"1px solid "+C.bd}}>
+            <Muted>
+              訓練季平均命中 {pctS(d.decay.mean_train_rate,1)} → 測試季 {pctS(d.decay.mean_test_rate,1)}；
+              {pctS(d.decay.pct_test_worse_than_train,0)} 的條件在測試季變差。
+              {d.decay.mean_test_lift!=null&&<>
+                <br/>相對基準率的 lift：訓練 {d.decay.mean_train_lift.toFixed(3)} →
+                測試 <b style={{color:d.decay.mean_test_lift>1.05?C.acc:C.r}}>
+                {d.decay.mean_test_lift.toFixed(3)}</b>
+                （lift&gt;1.11 才打得過抽水，只有 {pctS(d.decay.pct_test_lift_gt_111,1)} 做到）
+              </>}
+            </Muted>
+          </div>}
           {holds.slice(0,10).map((r,i)=><div key={i} style={{padding:"6px 0",
             borderTop:"1px solid "+C.bd}}>
             <div style={{display:"flex",justifyContent:"space-between",gap:8}}>

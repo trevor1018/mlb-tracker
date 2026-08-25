@@ -197,6 +197,38 @@ def run(kind, markets, seasons_train, season_test, args, tag):
                           and (r["min_season_rate"] or 0) >= args.target - 0.12)
     rows.sort(key=lambda r: (-r["holds"], -min(r["train_rate"], r["test_rate"])))
     holds = [r for r in rows if r["holds"]]
+    # 衰減統計：訓練期高命中的條件，到了測試季平均剩多少
+    if rows:
+        tr_rates = np.array([r["train_rate"] for r in rows])
+        te_rates = np.array([r["test_rate"] for r in rows])
+        tr_base = np.array([r["train_base"] for r in rows])
+        te_base = np.array([r["test_base"] for r in rows])
+        tr_lift = tr_rates / np.maximum(tr_base, 1e-9)
+        te_lift = te_rates / np.maximum(te_base, 1e-9)
+        decay = {
+            "candidates": len(rows),
+            "mean_train_rate": round(float(tr_rates.mean()), 4),
+            "mean_test_rate": round(float(te_rates.mean()), 4),
+            "median_test_rate": round(float(np.median(te_rates)), 4),
+            "pct_test_ge_72": round(float((te_rates >= 0.72).mean()), 4),
+            "pct_test_ge_65": round(float((te_rates >= 0.65).mean()), 4),
+            "pct_test_worse_than_train": round(float((te_rates < tr_rates).mean()), 4),
+            "mean_train_lift": round(float(tr_lift.mean()), 4),
+            "mean_test_lift": round(float(te_lift.mean()), 4),
+            "pct_test_lift_gt_1": round(float((te_lift > 1).mean()), 4),
+            "pct_test_lift_gt_111": round(float((te_lift > 1.111).mean()), 4),
+        }
+        log(f"[{tag}] 衰減：訓練均值 {decay['mean_train_rate']:.1%} → "
+            f"測試均值 {decay['mean_test_rate']:.1%}；"
+            f"測試期仍≥72% 的比例 {decay['pct_test_ge_72']:.1%}、"
+            f"≥65% 的比例 {decay['pct_test_ge_65']:.1%}；"
+            f"{decay['pct_test_worse_than_train']:.0%} 的條件在測試季變差")
+        log(f"[{tag}] 相對基準率的 lift：訓練 {decay['mean_train_lift']:.3f} → "
+            f"測試 {decay['mean_test_lift']:.3f}；測試季 lift>1 的比例 "
+            f"{decay['pct_test_lift_gt_1']:.1%}、lift>1.11（能打敗抽水）的比例 "
+            f"{decay['pct_test_lift_gt_111']:.1%}")
+    else:
+        decay = None
     log(f"[{tag}] 訓練+測試都撐住的條件：{len(holds)} 組（候選 {len(rows)}）")
     for r in holds[:12]:
         by = " ".join(f"{k}:{v['rate']:.0%}" for k, v in r["by_season"].items())
@@ -204,7 +236,7 @@ def run(kind, markets, seasons_train, season_test, args, tag):
             f"→ {r['test_n']} 場測試 {r['test_rate']:.0%} | 各季 {by} "
             f"← {r['label'][:56]}")
     return {"tag": tag, "train_seasons": seasons_train, "test_season": season_test,
-            "candidates": len(rows), "holds": len(holds),
+            "candidates": len(rows), "holds": len(holds), "decay": decay,
             "rows": holds[:120] + [r for r in rows if not r["holds"]][:60],
             "base_train": {k: round(float(b), 4) for k, b in zip(mkeys, base_tr)},
             "base_test": {k: round(float(b), 4) for k, b in zip(mkeys, base_te)}}
