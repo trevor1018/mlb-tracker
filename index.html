@@ -355,27 +355,68 @@ function MatchupTag({delta,aligned,who}){
   </Tag>;
 }
 
-function MatchupNarrative({m}){
+function MatchupNarrative({m,variant}){
   if(!m)return null;
   const sides=["away","home"].filter(k=>m[k]);
   if(!sides.length)return null;
+  const pick=d=>{
+    const v=d.delta_variants||{};
+    return v[variant]!=null?v[variant]:d.lineup_delta;
+  };
   return<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
     <Muted style={{fontWeight:700,color:C.t,marginBottom:4}}>對位分析</Muted>
     {sides.map(k=>{
       const d=m[k];
-      const col=d.lineup_delta>=0.015?C.g:d.lineup_delta<=-0.015?C.r:
-        d.lineup_delta>=0.006?C.acc:d.lineup_delta<=-0.006?C.r:C.d;
-      return<div key={k} style={{marginBottom:8}}>
-        <div style={{fontSize:12,fontWeight:600,marginBottom:2}}>
+      const val=pick(d);
+      const col=val>=0.015?C.g:val<=-0.015?C.r:val>=0.006?C.acc:val<=-0.006?C.r:C.d;
+      const hd=d.h2h_delta;
+      return<div key={k} style={{marginBottom:12}}>
+        <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>
           {d.bat_team} 打線 vs {d.sp_name}
           <span style={{color:col,marginLeft:6,fontFamily:"'JetBrains Mono',monospace"}}>
-            {d.verdict}（{d.lineup_delta>0?"+":""}{d.lineup_delta.toFixed(3)}）</span>
+            {val>0?"+":""}{val.toFixed(3)}</span>
         </div>
+
+        {/* 直接對戰史：主要區塊 */}
+        <div style={{padding:8,borderRadius:6,marginBottom:6,
+          background:hd==null?"rgba(139,153,173,0.08)":hd>0.02?C.gD:hd<-0.02?C.rD:"rgba(139,153,173,0.08)",
+          border:"1px solid "+(hd==null?C.bd:hd>0.02?C.g:hd<-0.02?C.r:C.bd)}}>
+          <div style={{fontSize:12,fontWeight:700,marginBottom:4,
+            color:hd==null?C.d:hd>0.02?C.g:hd<-0.02?C.r:C.t}}>
+            直接對戰史
+            {d.h2h_pa>0?` ${d.h2h_faced} 人 / ${d.h2h_pa} 打席 / wOBA ${numS(d.h2h_woba)}`
+              :"（沒有人對過他）"}
+          </div>
+          {d.h2h_pa>0&&<>
+            <Muted style={{marginBottom:6}}>
+              {d.h2h_hit} 支安打、{d.h2h_hr} 轟、被三振 {d.h2h_k} 次
+              （聯盟平均 wOBA 0.326 → {hd>0.02?"這條打線吃得下他":hd<-0.02?"被他壓制":"互有來回"}）
+            </Muted>
+            <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",
+              gap:"2px 8px",fontSize:10}}>
+              <div style={{color:C.m}}>打者</div><div style={{color:C.m}}>PA</div>
+              <div style={{color:C.m}}>wOBA</div><div style={{color:C.m}}>H/HR/K</div>
+              <div style={{color:C.m}}>最近</div>
+              {(d.h2h_rows||[]).slice(0,8).map((r,i)=><React.Fragment key={i}>
+                <div style={{color:C.t}}>{r.name}</div>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",
+                  color:r.h2h_pa>=6?C.t:C.m}}>{r.h2h_pa}</div>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",
+                  color:r.h2h_woba>=0.400?C.g:r.h2h_woba<=0.200?C.r:C.t}}>{numS(r.h2h_woba)}</div>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>
+                  {r.h2h_hit}/{r.h2h_hr}/{r.h2h_k}</div>
+                <div style={{color:C.m,fontSize:9}}>{(r.h2h_last||"").slice(2)}</div>
+              </React.Fragment>)}
+            </div>
+          </>}
+        </div>
+
         <Muted style={{lineHeight:1.75}}>{d.narrative}</Muted>
+
         {d.best?.length>0&&<div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",
-          gap:"2px 8px",fontSize:10,marginTop:4}}>
-          <div style={{color:C.m}}>打者</div><div style={{color:C.m}}>對{d.sp_hand}投</div>
-          <div style={{color:C.m}}>對{d.sp_key_group}</div><div style={{color:C.m}}>對位</div>
+          gap:"2px 8px",fontSize:10,marginTop:6}}>
+          <div style={{color:C.m}}>類型對位</div><div style={{color:C.m}}>對{d.sp_hand}投</div>
+          <div style={{color:C.m}}>對{d.sp_key_group}</div><div style={{color:C.m}}>綜合</div>
           {[...d.best.slice(0,3),...(d.worst||[]).slice(0,2)].map((b,i)=><React.Fragment key={i}>
             <div style={{color:b.delta>=0?C.t:C.d}}>{b.name}</div>
             <div style={{fontFamily:"'JetBrains Mono',monospace"}}>{numS(b.vs_hand)}
@@ -406,6 +447,17 @@ function SlateView({A,logBet}){
   const[date,setDate]=useState(slate?.dates?.[0]||"");
   const[minEdge,setMinEdge]=useState(1.05);
   const[sortBy,setSortBy]=useState("edge");
+  const[h2hMode,setH2hMode]=useState(()=>load("h2h-mode","light"));
+  const setMode=v=>{setH2hMode(v);save("h2h-mode",v)};
+  const mDelta=p=>{
+    const v=p.matchup_variants;
+    return (v&&v[h2hMode]!=null)?v[h2hMode]:p.matchup_delta;
+  };
+  const mAligned=p=>{
+    const d=mDelta(p);
+    if(d==null)return null;
+    return p.matchup_under?(d<0):(d>0);
+  };
   const[oddsMap,setOddsMap]=useState(()=>load("odds-input",{}));
   const[legKeys,setLegKeys]=useState([]);
   const setOdds=(k,v)=>{const m={...oddsMap,[k]:v};setOddsMap(m);save("odds-input",m)};
@@ -413,11 +465,11 @@ function SlateView({A,logBet}){
   if(!slate)return<Card><Muted>還沒有未開打場次的預測。跑 analysis/predict_slate.py 後會出現。</Muted></Card>;
   const games=slate.games.filter(g=>!date||g.date===date);
   const picksRaw=slate.picks.filter(p=>(!date||p.date===date)&&(p.edge||0)>=minEdge);
-  const alignBonus=p=>(p.matchup_aligned&&Math.abs(p.matchup_delta||0)>=0.006)?1:0;
+  const alignBonus=p=>(mAligned(p)&&Math.abs(mDelta(p)||0)>=0.006)?1:0;
   const picks=[...picksRaw].sort((a,b)=>{
     if(sortBy==="matchup"){
-      const av=(a.matchup_aligned?1:-1)*Math.abs(a.matchup_delta||0);
-      const bv=(b.matchup_aligned?1:-1)*Math.abs(b.matchup_delta||0);
+      const av=(mAligned(a)?1:-1)*Math.abs(mDelta(a)||0);
+      const bv=(mAligned(b)?1:-1)*Math.abs(mDelta(b)||0);
       return bv-av;
     }
     if(sortBy==="combo"){
@@ -442,6 +494,18 @@ function SlateView({A,logBet}){
         <Pill small sel={sortBy==="matchup"} onClick={()=>setSortBy("matchup")}>依對位</Pill>
         <Pill small sel={sortBy==="combo"} onClick={()=>setSortBy("combo")}>綜合</Pill>
       </div>
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginTop:8}}>
+        <Muted>對戰史採信度</Muted>
+        <Pill small sel={h2hMode==="raw"} onClick={()=>setMode("raw")}>完全相信</Pill>
+        <Pill small sel={h2hMode==="light"} onClick={()=>setMode("light")}>輕度收縮</Pill>
+        <Pill small sel={h2hMode==="safe"} onClick={()=>setMode("safe")}>保守</Pill>
+        <Pill small sel={h2hMode==="no_h2h"} onClick={()=>setMode("no_h2h")}>不看對戰史</Pill>
+      </div>
+      <Muted style={{marginTop:6}}>
+        對位分數 = <b style={{color:C.t}}>0.5×直接對戰史</b> + 0.3×對慣用手 + 0.2×對主要球種。
+        「完全相信」直接用原始對戰 wOBA（1 打席也算）；「輕度收縮」以 10 打席先驗稍微拉回聯盟平均；
+        「保守」用 40 打席先驗。切換會立刻改變排序與標籤。
+      </Muted>
       {(()=>{const t=todayPT();
         const stale=slate.dates.filter(d=>d<t);
         if(!stale.length)return null;
@@ -489,7 +553,7 @@ function SlateView({A,logBet}){
         {p.bt_hit!=null&&<Tag color={p.bt_roi>0?C.g:C.r} bg={p.bt_roi>0?C.gD:C.rD}>
           回測 {p.bt_n}注 命中 {pctS(p.bt_hit,0)} ROI {p.bt_roi>0?"+":""}{pctS(p.bt_roi,0)}</Tag>}
         {p.cond_support>0&&<Tag color={C.b} bg={C.bD}>條件 {p.cond_support}</Tag>}
-        <MatchupTag delta={p.matchup_delta} aligned={p.matchup_aligned} who={p.matchup_who}/>
+        <MatchupTag delta={mDelta(p)} aligned={mAligned(p)} who={p.matchup_who}/>
       </div>
       {p.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
         {p.conditions.map((c,k)=><Muted key={k} style={{marginBottom:3}}>
@@ -506,7 +570,7 @@ function SlateView({A,logBet}){
     </Card>)}
 
     <div style={{fontSize:13,fontWeight:700,margin:"18px 0 8px"}}>逐場總覽（{games.length}）</div>
-    {games.map(g=><GameSignalCard key={g.pk} g={g} teams={A.teams}/>)}
+    {games.map(g=><GameSignalCard key={g.pk} g={g} teams={A.teams} h2hMode={h2hMode}/>)}
   </div>;
 }
 
@@ -557,7 +621,7 @@ function MatchupPanel({g,teams}){
   </div>;
 }
 
-function GameSignalCard({g,teams}){
+function GameSignalCard({g,teams,h2hMode}){
   const[open,setOpen]=useState(false);
   const top=g.markets?.[0];
   return<Card style={{marginBottom:8,padding:12}}>
@@ -590,7 +654,7 @@ function GameSignalCard({g,teams}){
             color:(m.edge||0)>=1.11?C.g:(m.edge||0)>=1.05?C.acc:C.m}}>{m.edge?m.edge.toFixed(2):"—"}</div>
         </React.Fragment>)}
       </div>
-      <MatchupNarrative m={g.matchup}/>
+      <MatchupNarrative m={g.matchup} variant={h2hMode||"light"}/>
       <MatchupPanel g={g} teams={teams}/>
       {g.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
         <Muted style={{fontWeight:700,color:C.t,marginBottom:4}}>觸發的全場條件</Muted>
@@ -1454,11 +1518,15 @@ function HelpView({A}){
       <Term k="[跨季驗證] 綠字">這條件通過了 2024/2025/2026 三季驗證
         （每季 lift 都 ≥1.11）。23.8 萬組候選只有 10 組做到，是最值得看的訊號。</Term>
       <Term k="條件 N">有 N 組歷史高命中條件同時觸發。模型與條件同向才算強訊號。</Term>
-      <Term k="對位 ±0.0xx">這條打線對「這位先發的慣用手 + 主要球種」的加權表現，
-        相對聯盟平均的偏差。（同向）= 方向與這個玩法一致。
-        <b style={{color:C.t}}>實測它對預測得分的獨立貢獻很小</b>
-        （控制球隊強度後偏相關 +0.047，加進模型完全沒改善），
-        所以拿來判讀對位、不要拿來取代 edge。</Term>
+      <Term k="對位 ±0.0xx">打線對這位先發的加權表現（相對聯盟平均）：
+        <b style={{color:C.t}}>0.5×直接對戰史 + 0.3×對慣用手 + 0.2×對主要球種</b>。
+        （同向）= 方向與這個玩法一致。上方可切換「對戰史採信度」，
+        會即時改變分數、標籤與排序。</Term>
+      <Term k="直接對戰史">這條打線的球員過去實際對過這位投手的成績（打席、wOBA、安打/全壘打/三振、
+        最近對戰日期）。樣本天生偏小（一支打線常只有 10-40 打席），
+        數字旁邊都有標 PA 讓你自己判斷。
+        實測顯示它對「預測得分」的統計貢獻不明顯（加進模型沒改善），
+        但它是最貼近實戰直覺的資訊，所以權重與採信度都交給你調。</Term>
     </Sec>
 
     <Sec title="決策規則（照這個做就好）">
