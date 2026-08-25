@@ -5,9 +5,10 @@
 單隊大小分 / 前5局）的計算基礎。
 """
 import calendar
+import datetime as dt
 import sys
 
-from common import API, DATA_THROUGH, SEASON, cached_json, jdump, log, TEAM_ZH
+from common import API, DATA_THROUGH, SEASON, cached_json, fetch_json, jdump, log, TEAM_ZH
 
 HYDRATE = "linescore,probablePitcher,decisions,weather,venue,seriesStatus,flags,game(content(summary))"
 
@@ -65,6 +66,7 @@ def parse_game(g, date):
 def main():
     start = f"{SEASON}-02-20"
     end = DATA_THROUGH
+    future_end = (dt.date.fromisoformat(DATA_THROUGH) + dt.timedelta(days=4)).isoformat()
     log(f"抓取賽程 {start} → {end}")
     # 一次抓一個月，避開單一回應過大
     months = []
@@ -103,6 +105,21 @@ def main():
         log(f"每隊完賽場次 {lo}~{hi}（共 {len(cnt)} 隊）")
     jdump(finals, f"{DATA}/games.json")
     log(f"寫出 data/games.json（{len(finals)} 場完賽）")
+
+    # 未來場次（供「今日推薦」用）：資料截止日之後 4 天，含先發預告
+    fut_url = (f"{API}/schedule?sportId=1&startDate={DATA_THROUGH}&endDate={future_end}"
+               f"&gameType=R&hydrate={HYDRATE}")
+    fut_raw = fetch_json(fut_url)
+    pending = []
+    for d in fut_raw.get("dates", []):
+        for g in d.get("games", []):
+            row = parse_game(g, d["date"])
+            if row and row["homeScore"] is None and row["awayScore"] is None:
+                pending.append(row)
+    pending.sort(key=lambda r: (r["date"], r["pk"]))
+    jdump(pending, f"{DATA}/pending.json")
+    have_sp = sum(1 for r in pending if r["awaySpProb"] and r["homeSpProb"])
+    log(f"寫出 data/pending.json（{len(pending)} 場未開打，其中 {have_sp} 場雙方先發已公布）")
 
 
 if __name__ == "__main__":

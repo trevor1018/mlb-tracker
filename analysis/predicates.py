@@ -14,6 +14,11 @@ NUM_FEATURES_TG = [
     ("my_woba_off", "我隊對慢速球 wOBA"),
     ("my_bat_vs_oppSP_hand_woba", "我隊對「對手先發慣用手」wOBA"),
     ("my_bat_vs_oppSP_main_woba", "我隊對「對手先發主球種」wOBA"),
+    ("my_bat_vs_oppSP_2nd_woba", "我隊對「對手先發次要球種」wOBA"),
+    ("my_woba_daypart", "我隊該時段(日/夜)wOBA"),
+    ("my_woba_venueside", "我隊該主客身分 wOBA"),
+    ("my_sp_woba_daypart", "我隊先發該時段被打 wOBA"),
+    ("my_sp_woba_venueside", "我隊先發該主客身分被打 wOBA"),
     ("my_k_pct", "我隊被三振率"),
     ("my_bb_pct", "我隊保送率"),
     ("my_hard_pct", "我隊強擊率"),
@@ -40,6 +45,11 @@ NUM_FEATURES_TG = [
     ("op_woba_break", "對手對變化球 wOBA"),
     ("op_bat_vs_oppSP_hand_woba", "對手對「我隊先發慣用手」wOBA"),
     ("op_bat_vs_oppSP_main_woba", "對手對「我隊先發主球種」wOBA"),
+    ("op_bat_vs_oppSP_2nd_woba", "對手對「我隊先發次要球種」wOBA"),
+    ("op_woba_daypart", "對手該時段(日/夜)wOBA"),
+    ("op_woba_venueside", "對手該主客身分 wOBA"),
+    ("op_sp_woba_daypart", "對手先發該時段被打 wOBA"),
+    ("op_sp_woba_venueside", "對手先發該主客身分被打 wOBA"),
     ("op_k_pct", "對手被三振率"),
     ("op_rpg", "對手場均得分"),
     ("op_rpg_l10", "對手近10場均得分"),
@@ -75,6 +85,12 @@ NUM_FEATURES_G = [
     ("away_bat_vs_oppSP_hand_woba", "客隊對主隊先發慣用手 wOBA"),
     ("home_bat_vs_oppSP_main_woba", "主隊對客隊先發主球種 wOBA"),
     ("away_bat_vs_oppSP_main_woba", "客隊對主隊先發主球種 wOBA"),
+    ("home_bat_vs_oppSP_2nd_woba", "主隊對客隊先發次要球種 wOBA"),
+    ("away_bat_vs_oppSP_2nd_woba", "客隊對主隊先發次要球種 wOBA"),
+    ("home_woba_daypart", "主隊該時段 wOBA"),
+    ("away_woba_daypart", "客隊該時段 wOBA"),
+    ("home_sp_woba_daypart", "主隊先發該時段被打 wOBA"),
+    ("away_sp_woba_daypart", "客隊先發該時段被打 wOBA"),
     ("home_sp_r9", "主隊先發 R/9"),
     ("away_sp_r9", "客隊先發 R/9"),
     ("home_sp_k9", "主隊先發 K/9"),
@@ -109,9 +125,12 @@ CAT_TG = [
     ("my_sp_hand", "R", "我隊先發右投"),
     ("op_sp_hand", "L", "對手先發左投"),
     ("op_sp_hand", "R", "對手先發右投"),
-    ("my_oppSP_main", "fastball", "對手先發以速球為主"),
-    ("my_oppSP_main", "breaking", "對手先發以變化球為主"),
-    ("my_oppSP_main", "offspeed", "對手先發以慢速球為主"),
+    ("my_oppSP_profile", "FB", "對手先發速球型(≥62%)"),
+    ("my_oppSP_profile", "BRK", "對手先發變化球型(≥35%)"),
+    ("my_oppSP_profile", "OFF", "對手先發慢速球型(≥25%)"),
+    ("my_oppSP_profile", "BAL", "對手先發球種均衡型"),
+    ("my_sp_profile", "BRK", "我隊先發變化球型"),
+    ("my_sp_profile", "FB", "我隊先發速球型"),
     ("series_game", 1, "系列賽首戰"),
     ("series_game", 3, "系列賽第3戰"),
 ]
@@ -122,6 +141,8 @@ CAT_G = [
     ("home_sp_hand", "R", "主隊先發右投"),
     ("away_sp_hand", "L", "客隊先發左投"),
     ("away_sp_hand", "R", "客隊先發右投"),
+    ("home_sp_profile", "BRK", "主隊先發變化球型"),
+    ("away_sp_profile", "BRK", "客隊先發變化球型"),
     ("hand_matchup", "LL", "雙方先發皆左投"),
     ("hand_matchup", "RR", "雙方先發皆右投"),
     ("series_game", 1, "系列賽首戰"),
@@ -156,13 +177,22 @@ def add_derived(df, kind):
 
 
 def build_predicates(df, kind, train_mask=None, min_support=40):
-    """回傳 (names, labels, masks) — masks 為 (k, n) 的 bool 陣列。"""
+    """回傳 (names, labels, masks)；masks 為 (k, n) 的 bool 陣列。"""
+    names, labels, masks, _ = build_predicates_full(df, kind, train_mask, min_support)
+    return names, labels, masks
+
+
+def build_predicates_full(df, kind, train_mask=None, min_support=40):
+    """同上，但額外回傳 specs（門檻定義），可用 apply_specs 套到新資料。
+
+    spec = {"name","label","col","op","thr"/"val"}
+    """
     nums = NUM_FEATURES_TG if kind == "tg" else NUM_FEATURES_G
     cats = CAT_TG if kind == "tg" else CAT_G
     if train_mask is None:
         train_mask = np.ones(len(df), bool)
 
-    names, labels, masks = [], [], []
+    names, labels, masks, specs = [], [], [], []
 
     for col, zh in nums:
         if col not in df.columns:
@@ -176,14 +206,18 @@ def build_predicates(df, kind, train_mask=None, min_support=40):
             if tag.startswith("hi"):
                 m = (s >= thr).fillna(False).to_numpy()
                 lab = f"{zh} {qzh}(≥{thr:.3g})"
+                op = "ge"
             else:
                 m = (s <= thr).fillna(False).to_numpy()
                 lab = f"{zh} {qzh}(≤{thr:.3g})"
+                op = "le"
             if m.sum() < min_support:
                 continue
-            names.append(f"{col}:{tag}")
+            nm = f"{col}:{tag}"
+            names.append(nm)
             labels.append(lab)
             masks.append(m)
+            specs.append({"name": nm, "label": lab, "col": col, "op": op, "thr": thr})
 
     for col, val, zh in cats:
         if col not in df.columns:
@@ -191,9 +225,28 @@ def build_predicates(df, kind, train_mask=None, min_support=40):
         m = (df[col] == val).fillna(False).to_numpy()
         if m.sum() < min_support:
             continue
-        names.append(f"{col}={val}")
+        nm = f"{col}={val}"
+        names.append(nm)
         labels.append(zh)
         masks.append(m)
+        specs.append({"name": nm, "label": zh, "col": col, "op": "eq", "val": val})
 
     M = np.vstack(masks) if masks else np.zeros((0, len(df)), bool)
-    return names, labels, M
+    return names, labels, M, specs
+
+
+def apply_specs(df, specs):
+    """把既有門檻套到新資料 → {name: bool 陣列}"""
+    out = {}
+    for sp in specs:
+        col = sp["col"]
+        if col not in df.columns:
+            out[sp["name"]] = np.zeros(len(df), bool)
+            continue
+        if sp["op"] == "eq":
+            m = (df[col] == sp["val"]).fillna(False).to_numpy()
+        else:
+            s = pd.to_numeric(df[col], errors="coerce")
+            m = ((s >= sp["thr"]) if sp["op"] == "ge" else (s <= sp["thr"])).fillna(False).to_numpy()
+        out[sp["name"]] = m
+    return out

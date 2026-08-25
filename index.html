@@ -16,9 +16,10 @@ body{background:#0d1117;font-family:'Noto Sans TC',-apple-system,sans-serif}
 input,select,button,textarea{font-family:inherit}
 input[type=number]::-webkit-inner-spin-button{opacity:1}
 select{-webkit-appearance:auto;appearance:auto}
-::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#2d3748;border-radius:4px}
+table{border-collapse:collapse}
 </style>
 </head>
 <body>
@@ -69,8 +70,6 @@ const TEAM_MAP={
 };
 const teamZh=id=>TEAM_MAP[id]?.zh||"?";
 const teamEn=id=>TEAM_MAP[id]?.en||"?";
-
-// ─── MLB Stats API base (免費、無需 key) ───
 const MLB_API="https://statsapi.mlb.com/api/v1";
 
 // ─── Theme ───
@@ -83,10 +82,16 @@ const C={bg:"#0d1117",sf:"#161b22",card:"#1c2333",bd:"#2d3748",
 // ─── UI Atoms ───
 function Field({label,children,style:s}){return<div style={{marginBottom:12,...s}}><div style={{fontSize:12,color:C.d,marginBottom:5,fontWeight:500}}>{label}</div>{children}</div>}
 function Inp({value,onChange,placeholder,type="text",mono,style:s,...r}){return<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.t,fontSize:14,boxSizing:"border-box",fontFamily:mono?"'JetBrains Mono',monospace":"inherit",outline:"none",...s}} {...r}/>}
-function Sel({value,onChange,options,placeholder}){return<select value={value} onChange={e=>onChange(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:value?C.t:C.m,fontSize:14,boxSizing:"border-box",outline:"none"}}><option value="">{placeholder||"請選擇"}</option>{options.map(o=><option key={o} value={o}>{o}</option>)}</select>}
-function Pill({sel,onClick,children}){return<button onClick={onClick} style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,border:sel?`2px solid ${C.acc}`:`1px solid ${C.bd}`,background:sel?C.accD:C.bg,color:sel?C.acc:C.d,transition:"all .15s",outline:"none"}}>{children}</button>}
+function Sel({value,onChange,options,placeholder}){return<select value={value} onChange={e=>onChange(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:value?C.t:C.m,fontSize:14,boxSizing:"border-box",outline:"none"}}><option value="">{placeholder||"請選擇"}</option>{options.map(o=><option key={o.value!==undefined?o.value:o} value={o.value!==undefined?o.value:o}>{o.label!==undefined?o.label:o}</option>)}</select>}
+function Pill({sel,onClick,children,small}){return<button onClick={onClick} style={{padding:small?"4px 10px":"6px 14px",borderRadius:20,fontSize:small?12:13,cursor:"pointer",fontWeight:600,border:sel?`2px solid ${C.acc}`:`1px solid ${C.bd}`,background:sel?C.accD:C.bg,color:sel?C.acc:C.d,transition:"all .15s",outline:"none",whiteSpace:"nowrap"}}>{children}</button>}
 function Stat({label,value,unit,color}){return<div style={{background:C.card,borderRadius:10,padding:14,border:`1px solid ${C.bd}`}}><div style={{fontSize:11,color:C.d,marginBottom:4}}>{label}</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:19,fontWeight:700,color:color||C.t}}>{value}<span style={{fontSize:11,fontWeight:400,color:C.d}}> {unit||""}</span></div></div>}
 function Card({children,style:s}){return<div style={{background:C.card,border:`1px solid ${C.bd}`,borderRadius:12,padding:16,...s}}>{children}</div>}
+function Tag({children,color,bg}){return<span style={{fontSize:11,padding:"2px 7px",borderRadius:6,background:bg||C.bD,color:color||C.b,fontWeight:600,whiteSpace:"nowrap"}}>{children}</span>}
+function Muted({children,style:s}){return<div style={{fontSize:11,color:C.d,lineHeight:1.7,...s}}>{children}</div>}
+
+const pctS=(v,nd=1)=>v==null?"—":(v*100).toFixed(nd)+"%";
+const numS=(v,nd=3)=>v==null?"—":Number(v).toFixed(nd);
+const rateColor=v=>v==null?C.d:(v>=0.75?C.g:v>=0.65?C.acc:C.d);
 
 // ─── Firestore ───
 function userDoc(uid,col){return db.collection("users").doc(uid).collection(col)}
@@ -94,8 +99,6 @@ function userDoc(uid,col){return db.collection("users").doc(uid).collection(col)
 function useFirestore(uid,colName,localKey,orderField="createdAt"){
   const[data,setData]=useState(()=>load(localKey,[]));
   const fromSnap=useRef(false);
-
-  // Listen to Firestore realtime updates
   useEffect(()=>{
     if(!uid)return;
     const unsub=userDoc(uid,colName).orderBy(orderField,"desc").onSnapshot(snap=>{
@@ -106,26 +109,21 @@ function useFirestore(uid,colName,localKey,orderField="createdAt"){
     },err=>console.error("Firestore listen error:",err));
     return()=>unsub();
   },[uid,colName]);
-
   const add=useCallback(async(item)=>{
     const{id,...rest}=item;
     if(!rest.createdAt)rest.createdAt=new Date().toISOString();
     await userDoc(uid,colName).doc(id).set(rest);
   },[uid,colName]);
-
   const update=useCallback(async(id,item)=>{
     const{id:_,...rest}=item;
     await userDoc(uid,colName).doc(id).update(rest);
   },[uid,colName]);
-
   const remove=useCallback(async(id)=>{
     await userDoc(uid,colName).doc(id).delete();
   },[uid,colName]);
-
   return{data,setData,add,update,remove,fromSnap};
 }
 
-// 批次刪除整個 collection（每批 400 筆，Firestore batch 上限 500）
 async function wipeCollection(uid,colName,onProgress){
   let total=0;
   while(true){
@@ -142,32 +140,451 @@ async function wipeCollection(uid,colName,onProgress){
 }
 
 // ═══════════════════════════════════════
-// HOME
+// 分析資料載入（output/app_data.json）
 // ═══════════════════════════════════════
-function HomeView(){
+function useAnalysis(){
+  const[data,setData]=useState(()=>load("mlb-analysis-v2",null));
+  const[err,setErr]=useState(null);
+  const[loading,setLoading]=useState(true);
+  const reload=useCallback(()=>{
+    setLoading(true);
+    fetch("output/app_data.json?t="+Date.now())
+      .then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
+      .then(d=>{setData(d);save("mlb-analysis-v2",d);setErr(null)})
+      .catch(e=>setErr(e.message))
+      .finally(()=>setLoading(false));
+  },[]);
+  useEffect(()=>{reload()},[reload]);
+  return{data,err,loading,reload};
+}
+
+// ═══════════════════════════════════════
+// 推薦（未開打場次）
+// ═══════════════════════════════════════
+function SlateView({A}){
+  const slate=A.slate;
+  const[date,setDate]=useState(slate?.dates?.[0]||"");
+  const[minP,setMinP]=useState(0.65);
+  if(!slate)return<Card><Muted>還沒有未開打場次的預測。跑 <code>analysis/predict_slate.py</code> 後會出現。</Muted></Card>;
+  const games=slate.games.filter(g=>!date||g.date===date);
+  const picks=slate.picks.filter(p=>(!date||p.date===date)&&p.p>=minP);
   return<div>
-    <Card style={{textAlign:"center",padding:"48px 16px"}}>
-      <div style={{fontSize:44,marginBottom:12}}>⚾</div>
-      <div style={{fontSize:26,fontWeight:700,letterSpacing:1}}>Hello World</div>
-      <div style={{fontSize:13,color:C.d,marginTop:8}}>骨架已就緒，等待新的資料分析方式</div>
-    </Card>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
-      <Stat label="台北日期" value={todayStr()}/>
-      <Stat label="美西日期" value={todayPT()}/>
-    </div>
-    <Card style={{marginTop:12}}>
-      <div style={{fontSize:12,color:C.d,lineHeight:1.9,wordBreak:"break-all"}}>
-        <div>React {React.version} · Firebase compat 10.12.2</div>
-        <div>Firestore 專案：mlb-tracker-f42f1</div>
-        <div>球隊對照表：{Object.keys(TEAM_MAP).length} / {TEAMS.length} 隊</div>
-        <div>MLB API：{MLB_API}</div>
+    <Card style={{marginBottom:12}}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+        {slate.dates.map(d=><Pill key={d} small sel={date===d} onClick={()=>setDate(d)}>{d.slice(5)}</Pill>)}
+        <Pill small sel={!date} onClick={()=>setDate("")}>全部</Pill>
       </div>
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <Muted>機率門檻</Muted>
+        {[0.6,0.65,0.7,0.75].map(v=><Pill key={v} small sel={minP===v} onClick={()=>setMinP(v)}>{pctS(v,0)}</Pill>)}
+      </div>
+      <Muted style={{marginTop:10}}>
+        「需要賠率」= 1 / 模型機率。台彩賠率高過這個數字才有正期望值。
+        條件數 = 有幾組歷史高命中條件同時觸發（模型與條件同向才算強訊號）。
+      </Muted>
     </Card>
+
+    <div style={{fontSize:13,fontWeight:700,margin:"14px 0 8px"}}>訊號排行（{picks.length}）</div>
+    {picks.slice(0,40).map((p,i)=><Card key={i} style={{marginBottom:8,padding:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600}}>{p.matchup}</div>
+          <div style={{fontSize:12,color:C.d,marginTop:2}}>
+            {p.date.slice(5)}・{p.scope}{p.team?`（${p.team}）`:""}・{p.market_zh}
+          </div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:18,fontWeight:700,
+            color:p.p>=0.75?C.g:p.p>=0.68?C.acc:C.t}}>{pctS(p.p)}</div>
+          <div style={{fontSize:11,color:C.d}}>需賠率 {p.be_odds?.toFixed(2)}</div>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+        {p.cond_support>0&&<Tag color={C.g} bg={C.gD}>條件 {p.cond_support}</Tag>}
+        {p.auc&&<Tag>模型 AUC {p.auc.toFixed(3)}</Tag>}
+      </div>
+      {p.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${C.bd}`}}>
+        {p.conditions.map((c,j)=><Muted key={j} style={{marginBottom:3}}>
+          <span style={{color:rateColor(c.rate),fontWeight:600}}>{pctS(c.rate,0)}</span>
+          {" "}({c.n} 場・Tier {c.tier})　{c.label}
+        </Muted>)}
+      </div>}
+    </Card>)}
+
+    <div style={{fontSize:13,fontWeight:700,margin:"18px 0 8px"}}>逐場總覽（{games.length}）</div>
+    {games.map(g=><GameSignalCard key={g.pk} g={g}/>)}
+  </div>;
+}
+
+function GameSignalCard({g}){
+  const[open,setOpen]=useState(false);
+  const top=[...g.game_markets].sort((a,b)=>b.p-a.p)[0];
+  return<Card style={{marginBottom:8,padding:12}}>
+    <div onClick={()=>setOpen(!open)} style={{cursor:"pointer",display:"flex",justifyContent:"space-between",gap:8}}>
+      <div>
+        <div style={{fontSize:14,fontWeight:600}}>{g.away} @ {g.home}</div>
+        <div style={{fontSize:11,color:C.d,marginTop:3}}>
+          {g.date.slice(5)}・{g.day_game?"日場":"夜場"}
+          {g.sp_known?`・先發 ${g.away_sp_hand||"?"} vs ${g.home_sp_hand||"?"}`:"・先發未公布"}
+          {g.total_expect!=null&&`・推估總分 ${g.total_expect}`}
+        </div>
+      </div>
+      <div style={{textAlign:"right"}}>
+        {top&&<><div style={{fontSize:11,color:C.d}}>{top.market_zh}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:15,fontWeight:700,color:rateColor(top.p)}}>{pctS(top.p)}</div></>}
+        <div style={{fontSize:10,color:C.m}}>{open?"收起":"展開"}</div>
+      </div>
+    </div>
+    {open&&<div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.bd}`}}>
+      <Muted style={{fontWeight:700,color:C.t,marginBottom:6}}>全場玩法</Muted>
+      <MarketRows rows={g.game_markets}/>
+      {g.team_markets.map(tm=><div key={tm.team} style={{marginTop:10}}>
+        <Muted style={{fontWeight:700,color:C.t,marginBottom:6}}>{tm.team}{tm.is_home?"（主）":"（客）"}</Muted>
+        <MarketRows rows={tm.markets}/>
+      </div>)}
+    </div>}
+  </Card>;
+}
+
+function MarketRows({rows}){
+  const sorted=[...rows].sort((a,b)=>b.p-a.p);
+  return<div style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:"4px 10px",fontSize:12}}>
+    {sorted.map((m,i)=><React.Fragment key={i}>
+      <div style={{color:C.d}}>{m.market_zh}</div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",color:rateColor(m.p),fontWeight:600}}>{pctS(m.p)}</div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{m.be_odds?.toFixed(2)}</div>
+    </React.Fragment>)}
   </div>;
 }
 
 // ═══════════════════════════════════════
-// MAINTENANCE — 資料清除工具
+// 高命中條件
+// ═══════════════════════════════════════
+function ConditionsView({A}){
+  const c=A.conditions;
+  const[tier,setTier]=useState("A");
+  const[scope,setScope]=useState("");
+  const list=(tier==="A"?c.tierA:c.tierB).filter(r=>!scope||r.scope===scope);
+  return<div>
+    <Card style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>怎麼讀這頁</div>
+      <Muted>
+        全季共檢定了 <b style={{color:C.t}}>{(c.hypotheses||0).toLocaleString()}</b> 個「條件 × 玩法」假設。
+        搜尋空間這麼大，光靠運氣就會冒出一堆 90% 命中的組合，所以每一組都要過四關：
+        樣本 ≥40 場、FDR 校正後 q&lt;0.05、命中率高於<b style={{color:C.t}}>運氣線</b>
+        （把結果打亂重跑 25 次得到的最高命中率）、四個時段都不崩。
+        <br/>Tier A = 四關全過；Tier B = 顯著但沒全過，只當觀察名單。
+      </Muted>
+    </Card>
+    <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+      <Pill small sel={tier==="A"} onClick={()=>setTier("A")}>Tier A（{c.tierA.length}）</Pill>
+      <Pill small sel={tier==="B"} onClick={()=>setTier("B")}>Tier B（{c.tierB.length}）</Pill>
+      <span style={{width:8}}/>
+      <Pill small sel={!scope} onClick={()=>setScope("")}>全部</Pill>
+      <Pill small sel={scope==="隊伍"} onClick={()=>setScope("隊伍")}>隊伍玩法</Pill>
+      <Pill small sel={scope==="全場"} onClick={()=>setScope("全場")}>全場總分</Pill>
+    </div>
+    {list.length===0&&<Card><Muted>這個分類沒有條件通過門檻 —— 這本身就是結論：
+      在現有樣本下，沒有足夠硬的證據支持任何一組「必勝條件」。</Muted></Card>}
+    {list.map((r,i)=><Card key={i} style={{marginBottom:8,padding:13}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:700}}>{r.market_zh}</div>
+          <div style={{fontSize:12,color:C.t,marginTop:4,lineHeight:1.5}}>{r.label}</div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:20,fontWeight:700,color:rateColor(r.rate)}}>{pctS(r.rate)}</div>
+          <div style={{fontSize:11,color:C.d}}>{r.hits}/{r.n} 場</div>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,marginTop:9,flexWrap:"wrap"}}>
+        <Tag>基準 {pctS(r.base,0)}</Tag>
+        <Tag color={C.d} bg="rgba(139,153,173,0.12)">運氣線 {pctS(r.chance_p95,0)}</Tag>
+        <Tag color={r.beats_chance?C.g:C.r} bg={r.beats_chance?C.gD:C.rD}>
+          {r.beats_chance?"勝過運氣線":"未勝運氣線"}</Tag>
+        <Tag color={C.acc} bg={C.accD}>Wilson下界 {pctS(r.wilson,0)}</Tag>
+        <Tag color={C.d} bg="rgba(139,153,173,0.12)">需賠率 {r.be_odds?.toFixed(2)}</Tag>
+      </div>
+      {r.block_rates&&<Muted style={{marginTop:8}}>
+        四時段命中率：{r.block_rates.map((b,j)=><span key={j} style={{
+          fontFamily:"'JetBrains Mono',monospace",color:b==null?C.m:rateColor(b),marginRight:8}}>
+          {b==null?"—":pctS(b,0)}</span>)}
+      </Muted>}
+    </Card>)}
+
+    {c.oos?.length>0&&<Card style={{marginTop:14}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>樣本外檢驗（{c.cut} 之前挖掘 → 之後驗證）</div>
+      <Muted style={{marginBottom:8}}>訓練期挑出的高命中條件，到了測試期還剩多少 —— 這是最誠實的一張表。</Muted>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",fontSize:11}}>
+          <thead><tr style={{color:C.d,textAlign:"left"}}>
+            <th style={{padding:"4px 6px"}}>玩法</th><th>候選</th><th>訓練期</th><th>測試期</th><th>基準</th><th>仍≥75%</th>
+          </tr></thead>
+          <tbody>{c.oos.map((s,i)=><tr key={i} style={{borderTop:`1px solid ${C.bd}`}}>
+            <td style={{padding:"4px 6px"}}>{s.market}</td>
+            <td>{s.cands}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{pctS(s.mean_train,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:rateColor(s.mean_test)}}>{pctS(s.mean_test,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{pctS(s.base,0)}</td>
+            <td style={{fontFamily:"'JetBrains Mono',monospace"}}>{pctS(s.hold75,0)}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>}
+  </div>;
+}
+
+// ═══════════════════════════════════════
+// 球隊分項
+// ═══════════════════════════════════════
+const RANK_LABEL={bat_vsL_woba:"對左投",bat_vsR_woba:"對右投",bat_fastball_woba:"對速球",
+  bat_breaking_woba:"對變化球",bat_offspeed_woba:"對慢速球",bat_day_woba:"日場打擊",
+  bat_night_woba:"夜場打擊",pit_vsL_woba:"投手壓左打",pit_vsR_woba:"投手壓右打"};
+
+function SplitRow({label,d,cmp}){
+  if(!d)return null;
+  const diff=cmp&&d.woba!=null&&cmp.woba!=null?d.woba-cmp.woba:null;
+  return<>
+    <div style={{color:C.d}}>{label}</div>
+    <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>{numS(d.woba)}</div>
+    <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{numS(d.xwoba_con)}</div>
+    <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{d.k_pct==null?"—":d.k_pct+"%"}</div>
+    <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{d.hardhit_pct==null?"—":d.hardhit_pct+"%"}</div>
+    <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{d.pa}</div>
+    <div style={{fontFamily:"'JetBrains Mono',monospace",color:diff==null?C.m:(diff>0?C.g:C.r)}}>
+      {diff==null?"":(diff>0?"+":"")+diff.toFixed(3)}</div>
+  </>;
+}
+
+function SplitTable({title,rows,league}){
+  return<Card style={{marginBottom:10}}>
+    <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>{title}</div>
+    <div style={{display:"grid",gridTemplateColumns:"auto repeat(6,auto)",gap:"4px 8px",fontSize:11,alignItems:"center"}}>
+      <div style={{color:C.m}}></div>
+      <div style={{color:C.m}}>wOBA</div>
+      <div style={{color:C.m}}>xwOBA</div>
+      <div style={{color:C.m}}>K%</div>
+      <div style={{color:C.m}}>強擊%</div>
+      <div style={{color:C.m}}>PA</div>
+      <div style={{color:C.m}}>vs聯盟</div>
+      {rows.map((r,i)=><SplitRow key={i} label={r[0]} d={r[1]} cmp={league}/>)}
+    </div>
+  </Card>;
+}
+
+function TeamsView({A}){
+  const ids=Object.keys(A.teams).sort((a,b)=>A.teams[a].zh.localeCompare(A.teams[b].zh,"zh-Hant"));
+  const[tid,setTid]=useState(ids[0]);
+  const t=A.teams[tid];
+  const L=A.league;
+  if(!t)return null;
+  return<div>
+    <Card style={{marginBottom:12}}>
+      <Field label="選擇球隊" style={{marginBottom:0}}>
+        <Sel value={tid} onChange={setTid}
+          options={ids.map(i=>({value:i,label:A.teams[i].zh}))}/>
+      </Field>
+    </Card>
+
+    <Card style={{marginBottom:10}}>
+      <div style={{fontSize:15,fontWeight:700,marginBottom:8}}>{t.zh} 聯盟排名</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {Object.entries(t.ranks||{}).map(([k,v])=><Tag key={k}
+          color={v<=10?C.g:v>=21?C.r:C.d} bg={v<=10?C.gD:v>=21?C.rD:"rgba(139,153,173,0.12)"}>
+          {RANK_LABEL[k]||k} #{v}</Tag>)}
+      </div>
+    </Card>
+
+    <SplitTable title="打擊：對手投球慣用手"
+      rows={[["對左投",t.bat.vsL],["對右投",t.bat.vsR],["全部",t.bat.all]]} league={L.bat_all}/>
+    <SplitTable title="打擊：球種族群"
+      rows={Object.entries(t.bat.group||{})} league={L.bat_all}/>
+    <SplitTable title="打擊：對左投 × 球種"
+      rows={Object.entries(t.bat.vsL_group||{})} league={L.vsL}/>
+    <SplitTable title="打擊：對右投 × 球種"
+      rows={Object.entries(t.bat.vsR_group||{})} league={L.vsR}/>
+    <SplitTable title="打擊：時段與主客"
+      rows={[["日場",t.bat.day],["夜場",t.bat.night],["主場",t.bat.home],["客場",t.bat.away]]} league={L.bat_all}/>
+    <SplitTable title="打擊：細球種（前幾種）"
+      rows={Object.entries(t.bat.pitch||{}).slice(0,8)} league={L.bat_all}/>
+    <SplitTable title="投球：對打者左右（數字越低越好）"
+      rows={[["對左打",t.pit.vsL],["對右打",t.pit.vsR],["全部",t.pit.all]]} league={L.bat_all}/>
+    <SplitTable title="投球：時段與主客"
+      rows={[["日場",t.pit.day],["夜場",t.pit.night],["主場",t.pit.home],["客場",t.pit.away]]} league={L.bat_all}/>
+    <SplitTable title="投球：球種族群被打"
+      rows={Object.entries(t.pit.group||{})} league={L.bat_all}/>
+
+    <Card style={{marginBottom:10}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>投手群球種使用率</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {Object.entries(t.pit.usage||{}).map(([k,v])=><Tag key={k}>{k} {v}%</Tag>)}
+      </div>
+    </Card>
+
+    {t.best?.market_zh&&<Card style={{marginBottom:10}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>{t.zh} 的最佳條件</div>
+      <Muted style={{marginBottom:8}}>
+        只有 {t.games} 場樣本，運氣線 {pctS(t.chance_line,0)} —— 命中率沒超過運氣線就當雜訊。
+      </Muted>
+      {t.top.map((r,i)=><div key={i} style={{padding:"8px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:600}}>{r.market_zh}</div>
+            <Muted style={{marginTop:2}}>{r.label}</Muted>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:15,fontWeight:700,color:rateColor(r.rate)}}>{pctS(r.rate,0)}</div>
+            <div style={{fontSize:10,color:C.d}}>{r.hits}/{r.n}・LB {pctS(r.wilson,0)}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
+          <Tag color={C.d} bg="rgba(139,153,173,0.12)">聯盟基準 {pctS(r.base_league,0)}</Tag>
+          <Tag color={r.beats_chance?C.g:C.r} bg={r.beats_chance?C.gD:C.rD}>
+            {r.beats_chance?"勝過運氣線":"未勝運氣線"}</Tag>
+          <Tag color={C.d} bg="rgba(139,153,173,0.12)">需賠率 {r.be_odds?.toFixed(2)}</Tag>
+        </div>
+      </div>)}
+    </Card>}
+  </div>;
+}
+
+// ═══════════════════════════════════════
+// 模型
+// ═══════════════════════════════════════
+function ModelsView({A}){
+  const[open,setOpen]=useState(null);
+  return<div>
+    <Card style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>模型層在做什麼</div>
+      <Muted>
+        每半個月用「當時之前的所有比賽」重新訓練一次梯度提升模型，只預測訓練期之後的比賽，
+        所以下面每一個數字都是樣本外。<b style={{color:C.t}}>AUC</b> 0.5 = 沒資訊；
+        <b style={{color:C.t}}>Brier 技巧</b> &gt;0 = 比一律押基準率更好；
+        <b style={{color:C.t}}>≥70%/≥75% 格</b>= 模型喊到那麼高機率時，實際命中率是多少。
+      </Muted>
+    </Card>
+    {A.models.map(m=>{
+      const t70=m.thresholds.find(t=>t.thr===0.7);
+      const t75=m.thresholds.find(t=>t.thr===0.75);
+      const useful=m.auc>=0.55&&m.brier_skill>0;
+      return<Card key={m.market} style={{marginBottom:8,padding:13}}>
+        <div onClick={()=>setOpen(open===m.market?null:m.market)} style={{cursor:"pointer",display:"flex",justifyContent:"space-between",gap:8}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700}}>{m.market_zh}</div>
+            <Muted style={{marginTop:3}}>樣本外 {m.oos_n} 場・基準 {pctS(m.base,0)}・最高機率 {pctS(m.p_max,0)}</Muted>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:16,fontWeight:700,
+              color:useful?C.g:C.d}}>{m.auc.toFixed(3)}</div>
+            <Muted>Brier {m.brier_skill>0?"+":""}{m.brier_skill.toFixed(3)}</Muted>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+          {t70&&<Tag color={rateColor(t70.rate)} bg="rgba(139,153,173,0.12)">≥70% 時 {pctS(t70.rate,0)}（{t70.n} 場）</Tag>}
+          {t75&&<Tag color={rateColor(t75.rate)} bg="rgba(139,153,173,0.12)">≥75% 時 {pctS(t75.rate,0)}（{t75.n} 場）</Tag>}
+          {!useful&&<Tag color={C.r} bg={C.rD}>資訊量不足</Tag>}
+        </div>
+        {open===m.market&&<div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.bd}`}}>
+          <Muted style={{fontWeight:700,color:C.t,marginBottom:6}}>校準表（預測 vs 實際）</Muted>
+          <div style={{display:"grid",gridTemplateColumns:"auto auto auto auto",gap:"3px 10px",fontSize:11}}>
+            <div style={{color:C.m}}>機率區間</div><div style={{color:C.m}}>場數</div>
+            <div style={{color:C.m}}>預測</div><div style={{color:C.m}}>實際</div>
+            {m.calibration.map((c,i)=><React.Fragment key={i}>
+              <div style={{color:C.d}}>{c.bucket}</div>
+              <div style={{fontFamily:"'JetBrains Mono',monospace"}}>{c.n}</div>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{pctS(c.pred,0)}</div>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",color:rateColor(c.actual)}}>{pctS(c.actual,0)}</div>
+            </React.Fragment>)}
+          </div>
+        </div>}
+      </Card>;
+    })}
+    {A.importance&&Object.keys(A.importance).length>0&&<Card style={{marginTop:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>哪些分項特徵真的有用</div>
+      <Muted style={{marginBottom:8}}>permutation importance：打亂該特徵後樣本外 AUC 掉多少。</Muted>
+      {Object.entries(A.importance).map(([mk,feats])=><div key={mk} style={{marginBottom:10}}>
+        <Muted style={{color:C.t,fontWeight:700}}>{mk}</Muted>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:4}}>
+          {feats.slice(0,10).map((f,i)=><Tag key={i}>{f.feature} {f.auc_drop>0?"+":""}{f.auc_drop.toFixed(3)}</Tag>)}
+        </div>
+      </div>)}
+    </Card>}
+  </div>;
+}
+
+// ═══════════════════════════════════════
+// 分析主頁
+// ═══════════════════════════════════════
+function AnalysisView({A,err,loading,reload}){
+  const[sub,setSub]=useState("slate");
+  if(!A)return<Card>
+    <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>還沒有分析資料</div>
+    <Muted>{loading?"載入中…":err?`讀取 output/app_data.json 失敗：${err}`:"請先跑 analysis/run_all.py"}</Muted>
+    <button onClick={reload} style={{marginTop:10,padding:"8px 14px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.d,fontSize:12,cursor:"pointer"}}>重新載入</button>
+  </Card>;
+  const subs=[["slate","推薦"],["cond","條件"],["teams","球隊"],["models","模型"]];
+  return<div>
+    <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto"}}>
+      {subs.map(([k,l])=><Pill key={k} small sel={sub===k} onClick={()=>setSub(k)}>{l}</Pill>)}
+    </div>
+    <Muted style={{marginBottom:10}}>
+      資料：2026 球季 ~ {A.data.through}・{A.data.games} 場・{A.data.pitches.toLocaleString()} 球 Statcast
+      ・產生於 {A.generated}
+    </Muted>
+    {sub==="slate"&&<SlateView A={A}/>}
+    {sub==="cond"&&<ConditionsView A={A}/>}
+    {sub==="teams"&&<TeamsView A={A}/>}
+    {sub==="models"&&<ModelsView A={A}/>}
+  </div>;
+}
+
+// ═══════════════════════════════════════
+// 首頁
+// ═══════════════════════════════════════
+function HomeView({A,goto}){
+  const nA=A?.conditions?.tierA?.length;
+  const picks=A?.slate?.picks||[];
+  const strong=picks.filter(p=>p.p>=0.7);
+  return<div>
+    <Card style={{textAlign:"center",padding:"28px 16px"}}>
+      <div style={{fontSize:36,marginBottom:8}}>⚾</div>
+      <div style={{fontSize:20,fontWeight:700}}>MLB 2026 資料分析</div>
+      <Muted style={{marginTop:6}}>
+        {A?`${A.data.games} 場完賽・${A.data.pitches.toLocaleString()} 球 Statcast 逐球資料`:"尚未載入分析資料"}
+      </Muted>
+    </Card>
+    {A&&<>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
+        <Stat label="Tier A 條件" value={nA} unit="組" color={nA>0?C.g:C.d}/>
+        <Stat label="檢定假設數" value={(A.conditions.hypotheses/1e6).toFixed(1)+"M"}/>
+        <Stat label="模型可用玩法" value={A.models.filter(m=>m.auc>=0.55&&m.brier_skill>0).length} unit={`/${A.models.length}`}/>
+        <Stat label="待開打訊號" value={strong.length} unit="個" color={strong.length?C.acc:C.d}/>
+      </div>
+      <Card style={{marginTop:12}}>
+        <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>今晚看什麼</div>
+        {strong.length===0&&<Muted>目前沒有模型機率 ≥70% 的訊號。</Muted>}
+        {strong.slice(0,6).map((p,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"6px 0",borderTop:i?`1px solid ${C.bd}`:"none"}}>
+          <div style={{fontSize:12,minWidth:0}}>
+            <div style={{fontWeight:600}}>{p.matchup}</div>
+            <Muted>{p.date.slice(5)}・{p.scope}{p.team?`（${p.team}）`:""}・{p.market_zh}</Muted>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:rateColor(p.p)}}>{pctS(p.p)}</div>
+            <Muted>需賠率 {p.be_odds?.toFixed(2)}</Muted>
+          </div>
+        </div>)}
+        <button onClick={()=>goto("analysis")} style={{marginTop:10,width:"100%",padding:"9px 0",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.acc,fontSize:12,fontWeight:600,cursor:"pointer"}}>看完整分析</button>
+      </Card>
+    </>}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
+      <Stat label="台北日期" value={todayStr()}/>
+      <Stat label="美西日期" value={todayPT()}/>
+    </div>
+  </div>;
+}
+
+// ═══════════════════════════════════════
+// 維護
 // ═══════════════════════════════════════
 const WIPE_COLS=[
   {col:"bets",localKey:"mlb-b4",label:"投注紀錄"},
@@ -224,9 +641,9 @@ function MaintenanceView({uid}){
 
     <Card style={{marginTop:12,borderColor:C.r}}>
       <div style={{fontSize:15,fontWeight:700,color:C.r,marginBottom:6}}>清除全部資料</div>
-      <div style={{fontSize:12,color:C.d,lineHeight:1.7,marginBottom:12}}>
+      <Muted style={{marginBottom:12}}>
         刪除 users/&#123;uid&#125;/bets 與 users/&#123;uid&#125;/games 底下所有文件，並清掉本機 localStorage 快取。無法復原。
-      </div>
+      </Muted>
       <button onClick={wipeAll} disabled={busy} style={{width:"100%",padding:"12px 0",borderRadius:8,border:`1px solid ${C.r}`,background:C.rD,color:C.r,fontSize:14,fontWeight:700,cursor:busy?"default":"pointer",outline:"none"}}>
         {busy?"處理中…":"清除全部雲端資料"}
       </button>
@@ -244,30 +661,26 @@ function MaintenanceView({uid}){
 // APP
 // ═══════════════════════════════════════
 function App(){
-  const[user,setUser]=useState(undefined); // undefined=loading, null=logged out
+  const[user,setUser]=useState(undefined);
   const[tab,setTab]=useState("home");
+  const{data:A,err,loading,reload}=useAnalysis();
 
-  // Auth listener
   useEffect(()=>{
     const unsub=auth.onAuthStateChanged(u=>setUser(u||null));
     return()=>unsub();
   },[]);
 
   const uid=user?.uid;
-
   const signIn=()=>auth.signInWithPopup(googleProvider).catch(e=>{
-    // Fallback to redirect for mobile browsers that block popups
     if(e.code==="auth/popup-blocked"||e.code==="auth/cancelled-popup-request")auth.signInWithRedirect(googleProvider);
     else alert("登入失敗："+e.message);
   });
   const signOut=()=>auth.signOut();
 
-  // Loading state
   if(user===undefined)return<div style={{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.d}}>
     <div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>⚾</div><div>載入中...</div></div>
   </div>;
 
-  // Login screen
   if(!user)return<div style={{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.t}}>
     <div style={{textAlign:"center",padding:40}}>
       <div style={{fontSize:60,marginBottom:16}}>⚾</div>
@@ -283,20 +696,22 @@ function App(){
 
   const tabs=[
     {id:"home",icon:"⚾",label:"首頁"},
+    {id:"analysis",icon:"🔬",label:"分析"},
     {id:"maint",icon:"🧹",label:"維護"},
   ];
 
   return<div style={{background:C.bg,minHeight:"100vh",color:C.t,paddingBottom:80}}>
     <div style={{background:C.sf,borderBottom:`1px solid ${C.bd}`,padding:"14px 20px",display:"flex",alignItems:"center",gap:10}}>
       <span style={{fontSize:22}}>⚾</span>
-      <div style={{flex:1}}><div style={{fontSize:17,fontWeight:700}}>MLB 投注追蹤</div><div style={{fontSize:11,color:C.d}}>台灣運彩 · 賽果分析</div></div>
+      <div style={{flex:1}}><div style={{fontSize:17,fontWeight:700}}>MLB 投注追蹤</div><div style={{fontSize:11,color:C.d}}>台灣運彩 · 資料分析</div></div>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         {user.photoURL&&<img src={user.photoURL} style={{width:24,height:24,borderRadius:"50%"}} referrerPolicy="no-referrer"/>}
         <button onClick={signOut} style={{background:"none",border:"none",color:C.d,cursor:"pointer",fontSize:11}}>登出</button>
       </div>
     </div>
     <div style={{maxWidth:560,margin:"0 auto",padding:"12px 16px"}}>
-      {tab==="home"&&<HomeView/>}
+      {tab==="home"&&<HomeView A={A} goto={setTab}/>}
+      {tab==="analysis"&&<AnalysisView A={A} err={err} loading={loading} reload={reload}/>}
       {tab==="maint"&&<MaintenanceView uid={uid}/>}
     </div>
     <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.sf,borderTop:`1px solid ${C.bd}`,display:"flex",zIndex:10}}>
