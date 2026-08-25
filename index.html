@@ -1266,16 +1266,172 @@ function ModelsView({A}){
 }
 
 // ═══════════════════════════════════════
+// 說明（使用教學）
+// ═══════════════════════════════════════
+function Sec({title,children,open:o0}){
+  const[open,setOpen]=useState(!!o0);
+  return<Card style={{marginBottom:10}}>
+    <div onClick={()=>setOpen(!open)} style={{cursor:"pointer",display:"flex",
+      justifyContent:"space-between",alignItems:"center"}}>
+      <div style={{fontSize:14,fontWeight:700}}>{title}</div>
+      <span style={{color:C.m,fontSize:12}}>{open?"收起":"展開"}</span>
+    </div>
+    {open&&<div style={{marginTop:10}}>{children}</div>}
+  </Card>;
+}
+
+function Step({n,title,children}){
+  return<div style={{display:"flex",gap:10,marginBottom:12}}>
+    <div style={{flexShrink:0,width:22,height:22,borderRadius:11,background:C.accD,
+      color:C.acc,fontSize:12,fontWeight:700,display:"flex",alignItems:"center",
+      justifyContent:"center"}}>{n}</div>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{fontSize:13,fontWeight:600,marginBottom:3}}>{title}</div>
+      <Muted>{children}</Muted>
+    </div>
+  </div>;
+}
+
+function Term({k,children}){
+  return<div style={{padding:"6px 0",borderTop:"1px solid "+C.bd}}>
+    <div style={{fontSize:12,fontWeight:600,color:C.t}}>{k}</div>
+    <Muted>{children}</Muted>
+  </div>;
+}
+
+function HelpView({A}){
+  const payout=A?.backtest?.payout||0.9;
+  const need=(1/payout).toFixed(2);
+  return<div>
+    <Card style={{marginBottom:10,borderColor:C.acc}}>
+      <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>先講最重要的一句</div>
+      <Muted>
+        這套系統目前在台彩返還率下大約站在<b style={{color:C.t}}>打平線上</b>
+        （整體 lift {A?.backtest?.two_stage?.overall_lift?.toFixed(3)}，
+        保本需要返還率 {pctS(A?.backtest?.two_stage?.overall_breakeven_payout,1)}）。
+        它的用途是<b style={{color:C.t}}>幫你篩掉沒優勢的盤、把注意力放在少數有訊號的場次</b>，
+        不是保證獲利的機器。注碼請控制。
+      </Muted>
+    </Card>
+
+    <Sec title="每天怎麼用（4 步）" open>
+      <Step n="1" title="更新資料（電腦上跑一次）">
+        <span style={{fontFamily:"'JetBrains Mono',monospace",color:C.t}}>
+          python analysis/daily_update.py --push</span>
+        <br/>約 4 分鐘，會抓昨天的比賽、重算全部分析、自動推上網站。
+        沒跑的話網頁看到的是舊資料（推薦頁上方會跳紅字提醒）。
+      </Step>
+      <Step n="2" title="開「分析 → 推薦」，看 edge 排行">
+        把 edge 門檻設到 <b style={{color:C.t}}>1.11</b> 以上（低於這個打不過抽水）。
+        清單已經照 edge 由高到低排好，只看前幾筆就夠。
+      </Step>
+      <Step n="3" title="核對台彩實際賠率">
+        每張卡片有「台彩賠率」輸入框，填進去會立刻算期望值：
+        綠色正值才有搞頭。重點是<b style={{color:C.t}}>實際賠率要高於「保本」那個數字</b>。
+      </Step>
+      <Step n="4" title="下注後按「記錄下注」，隔天回來結算">
+        到「紀錄」tab 按一次「自動結算」，系統會去 MLB API 抓比分判定勝負，
+        累積出你的真實 ROI 與模型校準表。
+      </Step>
+    </Sec>
+
+    <Sec title="推薦頁的每個數字是什麼意思">
+      <Term k="機率">得分期望值模型算出的命中機率（先預測雙方得分，再用負二項分布展開）。</Term>
+      <Term k="基準">這個玩法在全聯盟的平均命中率。例如「受讓 2.5」基準就有 73%，
+        所以看到 73% 一點都不稀奇。</Term>
+      <Term k="edge">機率 ÷ 基準率。<b style={{color:C.t}}>這是排序的主角</b>。
+        台彩返還率約 {pctS(payout,0)}，所以 edge 要大於 {need} 才有正期望值。
+        edge 1.40 = 比聯盟平均高 40%。</Term>
+      <Term k="假設賠率">用基準率推估「台彩可能開的價位」＝(1÷基準率)×返還率。
+        只是參考，實際請以台彩畫面為準。</Term>
+      <Term k="保本">1 ÷ 機率。實際賠率要高於它才不虧。例如機率 67%，保本 1.49，
+        台彩若開 1.45 就不要下。</Term>
+      <Term k="回測 xx注 命中 xx% ROI">這個盤口在樣本外回測的實際表現，
+        給你判斷「模型在這類盤口靠不靠譜」。</Term>
+      <Term k="[跨季驗證] 綠字">這條件通過了 2024/2025/2026 三季驗證
+        （每季 lift 都 ≥1.11）。23.8 萬組候選只有 10 組做到，是最值得看的訊號。</Term>
+      <Term k="條件 N">有 N 組歷史高命中條件同時觸發。模型與條件同向才算強訊號。</Term>
+    </Sec>
+
+    <Sec title="決策規則（照這個做就好）">
+      <Muted style={{lineHeight:2}}>
+        ✅ edge ≥ 1.11 才考慮，≥1.2 才是真的有話講<br/>
+        ✅ 台彩實際賠率 &gt; 保本賠率（填進去看期望值是不是綠的）<br/>
+        ✅ 有 [跨季驗證] 標籤的加分<br/>
+        ✅ 到「回測」頁確認該家族的 ROI 區間（綠底可考慮、紅底不要碰）<br/>
+        ⛔ 讓分／受讓：原始 lift 只有 1.00，完全沒優勢，不要用這套模型下<br/>
+        ⛔ 先發未公布的場次：資料不完整，先跳過<br/>
+        ⛔ 高得分球場的大分（例如洛磯、國民主場）：模型的 edge 大半來自球場，
+        而台彩早就把線拉高了，要額外打折
+      </Muted>
+    </Sec>
+
+    <Sec title="串關試算（4選3 玩法）">
+      <Muted style={{lineHeight:1.9}}>
+        1. 在推薦頁每張卡片按「加入組合」，選 3-5 腳（同一場只能選一腳，
+        選到同場會跳紅字警示 —— 台彩規定同場不同玩法不能同一單）<br/>
+        2. 每腳都填上台彩賠率<br/>
+        3. 上方「串關試算」會出現表格：全關、n選(n-1)、n選(n-2) 三種買法的
+        票數、成本、至少中一張的機率、期望回收、期望值<br/>
+        4. 期望值是綠的才值得買。4選3 的容錯高但成本是 4 張票，
+        要靠單腳賠率夠高才划算
+      </Muted>
+    </Sec>
+
+    <Sec title="其他頁面在幹嘛">
+      <Term k="回測">這套系統誠不誠實全看這頁。「兩階段驗證」是連挑策略都沒偷看未來的結果；
+        「球場校正」告訴你哪些優勢其實是莊家早就定價的球場效應。</Term>
+      <Term k="條件">列出過四道關卡的高命中條件，每組都標了運氣線
+        （把結果打亂重跑得到的最高命中率）—— 沒超過運氣線的就是雜訊。</Term>
+      <Term k="球隊">每隊一句話摘要 + 對左右投/球種/日夜/主客的完整分項，
+        數字旁邊有跟聯盟平均的差。挑對位、找弱點用。</Term>
+      <Term k="球員">每隊 14 名打者、12 名投手的同款分項，
+        點名字展開。投手還有球種使用率與平均球速。</Term>
+      <Term k="模型">模型的樣本外表現與校準表，還有「市場代理測試」——
+        那是整套分析最尖銳的一個實驗。</Term>
+      <Term k="紀錄">你的真實下注與自動結算。這頁累積得越多，
+        我們就越能知道模型在台彩的真實表現。</Term>
+    </Sec>
+
+    <Sec title="名詞表">
+      <Term k="wOBA">加權上壘率，衡量打擊產能的綜合指標。聯盟平均約 .315-.325，
+        .350 以上算強、.290 以下算弱。</Term>
+      <Term k="xwOBA">用擊球初速與角度推算的「應得 wOBA」，去掉了守備與運氣，
+        比 wOBA 更能反映真實實力。</Term>
+      <Term k="lift">命中率 ÷ 基準率。1.0 = 沒優勢。要 &gt;{need} 才打得過台彩抽水。</Term>
+      <Term k="運氣線">把比賽結果隨機打亂重跑 25 次，記錄「純靠運氣能刷到的最高命中率」
+        的 95 百分位。搜尋空間越大這條線越高 —— 單隊層級已經高到 100%。</Term>
+      <Term k="Wilson 下界">命中率的信賴區間下緣。5 戰 5 勝的下界只有 57%，
+        50 戰 40 勝的下界有 67% —— 用它排序才不會被小樣本騙。</Term>
+      <Term k="Brier 技巧分數">&gt;0 表示模型比「一律押基準率」更準。</Term>
+      <Term k="μ（預估總分）">模型預測的雙方總得分。跟台彩盤口線的差
+        （μ − 線）是判斷大小分最直覺的量，回測頁有查表。</Term>
+    </Sec>
+
+    <Sec title="出問題時">
+      <Muted style={{lineHeight:1.9}}>
+        · 網頁沒更新 → 手機瀏覽器強制重新載入；或確認有跑 daily_update.py --push<br/>
+        · 推薦是空的 → edge 門檻調低看看，或先發還沒公布<br/>
+        · 結算沒反應 → 比賽還沒結束，或該日 MLB API 還沒更新，晚點再按<br/>
+        · 想從頭重跑 → <span style={{fontFamily:"'JetBrains Mono',monospace"}}>
+          python analysis/run_all.py</span>（第一次約 30 分鐘）
+      </Muted>
+    </Sec>
+  </div>;
+}
+
+// ═══════════════════════════════════════
 // 分析主頁
 // ═══════════════════════════════════════
-function AnalysisView({A,err,loading,reload,logBet}){
-  const[sub,setSub]=useState("slate");
+function AnalysisView({A,err,loading,reload,logBet,initialSub}){
+  const[sub,setSub]=useState(initialSub||"slate");
+  useEffect(()=>{if(initialSub)setSub(initialSub)},[initialSub]);
   if(!A)return<Card>
     <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>還沒有分析資料</div>
     <Muted>{loading?"載入中…":err?`讀取 output/app_data.json 失敗：${err}`:"請先跑 analysis/run_all.py"}</Muted>
     <button onClick={reload} style={{marginTop:10,padding:"8px 14px",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.d,fontSize:12,cursor:"pointer"}}>重新載入</button>
   </Card>;
-  const subs=[["slate","推薦"],["bt","回測"],["cond","條件"],["teams","球隊"],["players","球員"],["models","模型"]];
+  const subs=[["slate","推薦"],["bt","回測"],["cond","條件"],["teams","球隊"],["players","球員"],["models","模型"],["help","說明"]];
   return<div>
     <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto"}}>
       {subs.map(([k,l])=><Pill key={k} small sel={sub===k} onClick={()=>setSub(k)}>{l}</Pill>)}
@@ -1290,6 +1446,7 @@ function AnalysisView({A,err,loading,reload,logBet}){
     {sub==="cond"&&<ConditionsView A={A}/>}
     {sub==="teams"&&<TeamsView A={A}/>}
     {sub==="models"&&<ModelsView A={A}/>}
+    {sub==="help"&&<HelpView A={A}/>}
   </div>;
 }
 
@@ -1370,7 +1527,10 @@ function HomeView({A,goto}){
             <Muted>edge {p.edge?.toFixed(2)}</Muted>
           </div>
         </div>)}
-        <button onClick={()=>goto("analysis")} style={{marginTop:10,width:"100%",padding:"9px 0",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.acc,fontSize:12,fontWeight:600,cursor:"pointer"}}>看完整分析</button>
+        <div style={{display:"flex",gap:8,marginTop:10}}>
+          <button onClick={()=>goto("analysis")} style={{flex:1,padding:"9px 0",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.acc,fontSize:12,fontWeight:600,cursor:"pointer"}}>看完整分析</button>
+          <button onClick={()=>goto("analysis","help")} style={{flex:1,padding:"9px 0",borderRadius:8,border:`1px solid ${C.bd}`,background:C.bg,color:C.d,fontSize:12,fontWeight:600,cursor:"pointer"}}>怎麼用？</button>
+        </div>
       </Card>
     </>}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
@@ -1571,6 +1731,8 @@ function MaintenanceView({uid}){
 function App(){
   const[user,setUser]=useState(undefined);
   const[tab,setTab]=useState("home");
+  const[subTab,setSubTab]=useState(null);
+  const goto=useCallback((t,sub)=>{setTab(t);setSubTab(sub||null)},[]);
   const{data:A,err,loading,reload}=useAnalysis();
 
   useEffect(()=>{
@@ -1636,8 +1798,8 @@ function App(){
       </div>
     </div>
     <div style={{maxWidth:560,margin:"0 auto",padding:"12px 16px"}}>
-      {tab==="home"&&<HomeView A={A} goto={setTab}/>}
-      {tab==="analysis"&&<AnalysisView A={A} err={err} loading={loading} reload={reload} logBet={logBet}/>}
+      {tab==="home"&&<HomeView A={A} goto={goto}/>}
+      {tab==="analysis"&&<AnalysisView A={A} err={err} loading={loading} reload={reload} logBet={logBet} initialSub={subTab}/>}
       {tab==="bets"&&<BetsView bets={bets} updateBet={updateBet} deleteBet={deleteBet}/>}
       {tab==="maint"&&<MaintenanceView uid={uid}/>}
     </div>
