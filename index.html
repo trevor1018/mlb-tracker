@@ -94,6 +94,59 @@ const numS=(v,nd=3)=>v==null?"—":Number(v).toFixed(nd);
 const rateColor=v=>v==null?C.d:(v>=0.75?C.g:v>=0.65?C.acc:C.d);
 
 
+
+// ─── 盤口結算：market 名稱 → 用最終比分判定勝負 ───
+// market 命名對應 analysis/backtest.py：over_8.5 / under_8.5 /
+// home_win / away_cover_m15 / home_tt_over_3.5 / f5_over_4.5 …
+function settleMarket(market,awayScore,homeScore,f5Away,f5Home){
+  const a=Number(awayScore),h=Number(homeScore);
+  if(!Number.isFinite(a)||!Number.isFinite(h))return null;
+  const tot=a+h,diff=a-h;
+  const num=str=>parseFloat(str);
+  if(market.startsWith("f5_")){
+    if(f5Away==null||f5Home==null)return null;
+    const t5=Number(f5Away)+Number(f5Home);
+    const line=num(market.split("_").pop());
+    return market.includes("over")?t5>line:t5<line;
+  }
+  if(market.startsWith("over_"))return tot>num(market.slice(5));
+  if(market.startsWith("under_"))return tot<num(market.slice(6));
+  const [side,...rest]=market.split("_");
+  const r=rest.join("_");
+  const my=side==="home"?h:a;
+  const opp=side==="home"?a:h;
+  const md=my-opp;
+  if(r==="win")return md>0;
+  if(r==="cover_m15")return md>=2;
+  if(r==="cover_p15")return md>=-1;
+  if(r==="cover_m25")return md>=3;
+  if(r==="cover_p25")return md>=-2;
+  if(r.startsWith("tt_over_"))return my>num(r.slice(8));
+  if(r.startsWith("tt_under_"))return my<num(r.slice(9));
+  return null;
+}
+
+// 抓某一天的所有比賽結果（含前5局），用來結算
+async function fetchResults(date){
+  const url=`${MLB_API}/schedule?date=${date}&sportId=1&hydrate=linescore`;
+  const r=await fetch(url);
+  if(!r.ok)throw new Error("MLB API "+r.status);
+  const d=await r.json();
+  const out={};
+  for(const day of (d.dates||[]))for(const g of (day.games||[])){
+    const st=g.status?.detailedState||"";
+    const isFinal=st==="Final"||st.startsWith("Completed")||st==="Game Over";
+    if(!isFinal)continue;
+    const inn=g.linescore?.innings||[];
+    out[g.gamePk]={
+      away:g.teams.away.score,home:g.teams.home.score,
+      f5Away:inn.slice(0,5).reduce((x,i)=>x+(i.away?.runs||0),0),
+      f5Home:inn.slice(0,5).reduce((x,i)=>x+(i.home?.runs||0),0),
+    };
+  }
+  return out;
+}
+
 // ─── 串關數學 ───
 const nCk=(n,k)=>{if(k<0||k>n)return 0;let r=1;for(let i=0;i<k;i++)r=r*(n-i)/(i+1);return Math.round(r)};
 // 各腳機率獨立（不同場比賽）→ 恰好 j 腳命中的機率分布
@@ -193,7 +246,7 @@ function useAnalysis(){
 
 
 // ─── 賠率輸入 → 期望值 ───
-function OddsBox({pick,odds,setOdds,picked,toggle}){
+function OddsBox({pick,odds,setOdds,picked,toggle,onLog}){
   const o=parseFloat(odds||"");
   const ev=o>1?pick.p*o-1:null;
   return<div style={{display:"flex",gap:6,alignItems:"center",marginTop:8,flexWrap:"wrap"}}>
@@ -209,6 +262,10 @@ function OddsBox({pick,odds,setOdds,picked,toggle}){
       cursor:"pointer",fontWeight:600,border:picked?`1px solid ${C.acc}`:`1px solid ${C.bd}`,
       background:picked?C.accD:C.bg,color:picked?C.acc:C.d,outline:"none"}}>
       {picked?"已加入組合":"加入組合"}</button>
+    {onLog&&<button onClick={()=>onLog(o)} disabled={!(o>1)}
+      style={{padding:"4px 10px",borderRadius:14,fontSize:11,cursor:o>1?"pointer":"default",
+        fontWeight:600,border:`1px solid ${o>1?C.b:C.bd}`,
+        background:o>1?C.bD:C.bg,color:o>1?C.b:C.m,outline:"none"}}>記錄下注</button>}
   </div>;
 }
 
@@ -295,7 +352,7 @@ function EdgeTag({edge}){
     edge {edge.toFixed(2)}</Tag>;
 }
 
-function SlateView({A}){
+function SlateView({A,logBet}){
   const slate=A.slate;
   const[date,setDate]=useState(slate?.dates?.[0]||"");
   const[minEdge,setMinEdge]=useState(1.05);
@@ -360,7 +417,8 @@ function SlateView({A}){
       </div>}
       <OddsBox pick={p} odds={oddsMap[keyOf(p)]} setOdds={v=>setOdds(keyOf(p),v)}
         picked={legKeys.includes(keyOf(p))}
-        toggle={()=>setLegKeys(ks=>ks.includes(keyOf(p))?ks.filter(x=>x!==keyOf(p)):[...ks,keyOf(p)].slice(0,6))}/>
+        toggle={()=>setLegKeys(ks=>ks.includes(keyOf(p))?ks.filter(x=>x!==keyOf(p)):[...ks,keyOf(p)].slice(0,6))}
+        onLog={logBet?(o=>logBet(p,o)):null}/>
     </Card>)}
 
     <div style={{fontSize:13,fontWeight:700,margin:"18px 0 8px"}}>逐場總覽（{games.length}）</div>
@@ -1184,7 +1242,7 @@ function ModelsView({A}){
 // ═══════════════════════════════════════
 // 分析主頁
 // ═══════════════════════════════════════
-function AnalysisView({A,err,loading,reload}){
+function AnalysisView({A,err,loading,reload,logBet}){
   const[sub,setSub]=useState("slate");
   if(!A)return<Card>
     <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>還沒有分析資料</div>
@@ -1200,7 +1258,7 @@ function AnalysisView({A,err,loading,reload}){
       資料：2026 球季 ~ {A.data.through}・{A.data.games} 場・{A.data.pitches.toLocaleString()} 球 Statcast
       ・產生於 {A.generated}
     </Muted>
-    {sub==="slate"&&<SlateView A={A}/>}
+    {sub==="slate"&&<SlateView A={A} logBet={logBet}/>}
     {sub==="bt"&&<BacktestView A={A}/>}
     {sub==="players"&&<PlayersView A={A}/>}
     {sub==="cond"&&<ConditionsView A={A}/>}
@@ -1297,6 +1355,117 @@ function HomeView({A,goto}){
 }
 
 // ═══════════════════════════════════════
+// 紀錄（真實下注 + 自動結算 + 真實 ROI）
+// ═══════════════════════════════════════
+function BetsView({bets,updateBet,deleteBet}){
+  const [busy,setBusy]=useState(false);
+  const [msg,setMsg]=useState("");
+
+  const settleAll=async()=>{
+    setBusy(true);setMsg("");
+    const pending=bets.filter(b=>b.result==null||b.result==="pending");
+    const dates=[...new Set(pending.map(b=>b.date))];
+    let done=0,fail=0;
+    for(const d of dates){
+      try{
+        const res=await fetchResults(d);
+        for(const b of pending.filter(x=>x.date===d)){
+          const g=res[b.pk];
+          if(!g)continue;
+          const win=settleMarket(b.market,g.away,g.home,g.f5Away,g.f5Home);
+          if(win==null)continue;
+          await updateBet(b.id,{...b,result:win?"win":"lose",
+            awayScore:g.away,homeScore:g.home,
+            payout:win?Math.round(b.stake*b.odds):0,
+            settledAt:new Date().toISOString()});
+          done++;
+        }
+      }catch(e){fail++}
+    }
+    setBusy(false);
+    setMsg(`結算完成：${done} 筆更新${fail?`，${fail} 天抓取失敗`:""}`);
+  };
+
+  const settled=bets.filter(b=>b.result==="win"||b.result==="lose");
+  const stake=settled.reduce((a,b)=>a+Number(b.stake||0),0);
+  const ret=settled.reduce((a,b)=>a+Number(b.payout||0),0);
+  const roi=stake?ret/stake-1:null;
+  const hits=settled.filter(b=>b.result==="win").length;
+  const avgP=settled.length?settled.reduce((a,b)=>a+Number(b.model_p||0),0)/settled.length:null;
+
+  // 依模型機率分組看校準
+  const buckets=[[0,0.55],[0.55,0.65],[0.65,0.75],[0.75,1.01]];
+  const calib=buckets.map(([lo,hi])=>{
+    const g=settled.filter(b=>b.model_p>=lo&&b.model_p<hi);
+    return {label:`${(lo*100).toFixed(0)}-${(hi*100).toFixed(0)}%`,n:g.length,
+      hit:g.length?g.filter(b=>b.result==="win").length/g.length:null,
+      pred:g.length?g.reduce((a,b)=>a+b.model_p,0)/g.length:null,
+      roi:g.length?g.reduce((a,b)=>a+Number(b.payout||0),0)/g.reduce((a,b)=>a+Number(b.stake||0),0)-1:null};
+  }).filter(x=>x.n>0);
+
+  return<div>
+    <Card style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>為什麼要記錄</div>
+      <Muted>
+        分析的最大缺口是<b style={{color:C.t}}>沒有真實賠率</b>。
+        你每記一筆（含台彩實際賠率），就是在累積自己的賠率資料庫 ——
+        兩三週後就能算出真實 ROI，並看出模型機率與台彩定價的系統性偏差。
+        結算按下去會去 MLB API 抓當天比分自動判定勝負。
+      </Muted>
+    </Card>
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+      <Stat label="已結算" value={settled.length} unit={`/${bets.length}`}/>
+      <Stat label="命中率" value={settled.length?pctS(hits/settled.length,1):"—"}/>
+      <Stat label="投注總額" value={stake||"—"}/>
+      <Stat label="真實 ROI" value={roi==null?"—":(roi>0?"+":"")+pctS(roi,1)}
+        color={roi==null?C.d:(roi>0?C.g:C.r)}/>
+    </div>
+
+    <button onClick={settleAll} disabled={busy||!bets.length}
+      style={{width:"100%",padding:"11px 0",borderRadius:8,marginBottom:12,
+        border:`1px solid ${C.b}`,background:busy?"transparent":C.bD,
+        color:busy?C.m:C.b,fontSize:13,fontWeight:700,cursor:busy?"default":"pointer"}}>
+      {busy?"結算中…":"自動結算未結算的注單"}</button>
+    {msg&&<Muted style={{marginBottom:12}}>{msg}</Muted>}
+
+    {calib.length>0&&<Card style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>模型機率 vs 實際（你的真實注單）</div>
+      <div style={{display:"grid",gridTemplateColumns:"auto auto auto auto",gap:"3px 10px",fontSize:11}}>
+        <div style={{color:C.m}}>機率區間</div><div style={{color:C.m}}>筆數</div>
+        <div style={{color:C.m}}>模型均值</div><div style={{color:C.m}}>實際命中</div>
+        {calib.map((c,i)=><React.Fragment key={i}>
+          <div style={{color:C.d}}>{c.label}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace"}}>{c.n}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{pctS(c.pred,0)}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",color:rateColor(c.hit)}}>{pctS(c.hit,0)}</div>
+        </React.Fragment>)}
+      </div>
+    </Card>}
+
+    {bets.length===0&&<Card><Muted>還沒有紀錄。到「分析 → 推薦」頁填入台彩賠率後按「記錄下注」。</Muted></Card>}
+    {bets.map(b=><Card key={b.id} style={{marginBottom:8,padding:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600}}>{b.matchup}</div>
+          <Muted>{b.date}・{b.market_zh}{b.team?`（${b.team}）`:""}</Muted>
+          <Muted>模型 {pctS(b.model_p)}・賠率 {b.odds}・注 {b.stake}
+            {b.edge?`・edge ${Number(b.edge).toFixed(2)}`:""}</Muted>
+        </div>
+        <div style={{textAlign:"right"}}>
+          {b.result==="win"&&<Tag color={C.g} bg={C.gD}>中 +{Math.round(b.payout-b.stake)}</Tag>}
+          {b.result==="lose"&&<Tag color={C.r} bg={C.rD}>沒中 −{b.stake}</Tag>}
+          {(b.result==null||b.result==="pending")&&<Tag color={C.d} bg="rgba(139,153,173,0.12)">未結算</Tag>}
+          {b.awayScore!=null&&<Muted style={{marginTop:4}}>{b.awayScore} : {b.homeScore}</Muted>}
+          <div><button onClick={()=>{if(confirm("刪除這筆紀錄？"))deleteBet(b.id)}}
+            style={{background:"none",border:"none",color:C.m,fontSize:10,cursor:"pointer",marginTop:4}}>刪除</button></div>
+        </div>
+      </div>
+    </Card>)}
+  </div>;
+}
+
+// ═══════════════════════════════════════
 // 維護
 // ═══════════════════════════════════════
 const WIPE_COLS=[
@@ -1384,6 +1553,23 @@ function App(){
   },[]);
 
   const uid=user?.uid;
+  const betsStore=useFirestore(uid,"bets","mlb-bets-v2","createdAt");
+  const bets=betsStore.data;
+  const logBet=useCallback(async(pick,odds)=>{
+    if(!uid){alert("請先登入");return}
+    const id=genId();
+    const stake=Number(prompt("注金？",100)||0);
+    if(!stake)return;
+    await betsStore.add({id,pk:pick.pk,date:pick.date,matchup:pick.matchup,
+      market:pick.market,market_zh:pick.market_zh,team:pick.team||null,
+      model_p:pick.p,edge:pick.edge||null,base:pick.base||null,
+      odds:Number(odds),stake,result:"pending",
+      createdAt:new Date().toISOString()});
+    alert("已記錄："+pick.market_zh+" 賠率 "+odds);
+  },[uid,betsStore]);
+  const updateBet=useCallback((id,item)=>betsStore.update(id,item),[betsStore]);
+  const deleteBet=useCallback((id)=>betsStore.remove(id),[betsStore]);
+
   const signIn=()=>auth.signInWithPopup(googleProvider).catch(e=>{
     if(e.code==="auth/popup-blocked"||e.code==="auth/cancelled-popup-request")auth.signInWithRedirect(googleProvider);
     else alert("登入失敗："+e.message);
@@ -1410,6 +1596,7 @@ function App(){
   const tabs=[
     {id:"home",icon:"⚾",label:"首頁"},
     {id:"analysis",icon:"🔬",label:"分析"},
+    {id:"bets",icon:"📋",label:"紀錄"},
     {id:"maint",icon:"🧹",label:"維護"},
   ];
 
@@ -1424,7 +1611,8 @@ function App(){
     </div>
     <div style={{maxWidth:560,margin:"0 auto",padding:"12px 16px"}}>
       {tab==="home"&&<HomeView A={A} goto={setTab}/>}
-      {tab==="analysis"&&<AnalysisView A={A} err={err} loading={loading} reload={reload}/>}
+      {tab==="analysis"&&<AnalysisView A={A} err={err} loading={loading} reload={reload} logBet={logBet}/>}
+      {tab==="bets"&&<BetsView bets={bets} updateBet={updateBet} deleteBet={deleteBet}/>}
       {tab==="maint"&&<MaintenanceView uid={uid}/>}
     </div>
     <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.sf,borderTop:`1px solid ${C.bd}`,display:"flex",zIndex:10}}>
