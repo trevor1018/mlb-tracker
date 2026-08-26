@@ -489,7 +489,8 @@ function SlateView({A,logBet}){
         對位分數 = <b style={{color:C.t}}>0.5×直接對戰史</b> + 0.3×對慣用手 + 0.2×對主要球種。
         填入台彩賠率會即時算期望值（綠色才有正期望）。點卡片展開看對位分析。
         {slate.live_updated_at?<> 最後一次賽前更新：
-          <b style={{color:C.t}}>{slate.live_updated_at}</b>（每場在賽前 60 分／30 分各自動更新一次）</>:null}
+          <b style={{color:C.t}}>{slate.live_updated_at}</b>
+          （台灣 00:00-10:00 每 30 分鐘檢查，每場在賽前 60 分／30 分各更新一次）</>:null}
       </Muted>
     </Card>
 
@@ -1476,7 +1477,8 @@ function HelpView({A}){
     <Sec title="每天怎麼用（4 步）" open>
       <Step n="1" title="資料會自己更新（不用做事）">
         <b style={{color:C.t}}>每天台灣時間 00:00</b> 全量更新一次（抓昨天的比賽、重算所有分析）。
-        <br/>之後<b style={{color:C.t}}>每場比賽在賽前 60 分、30 分各自動更新一次</b> ——
+        <br/>之後在台灣時間 <b style={{color:C.t}}>00:00-10:00 每 30 分鐘</b>檢查一次，
+        <b style={{color:C.t}}>每場比賽在賽前 60 分、30 分各自動更新一次</b> ——
         因為先發打線通常賽前 1 小時才公布，這兩次會抓到實際打線重算對位分析。
         <br/>每張比賽卡片右上角有「更新 MM-DD HH:MM」時間戳，
         標「實際先發打線」代表用的是真的打線，「近30天推估打線」代表打線還沒公布。
