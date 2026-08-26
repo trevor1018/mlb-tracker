@@ -397,6 +397,57 @@ function MatchupNarrative({m,variant}){
   </div>;
 }
 
+
+// ─── 對位速查（預設顯示的精簡版）───
+function MatchupQuick({m,variant,teams}){
+  if(!m)return null;
+  const sides=["away","home"].filter(k=>m[k]);
+  if(!sides.length)return null;
+  const val=d=>{
+    const v=d.delta_variants||{};
+    return v[variant]!=null?v[variant]:d.lineup_delta;
+  };
+  return<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
+    <Muted style={{fontWeight:700,color:C.t,marginBottom:5}}>對位速查</Muted>
+    {sides.map(k=>{
+      const d=m[k];
+      const v=val(d);
+      const col=v>=0.015?C.g:v<=-0.015?C.r:v>=0.006?C.acc:v<=-0.006?C.r:C.d;
+      const hd=d.h2h_delta;
+      const hcol=hd==null?C.d:hd>0.02?C.g:hd<-0.02?C.r:C.d;
+      const tid=Object.keys(teams||{}).find(x=>teams[x].zh===d.bat_team);
+      const t=tid?teams[tid]:null;
+      const rank=t&&d.sp_hand?(d.sp_hand==="L"?t.ranks?.bat_vsL_woba:t.ranks?.bat_vsR_woba):null;
+      const use=Object.entries(d.sp_usage||{}).slice(0,2)
+        .map(([kk,vv])=>kk+" "+Math.round(vv)+"%").join("、");
+      return<div key={k} style={{marginBottom:6,paddingBottom:6,
+        borderBottom:k===sides[0]&&sides.length>1?"1px dashed "+C.bd:"none"}}>
+        <div style={{fontSize:12,fontWeight:600}}>
+          {d.bat_team} 打線 vs {d.sp_name}
+          <span style={{color:C.d,fontWeight:400}}>
+            {" "}{d.sp_hand==="L"?"左投":"右投"}{use?"・"+use:""}</span>
+          <span style={{color:col,marginLeft:6,fontFamily:"'JetBrains Mono',monospace"}}>
+            {v>0?"+":""}{v.toFixed(3)}</span>
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:3}}>
+          <Tag color={hcol} bg={hd==null?"rgba(139,153,173,0.12)":hd>0.02?C.gD:hd<-0.02?C.rD:"rgba(139,153,173,0.12)"}>
+            {d.h2h_pa>0
+              ? "對戰史 "+d.h2h_faced+"人/"+d.h2h_pa+"PA wOBA "+numS(d.h2h_woba)
+                +(hd>0.02?" 吃得下":hd<-0.02?" 被壓制":" 互有來回")
+              : "沒對過他"}</Tag>
+          <Tag color={C.d} bg="rgba(139,153,173,0.12)">
+            對{d.sp_hand==="L"?"左":"右"}投 {numS(d.lineup_vs_hand)}
+            {rank?"（#"+rank+"）":""}</Tag>
+          <Tag color={C.d} bg="rgba(139,153,173,0.12)">
+            對{d.sp_key_group} {numS(d.lineup_vs_group)}</Tag>
+          {d.sp_vs_L!=null&&<Tag color={C.d} bg="rgba(139,153,173,0.12)">
+            他對左/右打 {numS(d.sp_vs_L)}/{numS(d.sp_vs_R)}</Tag>}
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
 // ═══════════════════════════════════════
 // 推薦（未開打場次）— 以 edge = 機率/基準率 排序
 // ═══════════════════════════════════════
@@ -479,7 +530,7 @@ function GameCard({g,teams,h2hMode,oddsMap,setOdds,legKeys,setLegKeys,logBet}){
             ? <Tag color={C.g} bg={C.gD}>更新 {g.updated_at.slice(5)}</Tag>
             : <Tag color={C.d} bg="rgba(139,153,173,0.12)">半夜全量</Tag>}
           {g.minutes_to_start!=null&&<Muted style={{marginTop:3}}>距開賽 {g.minutes_to_start} 分</Muted>}
-          <Muted style={{marginTop:2}}>{open?"收起":"展開對位"}</Muted>
+          <Muted style={{marginTop:2}}>{open?"收起詳細":"展開詳細"}</Muted>
         </div>
       </div>
       {src&&<div style={{marginTop:6}}>
@@ -488,7 +539,9 @@ function GameCard({g,teams,h2hMode,oddsMap,setOdds,legKeys,setLegKeys,logBet}){
       </div>}
     </div>
 
-    <div style={{marginTop:10}}>
+    <MatchupQuick m={g.matchup} variant={h2hMode||"light"} teams={teams}/>
+
+    <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid "+C.bd}}>
       <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto auto auto",
         gap:"4px 6px",fontSize:11,alignItems:"center",overflowWrap:"anywhere"}}>
         <div style={{color:C.m}}>玩法</div>
@@ -532,6 +585,9 @@ function GameCard({g,teams,h2hMode,oddsMap,setOdds,legKeys,setLegKeys,logBet}){
     </div>
 
     {open&&<>
+      <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid "+C.bd}}>
+        <Muted style={{fontWeight:700,color:C.acc}}>詳細資訊</Muted>
+      </div>
       <MatchupNarrative m={g.matchup} variant={h2hMode||"light"}/>
       <MatchupPanel g={g} teams={teams}/>
       {g.conditions&&g.conditions.length>0&&<div style={{marginTop:8,paddingTop:8,
@@ -1428,8 +1484,12 @@ function HelpView({A}){
         python analysis/live_update.py --force --push</span>
       </Step>
       <Step n="2" title="開「分析 → 推薦」，看逐場總覽">
-        一次只顯示一天。每場一張卡片，列出所有玩法的機率、聯盟基準率、保本賠率。
-        點卡片可展開<b style={{color:C.t}}>對位分析</b>（含直接對戰史）。
+        一次只顯示一天。每張卡片預設就有兩層資訊：
+        <br/>① <b style={{color:C.t}}>對位速查</b> —— 兩條打線各自對上誰、直接對戰史
+        （幾人幾打席、wOBA、吃得下/被壓制）、對該手別與主要球種的表現
+        <br/>② <b style={{color:C.t}}>玩法</b> —— 所有盤口的機率／聯盟基準／保本賠率，
+        填入台彩賠率即算期望值
+        <br/>點「展開詳細」才會出現逐打者的對戰史表格、類型對位表格與觸發的條件。
       </Step>
       <Step n="3" title="核對台彩實際賠率">
         每張卡片有「台彩賠率」輸入框，填進去會立刻算期望值：
