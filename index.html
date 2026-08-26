@@ -445,6 +445,7 @@ function EdgeTag({edge}){
 function SlateView({A,logBet}){
   const slate=A.slate;
   const[date,setDate]=useState(slate?.dates?.[0]||"");
+  useEffect(()=>{if(slate?.dates?.length&&!slate.dates.includes(date))setDate(slate.dates[0])},[slate]);
   const[minEdge,setMinEdge]=useState(1.05);
   const[sortBy,setSortBy]=useState("edge");
   const[h2hMode,setH2hMode]=useState(()=>load("h2h-mode","light"));
@@ -463,8 +464,9 @@ function SlateView({A,logBet}){
   const setOdds=(k,v)=>{const m={...oddsMap,[k]:v};setOddsMap(m);save("odds-input",m)};
   const keyOf=p=>`${p.pk||p.matchup}|${p.market}|${p.team||""}`;
   if(!slate)return<Card><Muted>還沒有未開打場次的預測。跑 analysis/predict_slate.py 後會出現。</Muted></Card>;
-  const games=slate.games.filter(g=>!date||g.date===date);
-  const picksRaw=slate.picks.filter(p=>(!date||p.date===date)&&(p.edge||0)>=minEdge);
+  const day=date||slate.dates?.[0]||"";
+  const games=slate.games.filter(g=>g.date===day);
+  const picksRaw=slate.picks.filter(p=>p.date===day&&(p.edge||0)>=minEdge);
   const alignBonus=p=>(mAligned(p)&&Math.abs(mDelta(p)||0)>=0.006)?1:0;
   const picks=[...picksRaw].sort((a,b)=>{
     if(sortBy==="matchup"){
@@ -480,9 +482,13 @@ function SlateView({A,logBet}){
   });
   return<div>
     <Card style={{marginBottom:12}}>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-        {slate.dates.map(d=><Pill key={d} small sel={date===d} onClick={()=>setDate(d)}>{d.slice(5)}</Pill>)}
-        <Pill small sel={!date} onClick={()=>setDate("")}>全部</Pill>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10,alignItems:"center"}}>
+        {slate.dates.map(d=>{
+          const n=slate.games.filter(g=>g.date===d).length;
+          return<Pill key={d} small sel={date===d} onClick={()=>setDate(d)}>
+            {d.slice(5)}（{n}）</Pill>;
+        })}
+        <Muted>每次只看一天</Muted>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
         <Muted>edge 門檻</Muted>
@@ -531,7 +537,8 @@ function SlateView({A,logBet}){
         return p?{...p,key:k}:null;}).filter(Boolean)}
       oddsMap={oddsMap} clear={()=>setLegKeys([])}
       remove={k=>setLegKeys(ks=>ks.filter(x=>x!==k))}/>
-    <div style={{fontSize:13,fontWeight:700,margin:"14px 0 8px"}}>edge 排行（{picks.length}）</div>
+    <div style={{fontSize:13,fontWeight:700,margin:"14px 0 8px"}}>
+      {day.slice(5)} edge 排行（{picks.length}）</div>
     {picks.length===0&&<Card><Muted>這個門檻下沒有候選。</Muted></Card>}
     {picks.slice(0,40).map((p,i)=><Card key={i} style={{marginBottom:8,padding:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
@@ -569,7 +576,8 @@ function SlateView({A,logBet}){
         onLog={logBet?(o=>logBet(p,o)):null}/>
     </Card>)}
 
-    <div style={{fontSize:13,fontWeight:700,margin:"18px 0 8px"}}>逐場總覽（{games.length}）</div>
+    <div style={{fontSize:13,fontWeight:700,margin:"18px 0 8px"}}>
+      {day.slice(5)} 逐場總覽（{games.length} 場）</div>
     {games.map(g=><GameSignalCard key={g.pk} g={g} teams={A.teams} h2hMode={h2hMode}/>)}
   </div>;
 }

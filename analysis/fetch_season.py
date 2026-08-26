@@ -67,7 +67,9 @@ def parse_game(g, date):
 def main():
     start = SEASON_START
     end = DATA_THROUGH
-    future_end = (dt.date.fromisoformat(DATA_THROUGH) + dt.timedelta(days=4)).isoformat()
+    # 只抓「下一個可下注的比賽日」為主：往後 2 天就夠
+    # （再往後先發多半未公布，抓了也沒用）
+    future_end = (dt.date.fromisoformat(DATA_THROUGH) + dt.timedelta(days=2)).isoformat()
     log(f"抓取賽程 {start} → {end}")
     # 一次抓一個月，避開單一回應過大
     months = []
@@ -111,16 +113,25 @@ def main():
     fut_url = (f"{API}/schedule?sportId=1&startDate={DATA_THROUGH}&endDate={future_end}"
                f"&gameType=R&hydrate={HYDRATE}")
     fut_raw = fetch_json(fut_url)
-    pending = []
+    NOT_STARTED = {"Scheduled", "Pre-Game", "Warmup", "Delayed Start"}
+    pending, started = [], 0
     for d in fut_raw.get("dates", []):
         for g in d.get("games", []):
             row = parse_game(g, d["date"])
-            if row and row["homeScore"] is None and row["awayScore"] is None:
-                pending.append(row)
+            if not row:
+                continue
+            if row["status"] not in NOT_STARTED:
+                started += 1        # 已開打或已結束 —— 不能下注了
+                continue
+            pending.append(row)
     pending.sort(key=lambda r: (r["date"], r["pk"]))
     jdump(pending, f"{DATA}/pending.json")
     have_sp = sum(1 for r in pending if r["awaySpProb"] and r["homeSpProb"])
+    by_date = {}
+    for r in pending:
+        by_date[r["date"]] = by_date.get(r["date"], 0) + 1
     log(f"寫出 data/pending.json（{len(pending)} 場未開打，其中 {have_sp} 場雙方先發已公布）")
+    log(f"  逐日：{by_date}" + (f"；另有 {started} 場已開打/已結束，不列入" if started else ""))
 
 
 if __name__ == "__main__":
