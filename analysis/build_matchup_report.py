@@ -17,6 +17,7 @@
 """
 import argparse
 import os
+import pickle
 import sys
 
 import numpy as np
@@ -61,25 +62,8 @@ def shrunk(w, pa, league, prior=PRIOR_PA):
     return (w * pa + league * prior) / (pa + prior)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--seasons", default="2025,2026",
-                    help="計算打者分項用的球季（近兩季兼顧樣本量與時效）")
-    ap.add_argument("--h2h-seasons", default="auto",
-                    help="直接對戰史用的球季；auto = 自動用 data/ 底下所有有資料的球季")
-    ap.add_argument("--w-h2h", type=float, default=0.5,
-                    help="直接對戰史在對位分數裡的權重（使用者指定拉高）")
-    ap.add_argument("--w-hand", type=float, default=0.3)
-    ap.add_argument("--w-group", type=float, default=0.2)
-    ap.add_argument("--h2h-prior", type=float, default=10.0,
-                    help="對戰史收縮的先驗 PA（越小越相信小樣本；設 0 = 完全不收縮）")
-    args = ap.parse_args()
-
-    seasons = [int(x) for x in args.seasons.split(",")]
-    log(f"讀取逐球資料（打者分項用 {seasons}）")
-    p = load_pitches(seasons)
-    log(f"  {len(p):,} 球")
-
+def compute_aggregates(p, seasons, args):
+    """所有重運算集中在這裡（讀 400 萬球要 40 秒），算完會存成快取。"""
     # ── 聯盟基準 ──
     lg_hand = agg_woba(p, ["p_throws"]).set_index("p_throws")["woba"].to_dict()
     lg_group = agg_woba(p, ["pgroup"]).set_index("pgroup")["woba"].to_dict()
@@ -167,6 +151,67 @@ def main():
         lineup_by_team[int(tid)] = [(int(r.batter), float(r.pa)) for r in top.itertuples()]
     log(f"  近 {RECENT_DAYS} 天打線（{cutoff} 之後）：{len(lineup_by_team)} 隊")
 
+    return {
+        "lg_all": lg_all, "lg_hand": lg_hand, "lg_group": lg_group,
+        "bh": bh, "bg": bg,
+        "pit_use": pit_use, "pit_main": pit_main, "ph": ph,
+        "h2h_map": h2h_map, "h2h_detail": h2h_detail,
+        "lineup_by_team": lineup_by_team, "h2h_seasons": h2h_seasons,
+        "people": people, "cutoff": cutoff,
+    }
+
+
+def load_aggregates(seasons, args):
+    """有新鮮的快取就直接用，否則重算並寫檔。"""
+    cache_f = os.path.join(DATA, "matchup_agg.pkl")
+    newest = 0.0
+    for s2 in seasons:
+        f = os.path.join(ROOT, "data", str(s2), "pitches.parquet")
+        if os.path.exists(f):
+            newest = max(newest, os.path.getmtime(f))
+    if (not args.rebuild) and os.path.exists(cache_f) and os.path.getmtime(cache_f) > newest:
+        with open(cache_f, "rb") as f:
+            CA = pickle.load(f)
+        if CA.get("weights_key") == (args.w_h2h, args.w_hand, args.w_group, args.h2h_prior):
+            log("使用聚合快取（省下重讀逐球資料）")
+            return CA
+        log("快取存在但權重設定不同，重算")
+    log(f"讀取逐球資料（打者分項用 {seasons}）")
+    p = load_pitches(seasons)
+    log(f"  {len(p):,} 球")
+    CA = compute_aggregates(p, seasons, args)
+    CA["weights_key"] = (args.w_h2h, args.w_hand, args.w_group, args.h2h_prior)
+    with open(cache_f, "wb") as f:
+        pickle.dump(CA, f)
+    log(f"寫出聚合快取 {cache_f}")
+    return CA
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--seasons", default="2025,2026",
+                    help="計算打者分項用的球季（近兩季兼顧樣本量與時效）")
+    ap.add_argument("--h2h-seasons", default="auto",
+                    help="直接對戰史用的球季；auto = 自動用 data/ 底下所有有資料的球季")
+    ap.add_argument("--w-h2h", type=float, default=0.5,
+                    help="直接對戰史在對位分數裡的權重（使用者指定拉高）")
+    ap.add_argument("--w-hand", type=float, default=0.3)
+    ap.add_argument("--w-group", type=float, default=0.2)
+    ap.add_argument("--rebuild", action="store_true",
+                    help="強制重算聚合快取（補了新球季資料後用）")
+    ap.add_argument("--h2h-prior", type=float, default=10.0,
+                    help="對戰史收縮的先驗 PA（越小越相信小樣本；設 0 = 完全不收縮）")
+    args = ap.parse_args()
+
+    seasons = [int(x) for x in args.seasons.split(",")]
+    CA = load_aggregates(seasons, args)
+    lg_all, lg_hand, lg_group = CA["lg_all"], CA["lg_hand"], CA["lg_group"]
+    bh, bg = CA["bh"], CA["bg"]
+    pit_use, pit_main, ph = CA["pit_use"], CA["pit_main"], CA["ph"]
+    h2h_map, h2h_detail = CA["h2h_map"], CA["h2h_detail"]
+    lineup_by_team, h2h_seasons = CA["lineup_by_team"], CA["h2h_seasons"]
+    people = CA["people"]
+
     def bat_split(bid, hand, group):
         """回傳 (對該手別 wOBA, PA, 對該球種 wOBA, PA)（收縮後）"""
         pa_h, w_h = bh.get((bid, hand), (0.0, lg_hand.get(hand, lg_all)))
@@ -184,6 +229,14 @@ def main():
         zh2id = {v["zh"]: int(k) for k, v in splits.items()}
     except Exception:
         pass
+
+    # 實際先發打線（賽前約 1 小時公布）
+    try:
+        lineups = jload(f"{DATA}/lineups.json")
+    except Exception:
+        lineups = {}
+    if lineups:
+        log(f"讀到 {len(lineups)} 場的實際打線")
 
     out = {}
     for g in slate["games"]:
@@ -204,8 +257,22 @@ def main():
             sec = next((k for k, v in arsenal if k not in ("fastball", "cutter")), None)
             key_group = sec or main_group
 
+            # 有公布實際打線就用實際的（面對這位先發的是 other 那一側）
+            lu = (lineups.get(str(g["pk"])) or {})
+            actual = lu.get(other) or []
+            if len(actual) >= 8:
+                recent_pa_map = dict(lineup_by_team[tid])
+                use_lineup = [(int(b), float(recent_pa_map.get(int(b), 20.0)))
+                              for b in actual]
+                lineup_source = "實際先發打線"
+                lineup_time = lu.get("updated_at")
+            else:
+                use_lineup = lineup_by_team[tid]
+                lineup_source = "近30天推估打線"
+                lineup_time = None
+
             rows, tot_pa = [], 0.0
-            for bid, rpa in lineup_by_team[tid]:
+            for bid, rpa in use_lineup:
                 wh, pah, wg, pag = bat_split(bid, hand, key_group)
                 det = h2h_detail.get((bid, spid))
                 h2h_pa = det["pa"] if det else 0.0
@@ -286,6 +353,7 @@ def main():
                        "對位明顯不利" if lineup_delta <= -0.015 else
                        "對位偏不利" if lineup_delta <= -0.006 else "對位中性")
             narrative = (
+                f"[{lineup_source}] "
                 f"{bat_zh}打線對上 {spn}（{HAND_ZH.get(hand, hand)}"
                 + (f"、{use_txt}" if use_txt else "") + f"）：{verdict}"
                 f"（打線加權 {lineup_delta:+.3f}）。"
@@ -336,6 +404,8 @@ def main():
                 "sp_vs_R": (round(w_r, 3) if w_r is not None else None),
                 "sp_vs_R_pa": round(pa_r),
                 "bat_team": bat_zh,
+                "lineup_source": lineup_source,
+                "lineup_time": lineup_time,
                 "lineup_delta": round(lineup_delta, 4),
                 "delta_variants": delta_variants,
                 "lineup_vs_hand": round(lineup_hand, 3),
@@ -378,7 +448,7 @@ def main():
                  "league_hand", "league_group", "verdict", "best", "worst",
                  "h2h_pa", "h2h_woba", "narrative", "delta_variants",
                  "h2h_delta", "h2h_faced", "h2h_k", "h2h_hr", "h2h_hit",
-                 "h2h_best", "h2h_worst", "h2h_rows")
+                 "h2h_best", "h2h_worst", "h2h_rows", "lineup_source", "lineup_time")
     by_pk = {}
     for g in slate["games"]:
         m = out.get(str(g["pk"]))

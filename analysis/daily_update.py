@@ -73,6 +73,13 @@ def main():
 
     invalidate(through, args.season)
 
+    # 重置賽前個別更新的狀態：新的一天、新的比賽，窗口要重新算
+    for f in ("live_state.json", "lineups.json"):
+        path = os.path.join(ROOT, "data", str(args.season), f)
+        if os.path.exists(path):
+            os.remove(path)
+            log(f"重置 {f}")
+
     steps = ["fetch_season", "fetch_boxscores", "fetch_people", "fetch_savant",
              "build_gamelogs", "build_splits", "build_dataset", "build_player_splits",
              "team_profiles"]

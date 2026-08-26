@@ -246,30 +246,6 @@ function useAnalysis(){
 
 
 // ─── 賠率輸入 → 期望值 ───
-function OddsBox({pick,odds,setOdds,picked,toggle,onLog}){
-  const o=parseFloat(odds||"");
-  const ev=o>1?pick.p*o-1:null;
-  return<div style={{display:"flex",gap:6,alignItems:"center",marginTop:8,flexWrap:"wrap"}}>
-    <span style={{fontSize:11,color:C.d}}>台彩賠率</span>
-    <input value={odds||""} onChange={e=>setOdds(e.target.value)} placeholder={String(pick.be_odds)}
-      inputMode="decimal"
-      style={{width:70,padding:"5px 8px",borderRadius:6,border:`1px solid ${C.bd}`,
-        background:C.bg,color:C.t,fontSize:12,fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/>
-    <span style={{fontSize:11,color:C.m}}>保本 {pick.be_odds}</span>
-    {ev!=null&&<Tag color={ev>0?C.g:C.r} bg={ev>0?C.gD:C.rD}>
-      期望值 {ev>0?"+":""}{(ev*100).toFixed(1)}%</Tag>}
-    <button onClick={toggle} style={{marginLeft:"auto",padding:"4px 10px",borderRadius:14,fontSize:11,
-      cursor:"pointer",fontWeight:600,border:picked?`1px solid ${C.acc}`:`1px solid ${C.bd}`,
-      background:picked?C.accD:C.bg,color:picked?C.acc:C.d,outline:"none"}}>
-      {picked?"已加入組合":"加入組合"}</button>
-    {onLog&&<button onClick={()=>onLog(o)} disabled={!(o>1)}
-      style={{padding:"4px 10px",borderRadius:14,fontSize:11,cursor:o>1?"pointer":"default",
-        fontWeight:600,border:`1px solid ${o>1?C.b:C.bd}`,
-        background:o>1?C.bD:C.bg,color:o>1?C.b:C.m,outline:"none"}}>記錄下注</button>}
-  </div>;
-}
-
-// ─── 串關試算 ───
 function ParlayPanel({legs,oddsMap,clear,remove}){
   const[stake,setStake]=useState("100");
   if(legs.length===0)return null;
@@ -344,17 +320,6 @@ function ParlayPanel({legs,oddsMap,clear,remove}){
 
 
 // ─── 對位分析 ───
-function MatchupTag({delta,aligned,who}){
-  if(delta==null)return null;
-  const strong=Math.abs(delta)>=0.015, mid=Math.abs(delta)>=0.006;
-  const col=aligned?(strong?C.g:mid?C.acc:C.d):(mid?C.r:C.d);
-  const bg=aligned?(strong?C.gD:mid?C.accD:"rgba(139,153,173,0.12)")
-                  :(mid?C.rD:"rgba(139,153,173,0.12)");
-  return<Tag color={col} bg={bg}>
-    對位 {delta>0?"+":""}{delta.toFixed(3)}{aligned?"（同向）":"（反向）"}
-  </Tag>;
-}
-
 function MatchupNarrative({m,variant}){
   if(!m)return null;
   const sides=["away","home"].filter(k=>m[k]);
@@ -435,151 +400,152 @@ function MatchupNarrative({m,variant}){
 // ═══════════════════════════════════════
 // 推薦（未開打場次）— 以 edge = 機率/基準率 排序
 // ═══════════════════════════════════════
-function EdgeTag({edge}){
-  if(edge==null)return null;
-  const good=edge>=1.11;
-  return<Tag color={good?C.g:edge>=1.05?C.acc:C.d} bg={good?C.gD:edge>=1.05?C.accD:"rgba(139,153,173,0.12)"}>
-    edge {edge.toFixed(2)}</Tag>;
-}
-
 function SlateView({A,logBet}){
   const slate=A.slate;
   const[date,setDate]=useState(slate?.dates?.[0]||"");
-  useEffect(()=>{if(slate?.dates?.length&&!slate.dates.includes(date))setDate(slate.dates[0])},[slate]);
-  const[minEdge,setMinEdge]=useState(1.05);
-  const[sortBy,setSortBy]=useState("edge");
   const[h2hMode,setH2hMode]=useState(()=>load("h2h-mode","light"));
-  const setMode=v=>{setH2hMode(v);save("h2h-mode",v)};
-  const mDelta=p=>{
-    const v=p.matchup_variants;
-    return (v&&v[h2hMode]!=null)?v[h2hMode]:p.matchup_delta;
-  };
-  const mAligned=p=>{
-    const d=mDelta(p);
-    if(d==null)return null;
-    return p.matchup_under?(d<0):(d>0);
-  };
   const[oddsMap,setOddsMap]=useState(()=>load("odds-input",{}));
   const[legKeys,setLegKeys]=useState([]);
+  useEffect(()=>{if(slate?.dates?.length&&!slate.dates.includes(date))setDate(slate.dates[0])},[slate]);
+  const setMode=v=>{setH2hMode(v);save("h2h-mode",v)};
   const setOdds=(k,v)=>{const m={...oddsMap,[k]:v};setOddsMap(m);save("odds-input",m)};
-  const keyOf=p=>`${p.pk||p.matchup}|${p.market}|${p.team||""}`;
   if(!slate)return<Card><Muted>還沒有未開打場次的預測。跑 analysis/predict_slate.py 後會出現。</Muted></Card>;
   const day=date||slate.dates?.[0]||"";
   const games=slate.games.filter(g=>g.date===day);
-  const picksRaw=slate.picks.filter(p=>p.date===day&&(p.edge||0)>=minEdge);
-  const alignBonus=p=>(mAligned(p)&&Math.abs(mDelta(p)||0)>=0.006)?1:0;
-  const picks=[...picksRaw].sort((a,b)=>{
-    if(sortBy==="matchup"){
-      const av=(mAligned(a)?1:-1)*Math.abs(mDelta(a)||0);
-      const bv=(mAligned(b)?1:-1)*Math.abs(mDelta(b)||0);
-      return bv-av;
-    }
-    if(sortBy==="combo"){
-      const av=(a.edge||0)+0.08*alignBonus(a), bv=(b.edge||0)+0.08*alignBonus(b);
-      return bv-av;
-    }
-    return (b.edge||0)-(a.edge||0);
-  });
+  const legs=legKeys.map(k=>{
+    for(const g of slate.games)for(const m of (g.markets||[]))
+      if(mkKey(g,m)===k)return{...m,key:k,pk:g.pk,matchup:g.away+" @ "+g.home,date:g.date};
+    return null;
+  }).filter(Boolean);
+
   return<div>
     <Card style={{marginBottom:12}}>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10,alignItems:"center"}}>
         {slate.dates.map(d=>{
           const n=slate.games.filter(g=>g.date===d).length;
-          return<Pill key={d} small sel={date===d} onClick={()=>setDate(d)}>
-            {d.slice(5)}（{n}）</Pill>;
+          return<Pill key={d} small sel={day===d} onClick={()=>setDate(d)}>{d.slice(5)}（{n}）</Pill>;
         })}
         <Muted>每次只看一天</Muted>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-        <Muted>edge 門檻</Muted>
-        {[1.0,1.05,1.11,1.2].map(v=><Pill key={v} small sel={minEdge===v} onClick={()=>setMinEdge(v)}>{v.toFixed(2)}</Pill>)}
-      </div>
-      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginTop:8}}>
-        <Muted>排序</Muted>
-        <Pill small sel={sortBy==="edge"} onClick={()=>setSortBy("edge")}>依 edge</Pill>
-        <Pill small sel={sortBy==="matchup"} onClick={()=>setSortBy("matchup")}>依對位</Pill>
-        <Pill small sel={sortBy==="combo"} onClick={()=>setSortBy("combo")}>綜合</Pill>
-      </div>
-      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginTop:8}}>
         <Muted>對戰史採信度</Muted>
         <Pill small sel={h2hMode==="raw"} onClick={()=>setMode("raw")}>完全相信</Pill>
         <Pill small sel={h2hMode==="light"} onClick={()=>setMode("light")}>輕度收縮</Pill>
         <Pill small sel={h2hMode==="safe"} onClick={()=>setMode("safe")}>保守</Pill>
         <Pill small sel={h2hMode==="no_h2h"} onClick={()=>setMode("no_h2h")}>不看對戰史</Pill>
       </div>
-      <Muted style={{marginTop:6}}>
+      <Muted style={{marginTop:8}}>
         對位分數 = <b style={{color:C.t}}>0.5×直接對戰史</b> + 0.3×對慣用手 + 0.2×對主要球種。
-        「完全相信」直接用原始對戰 wOBA（1 打席也算）；「輕度收縮」以 10 打席先驗稍微拉回聯盟平均；
-        「保守」用 40 打席先驗。切換會立刻改變排序與標籤。
-      </Muted>
-      {(()=>{const t=todayPT();
-        const stale=slate.dates.filter(d=>d<t);
-        if(!stale.length)return null;
-        return<div style={{marginTop:10,padding:8,borderRadius:6,background:C.rD,
-          border:"1px solid "+C.r}}>
-          <Muted style={{color:C.t}}>
-            ⚠ {stale.join("、")} 已經開打（美西今天是 {t}）。
-            這批預測是用當時的資料算的，請跑 <span style={{fontFamily:"'JetBrains Mono',monospace"}}>
-            python analysis/daily_update.py --push</span> 更新。
-          </Muted>
-        </div>;
-      })()}
-      <Muted style={{marginTop:10}}>
-        引擎：{slate.engine}。<b style={{color:C.t}}>edge = 模型機率 ÷ 該玩法聯盟基準率</b>。
-        台彩返還率約 {pctS(slate.payout,0)}，所以 edge 要大於 {(1/(slate.payout||0.9)).toFixed(2)} 才有正期望值 ——
-        這是回測驗證過的排序方式，比單純看「機率高」可靠得多。
-        「假設賠率」是用基準率推估台彩可能開的價位，實際請自行核對。
+        填入台彩賠率會即時算期望值（綠色才有正期望）。點卡片展開看對位分析。
+        {slate.live_updated_at?<> 最後一次賽前更新：
+          <b style={{color:C.t}}>{slate.live_updated_at}</b>（每場在賽前 60 分／30 分各自動更新一次）</>:null}
       </Muted>
     </Card>
 
-    <ParlayPanel legs={legKeys.map(k=>{
-        const p=slate.picks.find(x=>`${x.pk||x.matchup}|${x.market}|${x.team||""}`===k);
-        return p?{...p,key:k}:null;}).filter(Boolean)}
-      oddsMap={oddsMap} clear={()=>setLegKeys([])}
+    <ParlayPanel legs={legs} oddsMap={oddsMap} clear={()=>setLegKeys([])}
       remove={k=>setLegKeys(ks=>ks.filter(x=>x!==k))}/>
+
     <div style={{fontSize:13,fontWeight:700,margin:"14px 0 8px"}}>
-      {day.slice(5)} edge 排行（{picks.length}）</div>
-    {picks.length===0&&<Card><Muted>這個門檻下沒有候選。</Muted></Card>}
-    {picks.slice(0,40).map((p,i)=><Card key={i} style={{marginBottom:8,padding:12}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:13,fontWeight:600}}>{p.matchup}</div>
-          <div style={{fontSize:12,color:C.d,marginTop:2}}>
-            {p.date.slice(5)}・{p.market_zh}{p.team?"（"+p.team+"）":""}
-          </div>
+      {day.slice(5)} 逐場總覽（{games.length} 場）</div>
+    {games.map(g=><GameCard key={g.pk} g={g} teams={A.teams} h2hMode={h2hMode}
+      oddsMap={oddsMap} setOdds={setOdds} legKeys={legKeys} setLegKeys={setLegKeys}
+      logBet={logBet}/>)}
+  </div>;
+}
+
+const mkKey=(g,m)=>g.pk+"|"+m.market;
+
+function GameCard({g,teams,h2hMode,oddsMap,setOdds,legKeys,setLegKeys,logBet}){
+  const[open,setOpen]=useState(false);
+  const[showAll,setShowAll]=useState(false);
+  const md=g.matchup||{};
+  const src=(Object.values(md)[0]||{}).lineup_source;
+  const rows=g.markets||[];
+  const shown=showAll?rows:rows.slice(0,8);
+  return<Card style={{marginBottom:10,padding:12}}>
+    <div onClick={()=>setOpen(!open)} style={{cursor:"pointer"}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:15,fontWeight:700}}>{g.away} @ {g.home}</div>
+          <Muted style={{marginTop:3}}>
+            {g.date.slice(5)}・{g.day_game?"日場":"夜場"}
+            {g.sp_known?"・先發 "+(g.away_sp_hand||"?")+" vs "+(g.home_sp_hand||"?"):"・先發未公布"}
+            {g.mu_total!=null?"・預估總分 "+g.mu_total:""}
+            {g.park_factor!=null?"・球場 "+g.park_factor:""}
+          </Muted>
         </div>
-        <div style={{textAlign:"right"}}>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:18,fontWeight:700,
-            color:(p.edge||0)>=1.11?C.g:C.t}}>{pctS(p.p)}</div>
-          <div style={{fontSize:11,color:C.d}}>基準 {pctS(p.base,0)}</div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          {g.updated_at
+            ? <Tag color={C.g} bg={C.gD}>更新 {g.updated_at.slice(5)}</Tag>
+            : <Tag color={C.d} bg="rgba(139,153,173,0.12)">半夜全量</Tag>}
+          {g.minutes_to_start!=null&&<Muted style={{marginTop:3}}>距開賽 {g.minutes_to_start} 分</Muted>}
+          <Muted style={{marginTop:2}}>{open?"收起":"展開對位"}</Muted>
         </div>
       </div>
-      <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
-        <EdgeTag edge={p.edge}/>
-        {p.assumed_odds&&<Tag color={C.d} bg="rgba(139,153,173,0.12)">假設賠率 {p.assumed_odds}</Tag>}
-        {p.bt_hit!=null&&<Tag color={p.bt_roi>0?C.g:C.r} bg={p.bt_roi>0?C.gD:C.rD}>
-          回測 {p.bt_n}注 命中 {pctS(p.bt_hit,0)} ROI {p.bt_roi>0?"+":""}{pctS(p.bt_roi,0)}</Tag>}
-        {p.cond_support>0&&<Tag color={C.b} bg={C.bD}>條件 {p.cond_support}</Tag>}
-        <MatchupTag delta={mDelta(p)} aligned={mAligned(p)} who={p.matchup_who}/>
+      {src&&<div style={{marginTop:6}}>
+        <Tag color={src==="實際先發打線"?C.g:C.d}
+          bg={src==="實際先發打線"?C.gD:"rgba(139,153,173,0.12)"}>{src}</Tag>
+      </div>}
+    </div>
+
+    <div style={{marginTop:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto auto auto",
+        gap:"4px 6px",fontSize:11,alignItems:"center",overflowWrap:"anywhere"}}>
+        <div style={{color:C.m}}>玩法</div>
+        <div style={{color:C.m}}>機率<span style={{fontSize:9}}>/基準</span></div>
+        <div style={{color:C.m}}>保本</div>
+        <div style={{color:C.m}}>賠率→EV</div>
+        {shown.map((m,i)=>{
+          const k=mkKey(g,m);
+          const o=parseFloat(oddsMap[k]||"");
+          const ev=o>1?m.p*o-1:null;
+          const picked=legKeys.indexOf(k)>=0;
+          return<React.Fragment key={i}>
+            <div style={{color:C.t,minWidth:0}}>{m.market_zh}{m.team?"（"+m.team+"）":""}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>
+              {pctS(m.p,0)}<span style={{color:C.m,fontSize:9}}>/{pctS(m.base,0)}</span></div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.d}}>{m.be_odds}</div>
+            <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+              <input value={oddsMap[k]||""} onChange={e=>setOdds(k,e.target.value)}
+                placeholder={String(m.be_odds)} inputMode="decimal"
+                style={{width:46,padding:"3px 4px",borderRadius:5,border:"1px solid "+C.bd,
+                  background:C.bg,color:C.t,fontSize:11,
+                  fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/>
+              {ev!=null&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,
+                color:ev>0?C.g:C.r}}>{ev>0?"+":""}{(ev*100).toFixed(1)}%</span>}
+              <button onClick={()=>setLegKeys(ks=>ks.indexOf(k)>=0?ks.filter(x=>x!==k):ks.concat([k]).slice(0,6))}
+                style={{padding:"2px 6px",borderRadius:10,fontSize:10,cursor:"pointer",
+                  border:"1px solid "+(picked?C.acc:C.bd),background:picked?C.accD:C.bg,
+                  color:picked?C.acc:C.m,outline:"none"}}>{picked?"已加":"串"}</button>
+              {logBet&&o>1&&<button onClick={()=>logBet({...m,pk:g.pk,date:g.date,
+                matchup:g.away+" @ "+g.home},o)}
+                style={{padding:"2px 6px",borderRadius:10,fontSize:10,cursor:"pointer",
+                  border:"1px solid "+C.b,background:C.bD,color:C.b,outline:"none"}}>記錄</button>}
+            </div>
+          </React.Fragment>;
+        })}
       </div>
-      {p.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
-        {p.conditions.map((c,k)=><Muted key={k} style={{marginBottom:3}}>
+      {rows.length>8&&<button onClick={()=>setShowAll(!showAll)}
+        style={{marginTop:8,width:"100%",padding:"5px 0",borderRadius:6,fontSize:11,
+          border:"1px solid "+C.bd,background:C.bg,color:C.d,cursor:"pointer"}}>
+        {showAll?"收起玩法":"顯示全部 "+rows.length+" 種玩法"}</button>}
+    </div>
+
+    {open&&<>
+      <MatchupNarrative m={g.matchup} variant={h2hMode||"light"}/>
+      <MatchupPanel g={g} teams={teams}/>
+      {g.conditions&&g.conditions.length>0&&<div style={{marginTop:8,paddingTop:8,
+        borderTop:"1px solid "+C.bd}}>
+        <Muted style={{fontWeight:700,color:C.t,marginBottom:4}}>觸發的全場條件</Muted>
+        {g.conditions.map((c,i)=><Muted key={i}>
           <span style={{color:c.tier==="跨季"?C.g:rateColor(c.rate),fontWeight:600}}>
             {pctS(c.rate,0)}</span>
           {c.lift?<span style={{color:c.lift>=1.11?C.g:C.d}}> lift {c.lift.toFixed(2)}</span>:null}
-          {" "}({c.n} 場・{c.tier==="跨季"?<b style={{color:C.g}}>跨季驗證</b>:`Tier ${c.tier}`})　{c.label}
-        </Muted>)}
+          {" "}{c.tier==="跨季"?<b style={{color:C.g}}>[跨季驗證]</b>:null}
+          {" "}{c.market_zh}・{c.label}</Muted>)}
       </div>}
-      <OddsBox pick={p} odds={oddsMap[keyOf(p)]} setOdds={v=>setOdds(keyOf(p),v)}
-        picked={legKeys.includes(keyOf(p))}
-        toggle={()=>setLegKeys(ks=>ks.includes(keyOf(p))?ks.filter(x=>x!==keyOf(p)):[...ks,keyOf(p)].slice(0,6))}
-        onLog={logBet?(o=>logBet(p,o)):null}/>
-    </Card>)}
-
-    <div style={{fontSize:13,fontWeight:700,margin:"18px 0 8px"}}>
-      {day.slice(5)} 逐場總覽（{games.length} 場）</div>
-    {games.map(g=><GameSignalCard key={g.pk} g={g} teams={A.teams} h2hMode={h2hMode}/>)}
-  </div>;
+    </>}
+  </Card>;
 }
 
 const PROFILE_ZH={FB:"速球型",BRK:"變化球型",OFF:"慢速球型",BAL:"均衡型"};
@@ -627,54 +593,6 @@ function MatchupPanel({g,teams}){
     {row("away","客")}
     {row("home","主")}
   </div>;
-}
-
-function GameSignalCard({g,teams,h2hMode}){
-  const[open,setOpen]=useState(false);
-  const top=g.markets?.[0];
-  return<Card style={{marginBottom:8,padding:12}}>
-    <div onClick={()=>setOpen(!open)} style={{cursor:"pointer",display:"flex",justifyContent:"space-between",gap:8}}>
-      <div>
-        <div style={{fontSize:14,fontWeight:600}}>{g.away} @ {g.home}</div>
-        <div style={{fontSize:11,color:C.d,marginTop:3}}>
-          {g.date.slice(5)}・{g.day_game?"日場":"夜場"}
-          {g.sp_known?"・先發 "+(g.away_sp_hand||"?")+" vs "+(g.home_sp_hand||"?"):"・先發未公布"}
-          {g.mu_total!=null?"・預估總分 "+g.mu_total:""}
-          {g.park_factor!=null?"・球場 "+g.park_factor:""}
-        </div>
-      </div>
-      <div style={{textAlign:"right"}}>
-        {top&&<><div style={{fontSize:11,color:C.d}}>{top.market_zh}{top.team?"("+top.team+")":""}</div>
-        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:15,fontWeight:700,
-          color:(top.edge||0)>=1.11?C.g:C.t}}>{pctS(top.p)}</div></>}
-        <div style={{fontSize:10,color:C.m}}>{open?"收起":"展開"}</div>
-      </div>
-    </div>
-    {open&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid "+C.bd}}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:"4px 8px",fontSize:11}}>
-        <div style={{color:C.m}}>玩法</div><div style={{color:C.m}}>機率</div>
-        <div style={{color:C.m}}>基準</div><div style={{color:C.m}}>edge</div>
-        {g.markets.map((m,i)=><React.Fragment key={i}>
-          <div style={{color:C.d}}>{m.market_zh}{m.team?"（"+m.team+"）":""}</div>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>{pctS(m.p)}</div>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",color:C.m}}>{pctS(m.base,0)}</div>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",
-            color:(m.edge||0)>=1.11?C.g:(m.edge||0)>=1.05?C.acc:C.m}}>{m.edge?m.edge.toFixed(2):"—"}</div>
-        </React.Fragment>)}
-      </div>
-      <MatchupNarrative m={g.matchup} variant={h2hMode||"light"}/>
-      <MatchupPanel g={g} teams={teams}/>
-      {g.conditions?.length>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+C.bd}}>
-        <Muted style={{fontWeight:700,color:C.t,marginBottom:4}}>觸發的全場條件</Muted>
-        {g.conditions.map((c,i)=><Muted key={i}>
-          <span style={{color:c.tier==="跨季"?C.g:rateColor(c.rate),fontWeight:600}}>
-            {pctS(c.rate,0)}</span>
-          {c.lift?<span style={{color:c.lift>=1.11?C.g:C.d}}> lift {c.lift.toFixed(2)}</span>:null}
-          {" "}{c.tier==="跨季"?<b style={{color:C.g}}>[跨季驗證]</b>:null}
-          {" "}{c.market_zh}・{c.label}</Muted>)}
-      </div>}
-    </div>}
-  </Card>;
 }
 
 // ═══════════════════════════════════════
@@ -1500,15 +1418,18 @@ function HelpView({A}){
     </Card>
 
     <Sec title="每天怎麼用（4 步）" open>
-      <Step n="1" title="更新資料（電腦上跑一次）">
-        <span style={{fontFamily:"'JetBrains Mono',monospace",color:C.t}}>
-          python analysis/daily_update.py --push</span>
-        <br/>約 4 分鐘，會抓昨天的比賽、重算全部分析、自動推上網站。
-        沒跑的話網頁看到的是舊資料（推薦頁上方會跳紅字提醒）。
+      <Step n="1" title="資料會自己更新（不用做事）">
+        <b style={{color:C.t}}>每天台灣時間 00:00</b> 全量更新一次（抓昨天的比賽、重算所有分析）。
+        <br/>之後<b style={{color:C.t}}>每場比賽在賽前 60 分、30 分各自動更新一次</b> ——
+        因為先發打線通常賽前 1 小時才公布，這兩次會抓到實際打線重算對位分析。
+        <br/>每張比賽卡片右上角有「更新 MM-DD HH:MM」時間戳，
+        標「實際先發打線」代表用的是真的打線，「近30天推估打線」代表打線還沒公布。
+        <br/>手動補跑：<span style={{fontFamily:"'JetBrains Mono',monospace",color:C.t}}>
+        python analysis/live_update.py --force --push</span>
       </Step>
-      <Step n="2" title="開「分析 → 推薦」，看 edge 排行">
-        把 edge 門檻設到 <b style={{color:C.t}}>1.11</b> 以上（低於這個打不過抽水）。
-        清單已經照 edge 由高到低排好，只看前幾筆就夠。
+      <Step n="2" title="開「分析 → 推薦」，看逐場總覽">
+        一次只顯示一天。每場一張卡片，列出所有玩法的機率、聯盟基準率、保本賠率。
+        點卡片可展開<b style={{color:C.t}}>對位分析</b>（含直接對戰史）。
       </Step>
       <Step n="3" title="核對台彩實際賠率">
         每張卡片有「台彩賠率」輸入框，填進去會立刻算期望值：
